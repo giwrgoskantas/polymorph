@@ -1,0 +1,60 @@
+# Polymorph — journal des versions
+
+## 1.0.0 — octobre 2026
+
+Première version publique. Polymorph est gratuit, par Molo Modding.
+
+### Modélisation
+- Edit Poly et Unwrap UVW en modificateurs, insérables n'importe où dans la pile (non destructif).
+- Chamfer, bridge, knife / slice, booléens, extrude avec flèche et panneau « Adjust Last Operation ».
+- Cube Projection (UV + matériau), Smart UV, éditeur UV, densité de texel.
+- Sculpt (Smooth, Relax, Flatten, Draw, Inflate, Grab, Pinch, symétrie) pour nettoyer les meshes générés.
+- Instances (Alt+D, Shift-drag), snaps, isolate, caméra de marche aux flèches, raccourcis compatibles avec les grands logiciels 3D.
+- Scene Explorer qui tient des milliers d'objets, sélection au cadre, filtres par type GTA.
+
+### GTA V / FiveM
+- Import et export .ydr, .yft, .ydd, .ybn, .ytyp, .ymap (ressource FiveM prête : fxmanifest, stream, textures intégrées).
+- LOD automatiques, collision automatique, vertex colors selon les règles du jeu, DDS 1024 avec mipmaps.
+- Vérificateur GTA avant export avec corrections en un clic (shell en limbo, pièces fermées, normales, 60k vertex…).
+- Constructeur de pièces MLO : plan dessiné ou lu depuis une image, portails automatiques, matériaux par surface,
+  plinthes, salissures et usure des coins, références de taille.
+- Explorateur des fichiers du jeu (modèles, textures, collisions par matériau).
+- Envoi direct vers ton serveur FiveM de test.
+
+### Mode MAP
+- Toute la carte de GTA V affichée avec ses modèles lointains (LOD / SLOD), comme dans CodeWalker.
+- Un clic charge les .ymap de la zone pour l'édition : déplacer, supprimer, poser des props collés aux surfaces.
+- Édition des intérieurs du jeu (MLO) : ouvrir un intérieur, déplacer / supprimer / ajouter des objets, le .ytyp est réécrit.
+- Sauvegarde en ressource FiveM (les fichiers du jeu gardent leur nom : FiveM utilise ta version).
+- Modèles lus une fois puis gardés en cache : réouverture de la carte en quelques secondes.
+
+### Ajouts de la dernière ligne droite
+- Snaps sur vertex / arêtes / faces avec points visibles ; on attrape un point de l'objet et on le pose sur la cible, contact sur les faces (plus d'objet qui rentre dans l'autre).
+- Caméra « jeu vidéo » : clic droit maintenu + ZQSD/WASD, E/Espace monter, C descendre, Shift rapide, molette = vitesse.
+- Edit mode : Shift + déplacement copie les faces / arêtes / vertex ; sur des arêtes ça extrude dans le sens du glisser.
+- Bridge refait (faces, groupes de faces, chaînes d'arêtes) et Flip Normals dans le clic droit.
+- Menu UV au clic droit : Unwrap, Smart UV, Lightmap, Cube, Cylindre, Sphère, Projection depuis la vue, Pack, Reset…
+- Clic droit objet simplifié : « Clone… » (copie / instance), plus d'entrées en double.
+- Matériaux : créer ne les applique plus, on les glisse-dépose sur l'objet ; les matériaux du jeu ouverts par le mode MAP sont masqués.
+- Sélection au travers comme dans les grands logiciels, option « Visible only » (Alt+Z) ; les faces arrière cachées ne volent plus le clic.
+- ViewCube : maintenir et glisser fait tourner la vue.
+- Lumières Point / Spot / Capsule, éclairage proche du jeu, toutes les propriétés Sollumz (flags, fades, volume, culling plane…) exportées.
+- Constructeur MLO entièrement en direct, encadrements de portes et fenêtres variés (5 styles, identiques des deux côtés).
+- Pièces connectées : à une porte entre deux pièces, un chambranle traverse l'espace et relie les deux encadrements (option « Connect the rooms »).
+- Mode MAP : HD chargée automatiquement autour de la caméra, beaucoup plus fluide sur les grandes zones ; les LOD restent affichés tant que la HD n'est pas arrivée.
+- Modéliser directement dans la carte : tous les outils de modélisation dans le mode MAP, le Room Builder posé au sol (MLO construit sur place), et un modèle du jeu ouvert en copie personnelle à sa place ; tout part avec la ressource map (stream/build : modèles, ytyp, MLO, entités).
+- Weapon Forge : un modèle 3D devient une arme GTA (squelette d'une arme du jeu, ajustement auto, remplacement ou arme add-on avec metas clonés).
+- Vehicle Forge : un modèle de voiture devient un véhicule FiveM (roues détectées, calage sur les roues d'une voiture du jeu, yft + metas clonés + textures).
+- Vidéos tutos par catégorie et trailer.
+
+### Rendu
+- Shader du jeu, onglet Lumière (32 lumières, ombres du soleil, courbe filmique), mode orientation des faces.
+- Molo Paint : peinture de textures par calques, masques intelligents, bake high-poly, export DDS.
+
+### Pilotage
+- API Python et serveur MCP : Claude peut piloter Polymorph (créer, modifier, UV, vérifier, exporter, captures).
+
+### Limites connues
+- Les intérieurs du jeu s'éditent objet par objet ; les pièces et portails eux-mêmes ne se redessinent pas dans le mode MAP
+  (pour ça : importer le .ytyp dans le mode MODEL).
+- Les nouveaux archétypes d'une ressource lancée pendant que tu es connecté ne s'affichent qu'après une reconnexion (comportement de FiveM).

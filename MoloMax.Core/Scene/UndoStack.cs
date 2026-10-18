@@ -1,0 +1,168 @@
+using MoloMax.Core.Mesh;
+namespace MoloMax.Core.Scenes;
+
+/// <summary>
+/// Snapshot undo: before an edit the scene is copied. Meshes that did not change since the last snapshot
+/// (same object version) are shared between snapshots instead of cloned again, so a 1M-vertex scene
+/// costs one copy, not one per edit. A restored snapshot is deep-copied before it becomes the live scene.
+/// </summary>
+public sealed class UndoStack
+{
+    readonly LinkedList<(string Name, Scene State)> undo = new();
+    readonly Stack<(string Name, Scene State)> redo = new();
+    public int Capacity = 60;
+    /// <summary>
+    /// Meshes are never edited in place (map mode: entities only move, a model load swaps the mesh reference):
+    /// snapshots share them as they are, nothing is copied, an undo of a big map is instant.
+    /// </summary>
+    public bool ImmutableMeshes;
+    /// <summary>With <see cref="ImmutableMeshes"/>: the objects whose mesh is edited in place all the same (map mode: what you
+    /// model right on the map). Their meshes are copied like in a normal scene; every other mesh stays shared.</summary>
+    public Func<SceneObject, bool> MutableMesh;
+    bool Shared(SceneObject o) => ImmutableMeshes && (MutableMesh == null || !MutableMesh(o));
+
+    public bool CanUndo => undo.Count > 0;
+    public bool CanRedo => redo.Count > 0;
+    public string UndoName => undo.Last?.Value.Name;
+    public string RedoName => redo.Count > 0 ? redo.Peek().Name : null;
+
+    /// <summary>Call before changing the scene.</summary>
+    (string Name, Scene State)[] redoBackup;
+
+    readonly Dictionary<int, (int Ver, PolyMesh Live, PolyMesh Frozen)> frozen = new();
+
+    bool Fresh(SceneObject o) => frozen.TryGetValue(o.Id, out var f) && f.Ver == o.Version && ReferenceEquals(f.Live, o.Mesh)
+                                 && f.Frozen.Verts.Count == o.Mesh.Verts.Count && f.Frozen.Faces.Count == o.Mesh.Faces.Count;
+
+    PolyMesh FrozenMesh(SceneObject o)
+    {
+        if (Shared(o)) return o.Mesh;
+        if (Fresh(o)) return frozen[o.Id].Frozen;
+        // instances share one mesh: one frozen copy serves them all
+        if (o.InstanceKey != null)
+            foreach (var f in frozen.Values)
+                if (ReferenceEquals(f.Live, o.Mesh) && f.Ver == o.Version && f.Frozen.Verts.Count == o.Mesh.Verts.Count && f.Frozen.Faces.Count == o.Mesh.Faces.Count)
+                { frozen[o.Id] = f; return f.Frozen; }
+        var m = o.Mesh.Clone();
+        frozen[o.Id] = (o.Version, o.Mesh, m);
+        return m;
+    }
+
+    // ---- background pre-copy: after a big import the first edit would copy every new mesh (≈1 s for 1M vertices);
+    // copies are made on worker threads while the user looks at the result, and merged on the UI thread.
+    System.Threading.Tasks.Task<List<(int Id, int Ver, PolyMesh Live, PolyMesh Copy)>> prefreeze;
+
+    /// <summary>Call from the UI thread when idle: starts copying the meshes the next snapshot would copy.</summary>
+    public void Prefreeze(Scene s, int minFaces = 50000)
+    {
+        if (ImmutableMeshes) return;
+        if (prefreeze != null) { if (prefreeze.IsCompleted) Merge(); else return; }
+        var stale = s.Objects.Where(o => !Fresh(o) && o.Mesh.Faces.Count > 0).Select(o => (o.Id, o.Version, o.Mesh)).ToList();
+        if (stale.Sum(x => (long)x.Mesh.Faces.Count) < minFaces) return;
+        prefreeze = System.Threading.Tasks.Task.Run(() =>
+        {
+            var res = new (int, int, PolyMesh, PolyMesh)[stale.Count];
+            System.Threading.Tasks.Parallel.For(0, stale.Count, i => { var (id, ver, m) = stale[i]; try { res[i] = (id, ver, m, m.Clone()); } catch { res[i] = (id, ver, m, null); } });
+            return res.ToList();
+        });
+    }
+
+    /// <summary>Waits for the background copies and keeps those whose object did not change meanwhile (version / mesh / size).</summary>
+    void Merge()
+    {
+        if (prefreeze == null) return;
+        List<(int Id, int Ver, PolyMesh Live, PolyMesh Copy)> res;
+        try { res = prefreeze.Result; } catch { res = new(); }
+        prefreeze = null;
+        foreach (var (id, ver, live, copy) in res)
+            if (copy != null && copy.Verts.Count == live.Verts.Count && copy.Faces.Count == live.Faces.Count) frozen[id] = (ver, live, copy);
+    }
+
+    Scene Snapshot(Scene s)
+    {
+        if (ImmutableMeshes) return s.Clone(FrozenMesh);
+        Merge();
+        // meshes changed since the last snapshot (e.g. a big import): copied in parallel first
+        var stale = s.Objects.Where(o => !Fresh(o)).ToList();
+        if (stale.Count > 1 && stale.Sum(o => (long)o.Mesh.Faces.Count) > 20000)
+        {
+            // instances share a mesh: copy each distinct mesh once
+            var distinct = stale.Select(o => o.Mesh).Distinct(ReferenceEqualityComparer.Instance).Cast<PolyMesh>().ToList();
+            var copies = new PolyMesh[distinct.Count];
+            System.Threading.Tasks.Parallel.For(0, distinct.Count, i => copies[i] = distinct[i].Clone());
+            var copyOf = new Dictionary<PolyMesh, PolyMesh>(ReferenceEqualityComparer.Instance);
+            for (int i = 0; i < distinct.Count; i++) copyOf[distinct[i]] = copies[i];
+            foreach (var o in stale) frozen[o.Id] = (o.Version, o.Mesh, copyOf[o.Mesh]);
+        }
+        return s.Clone(FrozenMesh);
+    }
+
+    /// <summary>Immutable copy for background saving (shares unchanged meshes with the undo history, so it is cheap).</summary>
+    public Scene SnapshotForSave(Scene s) => Snapshot(s);
+
+    /// <summary>
+    /// A stored snapshot becomes live. Stored meshes are shared and must stay intact, so each one is copied,
+    /// except when the live scene still holds the very mesh that snapshot was frozen from, unchanged: that one is reused.
+    /// </summary>
+    Scene Live(Scene state, Scene current)
+    {
+        if (ImmutableMeshes) { var im = state.Clone(o => Shared(o) ? o.Mesh : o.Mesh.Clone()); im.SyncInstances(); return im; }
+        var cur = current?.Objects.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First());
+        var reused = new HashSet<int>();
+        var copies = new Dictionary<PolyMesh, PolyMesh>(ReferenceEqualityComparer.Instance);
+        var s = state.Clone(o =>
+        {
+            if (cur != null && cur.TryGetValue(o.Id, out var c) && frozen.TryGetValue(o.Id, out var f)
+                && ReferenceEquals(o.Mesh, f.Frozen) && ReferenceEquals(c.Mesh, f.Live) && c.Version == f.Ver) { reused.Add(o.Id); return c.Mesh; }
+            // instances stored on one frozen mesh come back on one live copy
+            if (o.InstanceKey == null) return null;
+            if (!copies.TryGetValue(o.Mesh, out var copy)) copies[o.Mesh] = copy = o.Mesh.Clone();
+            return copy;
+        });
+        foreach (var o in s.Objects) if (!reused.Contains(o.Id)) o.Touch();
+        s.SyncInstances();
+        return s;
+    }
+
+    public void Record(string name, Scene current)
+    {
+        undo.AddLast((name, Snapshot(current)));
+        while (undo.Count > Capacity) undo.RemoveFirst();
+        redoBackup = redo.Reverse().ToArray();
+        redo.Clear();
+    }
+
+    /// <summary>Returns the scene to show after undoing, or null if there is nothing to undo.</summary>
+    public Scene Undo(Scene current)
+    {
+        if (undo.Count == 0) return null;
+        var (name, state) = undo.Last.Value; undo.RemoveLast();
+        redo.Push((name, Snapshot(current)));
+        return Live(state, current);
+    }
+
+    public Scene Redo(Scene current)
+    {
+        if (redo.Count == 0) return null;
+        var (name, state) = redo.Pop();
+        undo.AddLast((name, Snapshot(current)));
+        return Live(state, current);
+    }
+
+    /// <summary>Forgets the last recorded state without restoring it (a cancelled modal tool restores by itself).</summary>
+    public void DropLast()
+    {
+        if (undo.Count > 0) undo.RemoveLast();
+        if (redoBackup != null) { redo.Clear(); foreach (var r in redoBackup) redo.Push(r); redoBackup = null; }
+    }
+
+    /// <summary>Returns the last recorded state and forgets it, without touching redo.</summary>
+    public Scene PopLast(Scene current = null)
+    {
+        if (undo.Count == 0) return null;
+        var s = undo.Last.Value.State; undo.RemoveLast();
+        return Live(s, current);
+    }
+
+    public void Clear() { try { prefreeze?.Wait(); } catch { } prefreeze = null; undo.Clear(); redo.Clear(); frozen.Clear(); }
+}

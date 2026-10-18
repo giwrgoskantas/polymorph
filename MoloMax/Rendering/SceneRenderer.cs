@@ -1,0 +1,470 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
+using MoloMax.Core.Gta;
+using MoloMax.Core.Mesh;
+using MoloMax.Core.Scenes;
+using SharpDX.Direct3D;
+using SharpDX.Direct3D11;
+using SharpDX.DXGI;
+using Buffer = SharpDX.Direct3D11.Buffer;
+using Device = SharpDX.Direct3D11.Device;
+
+namespace MoloMax.Rendering;
+
+public enum ShadingMode : uint { Realistic = 0, Shaded = 1, VertexColour = 2, Normals = 3, UVChecker = 4, Unlit = 5 }
+
+[StructLayout(LayoutKind.Sequential)]
+struct SceneVarsCB
+{
+    public Matrix4x4 ViewProj;
+    public Vector4 CameraPos;
+    public Vector3 LightDir; public float LightHdr;
+    public Vector4 LightDirColour, LightDirAmbColour, NaturalAmbUp, NaturalAmbDown, ArtificialAmbUp, ArtificialAmbDown;
+    public uint RenderMode; public float Exposure; public float AmbientBoost; public float Pad;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+struct ObjectVarsCB
+{
+    public Matrix4x4 World;
+    public Matrix4x4 NormalMatrix;
+    public Vector4 WireColour;
+    public Vector4 Highlight;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+struct MaterialVarsCB
+{
+    public uint EnableTexture, EnableNormalMap, EnableSpecMap, EnableDetailMap;
+    public uint IsDecal, IsEmissive, IsGlass, AlphaTest;
+    public float Bumpiness, SpecularIntensityMult, SpecularFalloffMult, SpecularFresnel;
+    public Vector3 SpecMapIntMask; public float EmissiveMult;
+    public Vector4 DetailSettings;
+    public Vector4 ViewportColour;
+}
+
+/// <summary>One scene light as the shader sees it.</summary>
+public struct ViewLight
+{
+    public Vector3 Position, Direction, Colour; // colour already times intensity
+    public float Range, HalfLength, CosInner, CosOuter, FalloffExponent, Radius, Diffuse, Specular;
+    public int Kind; // 0 point, 1 spot, 2 capsule
+}
+
+[Flags] public enum RenderFlags : uint { None = 0, Filmic = 1, SunShadows = 2, SceneLights = 4, FaceOrientation = 8 }
+
+/// <summary>Uploaded triangles of one SceneObject, split by material.</summary>
+sealed class GpuMesh : IDisposable
+{
+    public int Version = -1;
+    public bool Edit;
+    public readonly List<(Buffer Vb, Buffer Ib, int Count, int MatId)> Groups = new();
+    public void Dispose() { foreach (var g in Groups) { g.Vb.Dispose(); g.Ib.Dispose(); } Groups.Clear(); }
+}
+
+/// <summary>Draws scene objects with the GTA basic shader.</summary>
+public sealed class SceneRenderer : IDisposable
+{
+    readonly Device device;
+    readonly DeviceContext ctx;
+    readonly VertexShader vs, vsInst;
+    readonly PixelShader ps;
+    readonly InputLayout layout, layoutInst;
+    Buffer instBuf; int instCap;
+    VertexBufferBinding[] instBindings = new VertexBufferBinding[2];
+    readonly Buffer sceneCB, objectCB, materialCB, lightCB;
+    public const int MaxLights = 32, ShadowSize = 2048;
+    const int LightVec4s = 7 + MaxLights * 5;
+    public Vector3 FaceFront = new(0.19f, 0.36f, 1f), FaceBack = new(1f, 0.12f, 0.12f);
+    readonly Vector4[] lightData = new Vector4[LightVec4s];
+    Texture2D shadowTex;
+    DepthStencilView shadowDsv;
+    ShaderResourceView shadowSrv;
+    readonly SamplerState shadowSampler;
+    readonly RasterizerState shadowRas;
+    readonly SamplerState sampler;
+    public readonly TextureCache Textures;
+    readonly Dictionary<int, GpuMesh> meshes = new();
+
+    public readonly RasterizerState CullBack, CullNone, LinesState;
+    public readonly DepthStencilState DepthDefault, DepthRead, DepthOff;
+    public readonly BlendState Opaque, Alpha;
+
+    public SceneRenderer(Device device)
+    {
+        this.device = device; ctx = device.ImmediateContext;
+        using (var vsb = ShaderLoader.Compile("gta_basic.hlsl", "VSMain", "vs_4_0"))
+        {
+            vs = new VertexShader(device, vsb);
+            layout = new InputLayout(device, vsb, new[]
+            {
+                new InputElement("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+                new InputElement("NORMAL", 0, Format.R32G32B32_Float, 12, 0),
+                new InputElement("COLOR", 0, Format.R32G32B32A32_Float, 24, 0),
+                new InputElement("TEXCOORD", 0, Format.R32G32_Float, 40, 0),
+                new InputElement("TANGENT", 0, Format.R32G32B32A32_Float, 48, 0),
+            });
+        }
+        using (var vsi = ShaderLoader.Compile("gta_basic.hlsl", "VSInstanced", "vs_4_0"))
+        {
+            vsInst = new VertexShader(device, vsi);
+            layoutInst = new InputLayout(device, vsi, new[]
+            {
+                new InputElement("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+                new InputElement("NORMAL", 0, Format.R32G32B32_Float, 12, 0),
+                new InputElement("COLOR", 0, Format.R32G32B32A32_Float, 24, 0),
+                new InputElement("TEXCOORD", 0, Format.R32G32_Float, 40, 0),
+                new InputElement("TANGENT", 0, Format.R32G32B32A32_Float, 48, 0),
+                new InputElement("TEXCOORD", 4, Format.R32G32B32A32_Float, 0, 1, InputClassification.PerInstanceData, 1),
+                new InputElement("TEXCOORD", 5, Format.R32G32B32A32_Float, 16, 1, InputClassification.PerInstanceData, 1),
+                new InputElement("TEXCOORD", 6, Format.R32G32B32A32_Float, 32, 1, InputClassification.PerInstanceData, 1),
+                new InputElement("TEXCOORD", 7, Format.R32G32B32A32_Float, 48, 1, InputClassification.PerInstanceData, 1),
+            });
+        }
+        using (var psb = ShaderLoader.Compile("gta_basic.hlsl", "PSMain", "ps_4_0")) ps = new PixelShader(device, psb);
+
+        sceneCB = CB<SceneVarsCB>(); objectCB = CB<ObjectVarsCB>(); materialCB = CB<MaterialVarsCB>();
+        lightCB = new Buffer(device, LightVec4s * 16, ResourceUsage.Default, BindFlags.ConstantBuffer, CpuAccessFlags.None, ResourceOptionFlags.None, 0);
+        ctx.UpdateSubresource(lightData, lightCB);
+        shadowSampler = new SamplerState(device, new SamplerStateDescription
+        {
+            Filter = Filter.ComparisonMinMagLinearMipPoint, AddressU = TextureAddressMode.Border, AddressV = TextureAddressMode.Border, AddressW = TextureAddressMode.Border,
+            BorderColor = new SharpDX.Mathematics.Interop.RawColor4(1, 1, 1, 1), ComparisonFunction = Comparison.LessEqual, MaximumLod = float.MaxValue,
+        });
+        shadowRas = new RasterizerState(device, new RasterizerStateDescription
+        {
+            FillMode = FillMode.Solid, CullMode = CullMode.None, IsDepthClipEnabled = true, DepthBias = 0, SlopeScaledDepthBias = 2.5f, DepthBiasClamp = 0.01f,
+        });
+        sampler = new SamplerState(device, new SamplerStateDescription
+        {
+            Filter = Filter.Anisotropic, MaximumAnisotropy = 8,
+            AddressU = TextureAddressMode.Wrap, AddressV = TextureAddressMode.Wrap, AddressW = TextureAddressMode.Wrap,
+            ComparisonFunction = Comparison.Always, MinimumLod = 0, MaximumLod = float.MaxValue,
+        });
+        Textures = new TextureCache(device);
+
+        RasterizerState Ras(CullMode c, bool lines = false) => new(device, new RasterizerStateDescription
+        {
+            FillMode = FillMode.Solid, CullMode = c, IsFrontCounterClockwise = true, IsDepthClipEnabled = true,
+            IsMultisampleEnabled = true, IsAntialiasedLineEnabled = lines, IsScissorEnabled = true,
+        });
+        CullBack = Ras(CullMode.Back); CullNone = Ras(CullMode.None); LinesState = Ras(CullMode.None, true);
+        DepthDefault = new DepthStencilState(device, new DepthStencilStateDescription { IsDepthEnabled = true, DepthWriteMask = DepthWriteMask.All, DepthComparison = Comparison.LessEqual });
+        DepthRead = new DepthStencilState(device, new DepthStencilStateDescription { IsDepthEnabled = true, DepthWriteMask = DepthWriteMask.Zero, DepthComparison = Comparison.LessEqual });
+        DepthOff = new DepthStencilState(device, new DepthStencilStateDescription { IsDepthEnabled = false, DepthWriteMask = DepthWriteMask.Zero, DepthComparison = Comparison.Always });
+        Opaque = new BlendState(device, BlendStateDescription.Default());
+        var bd = BlendStateDescription.Default();
+        bd.RenderTarget[0].IsBlendEnabled = true;
+        bd.RenderTarget[0].SourceBlend = BlendOption.SourceAlpha; bd.RenderTarget[0].DestinationBlend = BlendOption.InverseSourceAlpha;
+        bd.RenderTarget[0].SourceAlphaBlend = BlendOption.One; bd.RenderTarget[0].DestinationAlphaBlend = BlendOption.InverseSourceAlpha;
+        Alpha = new BlendState(device, bd);
+    }
+
+    Buffer CB<T>() where T : struct =>
+        new(device, (Marshal.SizeOf<T>() + 15) / 16 * 16, ResourceUsage.Default, BindFlags.ConstantBuffer, CpuAccessFlags.None, ResourceOptionFlags.None, 0);
+
+    /// <summary>Object in edit mode: its modifiers show only when "Edit Mode" is on in their header (Blender).</summary>
+    public int EditObjectId = -1;
+    /// <summary>Draw both sides of every polygon (face orientation view).</summary>
+    public bool NoCull;
+    /// <summary>Meshes sent to the GPU since start (profiling: should stay still when nothing changes).</summary>
+    public int Uploads;
+    /// <summary>Draw calls and triangles sent since the last reset (profiling).</summary>
+    public int StatDraws; public long StatTris;
+
+    // instances share one GPU mesh (thousands of rocks / chairs cost one upload)
+    readonly Dictionary<string, GpuMesh> instMeshes = new();
+    /// <summary>Triangles already built in the background for a mesh (map models): used once, at its first upload.</summary>
+    public readonly System.Runtime.CompilerServices.ConditionalWeakTable<PolyMesh, List<RenderGroup>> Prebuilt = new();
+    /// <summary>Milliseconds spent sending meshes to the GPU (profiling).</summary>
+    public double UploadMs;
+    readonly System.Diagnostics.Stopwatch upSw = new();
+
+    GpuMesh Upload(SceneObject o)
+    {
+        bool edit = o.Id == EditObjectId;
+        GpuMesh gm;
+        if (o.InstanceKey != null && !edit) { if (!instMeshes.TryGetValue(o.InstanceKey, out gm)) instMeshes[o.InstanceKey] = gm = new GpuMesh(); }
+        else if (!meshes.TryGetValue(o.Id, out gm)) meshes[o.Id] = gm = new GpuMesh();
+        if (gm.Version == o.Version && gm.Edit == edit && gm.Groups.Count > 0) return gm;
+        Uploads++;
+        upSw.Restart();
+        gm.Dispose();
+        gm.Version = o.Version; gm.Edit = edit;
+        var src = o.Evaluated(edit);
+        List<RenderGroup> groups;
+        if (!edit && Prebuilt.TryGetValue(src, out var pre)) { groups = pre; Prebuilt.Remove(src); }
+        else groups = RenderMeshBuilder.Build(src);
+        foreach (var g in groups)
+        {
+            if (g.Indices.Count == 0) continue;
+            var verts = g.VertexArray ?? g.Vertices.ToArray(); var idx = g.IndexArray ?? g.Indices.ToArray();
+            var vb = Buffer.Create(device, BindFlags.VertexBuffer, verts);
+            var ib = Buffer.Create(device, BindFlags.IndexBuffer, idx);
+            gm.Groups.Add((vb, ib, idx.Length, g.MaterialId));
+        }
+        UploadMs += upSw.Elapsed.TotalMilliseconds;
+        return gm;
+    }
+
+    /// <summary>Frees GPU meshes of objects that left the scene.</summary>
+    /// <summary>Instance keys kept on the GPU even when no scene object uses them (the map mode's far world).</summary>
+    public HashSet<string> KeepInstanceKeys;
+
+    public void Collect(Scene scene)
+    {
+        var alive = new HashSet<int>(scene.Objects.Where(o => o.InstanceKey == null || o.Id == EditObjectId).Select(o => o.Id));
+        // negative ids: preview objects (game files viewer), freed by their owner
+        foreach (var id in meshes.Keys.Where(k => k >= 0 && !alive.Contains(k)).ToList()) { meshes[id].Dispose(); meshes.Remove(id); }
+        if (instMeshes.Count > 0)
+        {
+            var keys = new HashSet<string>(scene.Objects.Where(o => o.InstanceKey != null).Select(o => o.InstanceKey));
+            if (KeepInstanceKeys != null) keys.UnionWith(KeepInstanceKeys);
+            foreach (var k in instMeshes.Keys.Where(k => !keys.Contains(k)).ToList()) { instMeshes[k].Dispose(); instMeshes.Remove(k); }
+        }
+    }
+
+    /// <summary>Frees the GPU meshes of preview objects (negative ids).</summary>
+    public void FreePreview(IEnumerable<int> ids) { foreach (var id in ids) if (meshes.Remove(id, out var m)) m.Dispose(); }
+
+    /// <summary>Forces every mesh to re-upload (after an undo replaced the scene).</summary>
+    public void Invalidate() { foreach (var m in meshes.Values) m.Dispose(); meshes.Clear(); foreach (var m in instMeshes.Values) m.Dispose(); instMeshes.Clear(); }
+
+    public void BeginScene(Matrix4x4 viewProj, Vector3 eye, in GtaGlobalLights l, ShadingMode mode, float exposure, float ambientBoost)
+    {
+        var s = new SceneVarsCB
+        {
+            ViewProj = viewProj, CameraPos = new Vector4(eye, 1),
+            LightDir = l.LightDir, LightHdr = l.LightHdr,
+            LightDirColour = l.LightDirColour, LightDirAmbColour = l.LightDirAmbColour,
+            NaturalAmbUp = l.NaturalAmbUp, NaturalAmbDown = l.NaturalAmbDown,
+            ArtificialAmbUp = l.ArtificialAmbUp, ArtificialAmbDown = l.ArtificialAmbDown,
+            RenderMode = (uint)mode, Exposure = exposure, AmbientBoost = ambientBoost,
+        };
+        ctx.UpdateSubresource(ref s, sceneCB);
+        ctx.InputAssembler.InputLayout = layout;
+        ctx.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
+        ctx.VertexShader.Set(vs);
+        ctx.VertexShader.SetConstantBuffer(0, sceneCB); ctx.VertexShader.SetConstantBuffer(1, objectCB); ctx.VertexShader.SetConstantBuffer(2, materialCB);
+        ctx.PixelShader.Set(ps);
+        ctx.PixelShader.SetConstantBuffer(0, sceneCB); ctx.PixelShader.SetConstantBuffer(1, objectCB); ctx.PixelShader.SetConstantBuffer(2, materialCB);
+        ctx.PixelShader.SetSampler(0, sampler);
+        ctx.PixelShader.SetConstantBuffer(3, lightCB);
+        ctx.PixelShader.SetSampler(1, shadowSampler);
+        ctx.PixelShader.SetShaderResource(5, shadowSrv);
+        ctx.GeometryShader.Set(null);
+    }
+
+    static float Bits(uint u) => BitConverter.UInt32BitsToSingle(u);
+
+    /// <summary>Scene lights, flags and the sun shadow matrix for the next draws (realistic mode).</summary>
+    public void SetLights(IReadOnlyList<ViewLight> lights, RenderFlags flags, Matrix4x4 shadowViewProj, float shadowTexelWorld, float shadowStrength)
+    {
+        int n = Math.Min(lights?.Count ?? 0, MaxLights);
+        if (shadowSrv == null) flags &= ~RenderFlags.SunShadows;
+        lightData[0] = new(shadowViewProj.M11, shadowViewProj.M12, shadowViewProj.M13, shadowViewProj.M14);
+        lightData[1] = new(shadowViewProj.M21, shadowViewProj.M22, shadowViewProj.M23, shadowViewProj.M24);
+        lightData[2] = new(shadowViewProj.M31, shadowViewProj.M32, shadowViewProj.M33, shadowViewProj.M34);
+        lightData[3] = new(shadowViewProj.M41, shadowViewProj.M42, shadowViewProj.M43, shadowViewProj.M44);
+        lightData[4] = new(Bits((uint)n), Bits((uint)flags), shadowTexelWorld, shadowStrength);
+        for (int i = 0; i < MaxLights; i++)
+        {
+            var l = i < n ? lights[i] : default;
+            lightData[5 + i] = new(l.Position, l.Range);
+            lightData[5 + MaxLights + i] = new(l.Colour, l.Kind);
+            lightData[5 + MaxLights * 2 + i] = new(l.Direction, l.HalfLength);
+            lightData[5 + MaxLights * 3 + i] = new(l.CosInner, l.CosOuter, l.FalloffExponent, l.Radius);
+            lightData[5 + MaxLights * 4 + i] = new(l.Diffuse, l.Specular, 0, 0);
+        }
+        lightData[5 + MaxLights * 5] = new(FaceFront, 1);
+        lightData[6 + MaxLights * 5] = new(FaceBack, 1);
+        ctx.UpdateSubresource(lightData, lightCB);
+    }
+
+    void EnsureShadowMap()
+    {
+        if (shadowTex != null) return;
+        shadowTex = new Texture2D(device, new Texture2DDescription
+        {
+            Width = ShadowSize, Height = ShadowSize, MipLevels = 1, ArraySize = 1, Format = Format.R32_Typeless, SampleDescription = new SampleDescription(1, 0),
+            Usage = ResourceUsage.Default, BindFlags = BindFlags.DepthStencil | BindFlags.ShaderResource,
+        });
+        shadowDsv = new DepthStencilView(device, shadowTex, new DepthStencilViewDescription { Format = Format.D32_Float, Dimension = DepthStencilViewDimension.Texture2D });
+        shadowSrv = new ShaderResourceView(device, shadowTex, new ShaderResourceViewDescription { Format = Format.R32_Float, Dimension = ShaderResourceViewDimension.Texture2D, Texture2D = new ShaderResourceViewDescription.Texture2DResource { MipLevels = 1 } });
+    }
+
+    /// <summary>
+    /// Renders the depth of the opaque objects seen from the sun into the shadow map.
+    /// Leaves no render target bound: the caller binds its own target afterwards.
+    /// </summary>
+    public void RenderShadows(Scene scene, IEnumerable<SceneObject> casters, Matrix4x4 lightViewProj, in GtaGlobalLights l)
+    {
+        EnsureShadowMap();
+        ctx.PixelShader.SetShaderResource(5, null);
+        ctx.OutputMerger.SetRenderTargets(shadowDsv, (RenderTargetView)null);
+        ctx.ClearDepthStencilView(shadowDsv, DepthStencilClearFlags.Depth, 1f, 0);
+        ctx.Rasterizer.SetViewport(0, 0, ShadowSize, ShadowSize);
+        ctx.Rasterizer.SetScissorRectangle(0, 0, ShadowSize, ShadowSize);
+        BeginScene(lightViewProj, Vector3.Zero, l, ShadingMode.Realistic, 1, 0);
+        ctx.PixelShader.SetShaderResource(5, null);
+        ctx.PixelShader.Set(null);
+        ctx.Rasterizer.State = shadowRas;
+        ctx.OutputMerger.SetDepthStencilState(DepthDefault);
+        foreach (var o in casters)
+        {
+            var gm = Upload(o);
+            var world = o.World;
+            var ov = new ObjectVarsCB { World = world, NormalMatrix = Matrix4x4.Identity };
+            ctx.UpdateSubresource(ref ov, objectCB);
+            foreach (var g in gm.Groups)
+            {
+                if (scene.Material(g.MatId).Preset.AlphaBlended) continue;
+                ctx.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(g.Vb, RenderVertex.SizeInBytes, 0));
+                ctx.InputAssembler.SetIndexBuffer(g.Ib, Format.R32_UInt, 0);
+                ctx.DrawIndexed(g.Count, 0, 0);
+            }
+        }
+        ctx.OutputMerger.SetRenderTargets((DepthStencilView)null, (RenderTargetView)null);
+        ctx.PixelShader.Set(ps);
+    }
+
+    /// <summary>Textures of a material as last looked up: thousands of map draws skip four path lookups each.</summary>
+    sealed class MatTex { public int Epoch = -1; public bool Pending; public string D, B, S, T; public GtaShaderPreset P; public ShaderResourceView Diff, Bump, Spec, Det; }
+    readonly System.Runtime.CompilerServices.ConditionalWeakTable<GtaMaterial, MatTex> matTex = new();
+
+    ShaderResourceView Tex(string name, ref bool pending)
+    {
+        var t = Textures.Get(name);
+        pending |= Textures.LastGetPending;
+        return t;
+    }
+
+    void SetMaterial(GtaMaterial m)
+    {
+        var p = m.Preset;
+        var mt = matTex.GetValue(m, _ => new MatTex());
+        if (mt.Pending || mt.Epoch != Textures.Epoch || !ReferenceEquals(mt.P, p) || !ReferenceEquals(mt.D, m.DiffuseTexture) || !ReferenceEquals(mt.B, m.BumpTexture)
+            || !ReferenceEquals(mt.S, m.SpecTexture) || !ReferenceEquals(mt.T, m.DetailTexture))
+        {
+            bool pending = false;
+            mt.Diff = Tex(m.DiffuseTexture, ref pending);
+            mt.Bump = p.Bump ? Tex(m.BumpTexture, ref pending) : null;
+            mt.Spec = p.Spec ? Tex(m.SpecTexture, ref pending) : null;
+            mt.Det = p.Detail ? Tex(m.DetailTexture, ref pending) : null;
+            mt.Pending = pending; mt.Epoch = Textures.Epoch; mt.P = p;
+            mt.D = m.DiffuseTexture; mt.B = m.BumpTexture; mt.S = m.SpecTexture; mt.T = m.DetailTexture;
+        }
+        var diff = mt.Diff; var bump = mt.Bump; var spec = mt.Spec; var det = mt.Det;
+        var mv = new MaterialVarsCB
+        {
+            EnableTexture = diff != null ? 1u : 0u,
+            EnableNormalMap = bump != null ? 1u : 0u,
+            EnableSpecMap = spec != null ? 1u : 0u,
+            EnableDetailMap = det != null && bump != null ? 1u : 0u,
+            IsDecal = p.Decal ? 1u : 0u, IsEmissive = p.Emissive ? 1u : 0u, IsGlass = p.Glass ? 1u : 0u, AlphaTest = 1,
+            Bumpiness = m.Bumpiness,
+            SpecularIntensityMult = p.Spec || p.Glass ? m.SpecularIntensity : 0.05f,
+            SpecularFalloffMult = m.SpecularFalloff, SpecularFresnel = m.SpecularFresnel,
+            SpecMapIntMask = m.SpecMapIntMask, EmissiveMult = m.EmissiveMultiplier,
+            DetailSettings = m.DetailSettings,
+            ViewportColour = new Vector4(m.ViewportColour, 1),
+        };
+        ctx.UpdateSubresource(ref mv, materialCB);
+        ctx.PixelShader.SetShaderResource(0, diff ?? Textures.White);
+        ctx.PixelShader.SetShaderResource(2, bump ?? Textures.FlatNormal);
+        ctx.PixelShader.SetShaderResource(3, spec ?? Textures.DefaultSpec);
+        ctx.PixelShader.SetShaderResource(4, det ?? Textures.FlatNormal);
+    }
+
+    /// <summary>
+    /// Draws one object. <paramref name="alphaPass"/> selects the blended materials (decals, glass);
+    /// the opaque pass draws everything else.
+    /// </summary>
+    public void DrawObject(Scene scene, SceneObject o, bool alphaPass, Vector4 highlight, bool backfaceCull)
+    {
+        var gm = Upload(o);
+        var world = o.World;
+        Matrix4x4.Invert(world, out var inv);
+        var ov = new ObjectVarsCB
+        {
+            World = world, NormalMatrix = Matrix4x4.Transpose(inv),
+            WireColour = new Vector4(o.WireColour, 1), Highlight = highlight,
+        };
+        ctx.UpdateSubresource(ref ov, objectCB);
+        // MLO rooms are meant to be seen from inside: always cull so the walls vanish from outside like in game.
+        ctx.Rasterizer.State = o.GtaType == GtaObjectType.Portal || NoCull ? CullNone : backfaceCull || o.GtaType == GtaObjectType.MloRoom ? CullBack : CullNone;
+        foreach (var g in gm.Groups)
+        {
+            var mat = scene.Material(g.MatId);
+            bool blended = mat.Preset.AlphaBlended || o.GtaType == GtaObjectType.Collision || o.GtaType == GtaObjectType.Portal;
+            if (blended != alphaPass) continue;
+            SetMaterial(mat);
+            if (o.GtaType == GtaObjectType.Collision || o.GtaType == GtaObjectType.Portal)
+            {
+                // collision and portals: tinted see-through so the shell stays readable
+                var mv = new MaterialVarsCB
+                {
+                    IsGlass = 1, ViewportColour = o.GtaType == GtaObjectType.Collision ? new Vector4(MoloMax.Core.Gta.Export.CollisionMaterials.Colour(o.Gta.CollisionMaterial), 1) : new Vector4(0.3f, 0.85f, 0.95f, 1),
+                    SpecMapIntMask = Vector3.UnitX, Bumpiness = 1, EmissiveMult = 1,
+                };
+                ctx.UpdateSubresource(ref mv, materialCB);
+                ctx.PixelShader.SetShaderResource(0, Textures.White);
+            }
+            ctx.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(g.Vb, RenderVertex.SizeInBytes, 0));
+            ctx.InputAssembler.SetIndexBuffer(g.Ib, Format.R32_UInt, 0);
+            ctx.DrawIndexed(g.Count, 0, 0);
+            StatDraws++; StatTris += g.Count / 3;
+        }
+    }
+
+    /// <summary>
+    /// Draws one model placed many times in one call per material (map mode). <paramref name="template"/> gives the
+    /// mesh (and its GPU upload); <paramref name="worlds"/> the placements.
+    /// </summary>
+    public void DrawInstanced(Scene scene, SceneObject template, Matrix4x4[] worlds, int count, bool alphaPass, bool backfaceCull, bool depthOnly = false)
+    {
+        if (count <= 0) return;
+        var gm = Upload(template);
+        if (gm.Groups.Count == 0) return;
+        if (instBuf == null || instCap < count)
+        {
+            instBuf?.Dispose();
+            instCap = Math.Max(256, count * 3 / 2);
+            instBuf = new Buffer(device, instCap * 64, ResourceUsage.Dynamic, BindFlags.VertexBuffer, CpuAccessFlags.Write, ResourceOptionFlags.None, 0);
+        }
+        var box = ctx.MapSubresource(instBuf, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
+        unsafe { fixed (Matrix4x4* src = worlds) System.Buffer.MemoryCopy(src, (void*)box.DataPointer, (long)instCap * 64, (long)count * 64); }
+        ctx.UnmapSubresource(instBuf, 0);
+        var ov = new ObjectVarsCB { World = Matrix4x4.Identity, NormalMatrix = Matrix4x4.Identity, WireColour = new Vector4(template.WireColour, 1), Highlight = Vector4.Zero };
+        ctx.UpdateSubresource(ref ov, objectCB);
+        ctx.InputAssembler.InputLayout = layoutInst;
+        ctx.VertexShader.Set(vsInst);
+        if (!depthOnly) ctx.Rasterizer.State = NoCull ? CullNone : backfaceCull ? CullBack : CullNone;
+        foreach (var g in gm.Groups)
+        {
+            var mat = scene.Material(g.MatId);
+            if (mat.Preset.AlphaBlended != alphaPass) continue;
+            if (!depthOnly) SetMaterial(mat);
+            instBindings[0] = new VertexBufferBinding(g.Vb, RenderVertex.SizeInBytes, 0);
+            instBindings[1] = new VertexBufferBinding(instBuf, 64, 0);
+            ctx.InputAssembler.SetVertexBuffers(0, instBindings);
+            ctx.InputAssembler.SetIndexBuffer(g.Ib, Format.R32_UInt, 0);
+            ctx.DrawIndexedInstanced(g.Count, count, 0, 0, 0);
+            StatDraws++; StatTris += (long)g.Count / 3 * count;
+        }
+        ctx.InputAssembler.InputLayout = layout;
+        ctx.VertexShader.Set(vs);
+    }
+
+    public void Dispose()
+    {
+        foreach (var m in meshes.Values) m.Dispose();
+        instBuf?.Dispose(); layoutInst.Dispose(); vsInst.Dispose();
+        Textures.Dispose();
+        CullBack.Dispose(); CullNone.Dispose(); LinesState.Dispose();
+        DepthDefault.Dispose(); DepthRead.Dispose(); DepthOff.Dispose(); Opaque.Dispose(); Alpha.Dispose();
+        shadowSrv?.Dispose(); shadowDsv?.Dispose(); shadowTex?.Dispose(); shadowSampler.Dispose(); shadowRas.Dispose(); lightCB.Dispose();
+        sampler.Dispose(); sceneCB.Dispose(); objectCB.Dispose(); materialCB.Dispose();
+        layout.Dispose(); ps.Dispose(); vs.Dispose();
+    }
+}

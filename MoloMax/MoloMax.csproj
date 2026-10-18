@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>Polymorph</AssemblyName>
+    <RootNamespace>MoloMax</RootNamespace>
+    <Product>Polymorph</Product>
+    <Company>Molo Modding</Company>
+    <ApplicationIcon>Assets\polymorph.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <NoWarn>$(NoWarn);CS0618;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <!-- Normal build: packages come from NuGet. -->
+  <ItemGroup Condition="'$(OfflineLibs)' == ''">
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
+    <PackageReference Include="SharpDX.D3DCompiler" Version="4.2.0" />
+    <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
+  </ItemGroup>
+
+  <!-- Offline build (-p:OfflineLibs=path): reference the same assemblies from a folder. -->
+  <ItemGroup Condition="'$(OfflineLibs)' != ''">
+    <Reference Include="SharpDX"><HintPath>$(OfflineLibs)\SharpDX.dll</HintPath></Reference>
+    <Reference Include="SharpDX.Mathematics"><HintPath>$(OfflineLibs)\SharpDX.Mathematics.dll</HintPath></Reference>
+    <Reference Include="SharpDX.DXGI"><HintPath>$(OfflineLibs)\SharpDX.DXGI.dll</HintPath></Reference>
+    <Reference Include="SharpDX.Direct3D11"><HintPath>$(OfflineLibs)\SharpDX.Direct3D11.dll</HintPath></Reference>
+    <Reference Include="SharpDX.D3DCompiler"><HintPath>$(OfflineLibs)\SharpDX.D3DCompiler.dll</HintPath></Reference>
+    <Reference Include="ImGui.NET"><HintPath>$(OfflineLibs)\ImGui.NET.dll</HintPath></Reference>
+    <None Include="$(OfflineLibs)\cimgui.dll" CopyToOutputDirectory="PreserveNewest" Link="cimgui.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- brand assets and fonts (Unbounded, IBM Plex Mono: SIL Open Font License) -->
+    <None Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\THIRD-PARTY-NOTICES.txt;..\CHANGELOG.md;..\LISEZ-MOI.txt" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <!-- Python API + MCP server, shipped next to the exe -->
+    <None Include="..\python\**\*.py;..\python\**\*.md" Exclude="..\python\**\__pycache__\**" Link="python\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MoloMax.Core\MoloMax.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Shaders\gta_basic.hlsl"><LogicalName>gta_basic.hlsl</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="Shaders\lines.hlsl"><LogicalName>lines.hlsl</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="Shaders\outline.hlsl"><LogicalName>outline.hlsl</LogicalName></EmbeddedResource>
+  </ItemGroup>
+
+</Project>

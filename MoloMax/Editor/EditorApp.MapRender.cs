@@ -1,0 +1,85 @@
+using System.Numerics;
+using MoloMax.Core.Scenes;
+
+namespace MoloMax.Editor;
+
+/// <summary>
+/// Map mode drawing: frustum and distance culling, then one instanced draw per archetype (thousands of entities,
+/// a few hundred models). Selected / frozen objects and objects without an archetype are drawn one by one as usual.
+/// </summary>
+public sealed partial class EditorApp
+{
+    sealed class InstGroup { public SceneObject Template; public Matrix4x4[] Worlds = new Matrix4x4[64]; public int Count; }
+    readonly Dictionary<string, InstGroup> instGroups = new();
+    readonly List<SceneObject> mapSingles = new();
+    public int MapDrawCalls, MapVisible;
+
+    static Vector4[] FrustumPlanes(Matrix4x4 m)
+    {
+        var c0 = new Vector4(m.M11, m.M21, m.M31, m.M41); var c1 = new Vector4(m.M12, m.M22, m.M32, m.M42);
+        var c2 = new Vector4(m.M13, m.M23, m.M33, m.M43); var c3 = new Vector4(m.M14, m.M24, m.M34, m.M44);
+        var p = new[] { c3 + c0, c3 - c0, c3 + c1, c3 - c1, c2, c3 - c2 };
+        for (int i = 0; i < 6; i++) { float l = new Vector3(p[i].X, p[i].Y, p[i].Z).Length(); if (l > 0) p[i] /= l; }
+        return p;
+    }
+
+    static bool BoxVisible(Vector4[] planes, Vector3 mn, Vector3 mx)
+    {
+        foreach (var p in planes)
+        {
+            var v = new Vector3(p.X >= 0 ? mx.X : mn.X, p.Y >= 0 ? mx.Y : mn.Y, p.Z >= 0 ? mx.Z : mn.Z);
+            if (p.X * v.X + p.Y * v.Y + p.Z * v.Z + p.W < 0) return false;
+        }
+        return true;
+    }
+
+    void MapGatherDraws(Viewport vp, Matrix4x4 viewProj)
+    {
+        foreach (var g in instGroups.Values) { g.Count = 0; g.Template = null; }
+        mapSingles.Clear();
+        var planes = FrustumPlanes(viewProj);
+        var eye = vp.Camera.Eye;
+        float pix = vp.Camera.Ortho ? 0 : 1.6f / MathF.Max(vp.H, 1); // ~ angular size of one pixel at fov 60
+        MapVisible = 0;
+        var live = MapLive();
+        for (int i = 0, n = live.Count + backdrop.Count; i < n; i++)
+        {
+            var o = i < live.Count ? live[i] : backdrop[i - live.Count];
+            if (o.Hidden || o.Mesh == null || o.Mesh.Faces.Count == 0) continue;
+            if (o.Id < 0 && (FarSteppedAside(o, eye) || !FarLodVisible(o, eye))) continue; // far model: area loaded for editing, or another LOD level shows here
+            var (mn, mx) = o.FastWorldBounds();
+            if (!BoxVisible(planes, mn, mx)) continue;
+            // smaller than ~1.5 px on screen: skip (far props)
+            if (pix > 0)
+            {
+                float r = (mx - mn).Length() * 0.5f, d = Vector3.Distance((mn + mx) * 0.5f, eye);
+                if (d > r && r / d < pix * 1.5f) continue;
+            }
+            MapVisible++;
+            if (o.InstanceKey == null || (o.Frozen && o.Id >= 0) || Selected.Contains(o.Id)) { mapSingles.Add(o); continue; }
+            if (!instGroups.TryGetValue(o.InstanceKey, out var grp)) instGroups[o.InstanceKey] = grp = new InstGroup();
+            if (grp.Template == null) grp.Template = o;
+            else if (!ReferenceEquals(grp.Template.Mesh, o.Mesh)) { mapSingles.Add(o); continue; } // not synced yet this frame
+            if (grp.Count == grp.Worlds.Length) Array.Resize(ref grp.Worlds, grp.Worlds.Length * 2);
+            grp.Worlds[grp.Count++] = o.World;
+        }
+    }
+
+    void MapDraw(bool alphaPass)
+    {
+        if (!alphaPass) MapDrawCalls = 0;
+        foreach (var g in instGroups.Values)
+        {
+            if (g.Count == 0) continue;
+            if (g.Count == 1) { renderer.DrawObject(Scene, g.Template, alphaPass, Vector4.Zero, BackfaceCull); MapDrawCalls++; continue; }
+            renderer.DrawInstanced(Scene, g.Template, g.Worlds, g.Count, alphaPass, BackfaceCull);
+            MapDrawCalls++;
+        }
+        foreach (var o in mapSingles)
+        {
+            var hl = o.Frozen ? new Vector4(0.55f, 0.55f, 0.6f, 0.6f) : Vector4.Zero;
+            renderer.DrawObject(Scene, o, alphaPass, alphaPass ? Vector4.Zero : hl, BackfaceCull);
+            MapDrawCalls++;
+        }
+    }
+}

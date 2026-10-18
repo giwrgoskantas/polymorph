@@ -1,0 +1,30 @@
+POLYMORPH 1.0.0 — 3D modelling for GTA V & FiveM
+par Molo Modding — gratuit
+
+DÉMARRER
+1. Décompresse le dossier où tu veux (pas dans Program Files).
+2. Lance Polymorph.exe. Rien à installer : tout est dans le dossier.
+3. GTA > Game files browser (GTA V)... : indique le dossier de ton GTA V (celui qui contient GTA5.exe ou GTA5_Enhanced.exe).
+   Le premier chargement cherche les clés du jeu, c'est plus long une seule fois.
+
+FAIRE UN PROP OU UN MLO
+- Menu Create : primitives, portes, escaliers ; GTA > MLO Room Builder pour dessiner les pièces d'un intérieur.
+- Panneau de droite : modificateurs (Edit Poly, Unwrap UVW), matériaux, propriétés GTA de l'objet.
+- Panneau GTA > Checks : vérifie tout avant l'export, « Fix all » corrige ce qui peut l'être.
+- GTA > Export FiveM resource... (F10) : écrit une ressource FiveM complète (fxmanifest + stream) dans le dossier de sortie choisi.
+
+ÉDITER LA CARTE (onglet MAP en haut)
+- Toute la carte s'affiche en modèles lointains. Clique sur une zone : ses .ymap se chargent pour l'édition.
+- Déplace / supprime des objets, pose des props (panneau Place props), ouvre un intérieur avec « Edit this interior ».
+- SAVE MAP RESOURCE écrit la ressource. Mets-la dans le dossier resources de ton serveur et ajoute « ensure <nom> ».
+- Après l'avoir lancée sur un serveur où tu es déjà connecté : reconnecte-toi pour voir les nouveaux modèles.
+
+PILOTER AVEC CLAUDE
+- Le dossier python contient l'API et le serveur MCP (voir python\README.md).
+
+CONFIGURATION
+- Windows 10/11 64 bits, carte graphique DirectX 11.
+- Ta copie de GTA V (Polymorph lit tes fichiers, il n'en contient aucun).
+
+Licences des composants utilisés : THIRD-PARTY-NOTICES.txt
+Nouveautés : CHANGELOG.md

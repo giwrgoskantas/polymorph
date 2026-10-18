@@ -1,0 +1,14 @@
+RAGE Tools License
+
+This project is provided as an open-source development tool for the FiveM / Cfx.re community.
+
+* Personal and commercial use is allowed.
+* You are free to modify, edit, and adapt the source code.
+* You may use the tool in personal or commercial development projects.
+* You may not redistribute, rebrand, or resell a modified or unmodified version of this project as your own product.
+* You may not sell access to, sublicense, or commercially redistribute modified versions of this project.
+* The original project and its source code must remain properly credited when redistributed for permitted purposes.
+
+In short: use it, modify it, and build with it - but don't take a modified version, rebrand it, and sell it as your own.
+
+CodeWalker.Core is the work of dexyfex and contributors and keeps its own MIT license.

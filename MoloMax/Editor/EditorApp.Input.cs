@@ -1,0 +1,779 @@
+using System.Numerics;
+using System.Windows.Forms;
+using ImGuiNET;
+using MoloMax.Core.Mesh;
+using MoloMax.Core.Scenes;
+using MoloMax.UI;
+
+namespace MoloMax.Editor;
+
+/// <summary>
+/// Viewport mouse handling: navigation (per keymap), click / box / loop selection, the 3D cursor,
+/// gizmo dragging and the right-click context menu. Modal tools live in EditorApp.Modal.cs and
+/// keyboard shortcuts in EditorApp.Keymap.cs.
+/// </summary>
+public sealed partial class EditorApp
+{
+    enum NavMode { None, Pan, Orbit, Zoom, Fly }
+    NavMode nav = NavMode.None;
+    Viewport navViewport;
+    System.Windows.Forms.MouseButtons navButton;
+
+    bool lmbTracking, boxSelecting;
+    Vector2 boxStart;
+    Viewport boxViewport;
+
+    bool transforming;
+    Viewport xfViewport;
+    Vector2 xfMouseStart;
+    float xfParamStart;
+    Vector3 xfPlaneStart, xfPivot;
+    Vector3[] xfAxes;
+    readonly Dictionary<int, (Vector3 Pos, Quaternion Rot, Vector3 Scale)> xfObjects = new();
+    readonly Dictionary<int, Vector3> xfVerts = new(); // vertex index → world position at drag start
+    bool rmbTracking; Vector2 rmbStart;
+    Vector3 xfPivotLive;
+
+    /// <summary>Blender's 3D cursor: where Shift+A adds things.</summary>
+    public Vector3 Cursor3D;
+
+    Viewport Hovered()
+    {
+        for (int i = 0; i < Viewports.Length; i++)
+        {
+            if (Maximized && i != ActiveViewport) continue;
+            if (Viewports[i].Contains(Input.Mouse)) return Viewports[i];
+        }
+        return null;
+    }
+
+    // ---------------------------------------------------------------- pivot / gizmo placement
+
+    /// <summary>Median of the selection (objects' origins, or the selected vertices in edit mode).</summary>
+    bool SelectionPivot(out Vector3 pivot, out Matrix4x4 orient)
+    {
+        pivot = default; orient = Matrix4x4.Identity;
+        var cur = Current;
+        if (Level != SubObject.Object && cur != null)
+        {
+            var verts = SubSel(cur).VerticesOf(cur.Mesh, Level);
+            if (verts.Count == 0) return false;
+            var w = cur.World; var c = Vector3.Zero;
+            foreach (var v in verts) c += Vector3.Transform(cur.Mesh.Verts[v], w);
+            pivot = c / verts.Count;
+            if (LocalCoords) orient = Matrix4x4.CreateFromQuaternion(cur.Rotation);
+            return true;
+        }
+        var objs = Selected.Select(Scene.Find).Where(o => o != null && !o.Hidden).ToList();
+        if (objs.Count == 0) return false;
+        if (objs.Count == 1) { pivot = objs[0].Position; if (LocalCoords) orient = Matrix4x4.CreateFromQuaternion(objs[0].Rotation); return true; }
+        var acc = Vector3.Zero; foreach (var o in objs) acc += o.Position;
+        pivot = acc / objs.Count;
+        if (LocalCoords && cur != null) orient = Matrix4x4.CreateFromQuaternion(cur.Rotation);
+        return true;
+    }
+
+    Gizmo.Layout GizmoLayout(Viewport vp)
+    {
+        if (Tool == Tool.Select || modal.Kind != ModalKind.None || !SelectionPivot(out var p, out var o)) return default;
+        if (transforming) p = xfPivotLive;
+        return gizmo.Compute(vp, p, o);
+    }
+
+    // ---------------------------------------------------------------- per-frame input
+
+    void HandleViewportInput()
+    {
+        var io = ImGui.GetIO();
+        bool modalOn = modal.Kind != ModalKind.None;
+        bool busy = nav != NavMode.None || transforming || lmbTracking || rmbTracking || modalOn;
+        bool uiMouse = io.WantCaptureMouse && !busy;
+        var hv = Hovered();
+        bool blender = Settings.Keymap == Keymap.Blender, max = Settings.Keymap == Keymap.Max;
+        if (!Input.Ctrl) ctrlLatch = false;
+
+        // ---- middle button on the gizmo moves / rotates / scales the selection (like the left button); elsewhere it navigates
+        if (nav == NavMode.None && !transforming && !modalOn && hv != null && !uiMouse && Input.Pressed(MouseButtons.Middle) && !Input.Alt && !Input.Ctrl
+            && Tool != Tool.Select && Selected.Count > 0 && !SculptMode && !paintMode)
+        {
+            var h = gizmo.HitTest(hv, GizmoLayout(hv), Tool, Input.Mouse);
+            if (h != GizmoHandle.None)
+            {
+                ActiveViewport = Array.IndexOf(Viewports, hv);
+                shiftClone = false;
+                if (Input.Shift && Level == SubObject.Object) { CloneSelection(); shiftClone = lastCloneMap.Count > 0; }
+                else if (Input.Shift && Level != SubObject.Object) SubShiftClone(); // edit mode: the copy of the faces / edges moves
+                gizmo.Hover = h;
+                BeginTransform(hv, h);
+                xfButton = MouseButtons.Middle;
+            }
+        }
+
+        // ---- navigation
+        if (nav == NavMode.None && !transforming && hv != null && !uiMouse)
+        {
+            if (blender)
+            {
+                // Blender: MMB orbit, Shift+MMB pan, Ctrl+MMB zoom
+                if (Input.Pressed(MouseButtons.Middle))
+                    StartNav(hv, Input.Shift ? NavMode.Pan : Input.Ctrl ? NavMode.Zoom : NavMode.Orbit, MouseButtons.Middle);
+            }
+            else if (max)
+            {
+                // 3ds Max: Alt+MMB orbit, Ctrl+Alt+MMB zoom, MMB pan
+                if (Input.Pressed(MouseButtons.Middle))
+                    StartNav(hv, Input.Alt ? (Input.Ctrl ? NavMode.Zoom : NavMode.Orbit) : NavMode.Pan, MouseButtons.Middle);
+            }
+            else
+            {
+                // Industry Compatible: Alt+LMB orbit, Alt+MMB pan, Alt+RMB zoom (plain MMB does nothing)
+                if (Input.Alt && Input.Pressed(MouseButtons.Left) && !modalOn) { StartNav(hv, NavMode.Orbit, MouseButtons.Left); navDouble = Input.DoubleClick; }
+                else if (Input.Alt && Input.Pressed(MouseButtons.Middle)) StartNav(hv, NavMode.Pan, MouseButtons.Middle);
+                else if (Input.Alt && Input.Pressed(MouseButtons.Right) && !modalOn) StartNav(hv, NavMode.Zoom, MouseButtons.Right);
+            }
+        }
+        if (nav != NavMode.None)
+        {
+            var d = Input.MouseDelta; var cam = navViewport.Camera;
+            if (nav == NavMode.Pan) cam.Pan(d.X, d.Y, navViewport.H);
+            else if (nav == NavMode.Fly)
+            {
+                FlyLook(cam, d);
+                // the wheel sets the fly speed
+                if (MathF.Abs(Input.Wheel) > 0) { FlySpeedFactor = Math.Clamp(FlySpeedFactor * MathF.Pow(1.25f, Math.Sign(Input.Wheel)), 0.1f, 20f); flySpeedShownAt = ImGui.GetTime(); }
+            }
+            else if (nav == NavMode.Orbit) cam.Orbit(d.X, d.Y);
+            else cam.Zoom((d.X - d.Y) * 0.03f);
+            navTravel += d.Length();
+            if (!Input.Down(navButton))
+            {
+                // Industry: Alt+double-click without dragging = edge ring (mesh.edgering_select)
+                if (navButton == MouseButtons.Left && navDouble && navTravel < 4 && Level != SubObject.Object)
+                    LoopSelect(navViewport, Input.Mouse, ring: true);
+                nav = NavMode.None;
+            }
+            return; // a navigation drag owns the mouse
+        }
+        // MAP mode: a prop follows the mouse until it is dropped (takes the wheel to turn it)
+        if (MapMode && MapPlacementInput(hv, uiMouse)) return;
+        if (hv != null && !uiMouse && MathF.Abs(Input.Wheel) > 0) hv.Camera.Zoom(Input.Wheel);
+
+        // ---- modal tools take the buttons
+        if (modalOn) { ModalMouse(hv); return; }
+
+        // ---- Molo Paint strokes and decal placement take the left button
+        if (DecalPlaceInput(hv, uiMouse) || SculptInput(hv, uiMouse) || PaintInput(hv, uiMouse)) return;
+
+        // ---- MAP mode: a click on the far world loads that area (unless the gizmo is under the mouse)
+        if (MapMode && !busy && hv != null && !uiMouse && Input.Pressed(MouseButtons.Left) && !Input.Alt
+            && (Tool == Tool.Select || gizmo.HitTest(hv, GizmoLayout(hv), Tool, Input.Mouse) == GizmoHandle.None) && !ViewCube.HitTest(hv, Input.Mouse, out _) && MapClick(hv)) return;
+
+        // ---- extrude arrow on selected polygons (takes the click before the transform gizmo)
+        if (!busy && ExtrudeHandleInput(hv, uiMouse)) return;
+
+        // ---- gizmo hover
+        if (!busy && hv != null && !uiMouse && Tool != Tool.Select)
+            gizmo.Hover = gizmo.HitTest(hv, GizmoLayout(hv), Tool, Input.Mouse);
+        else if (!transforming) gizmo.Hover = GizmoHandle.None;
+        UpdateSnapHover(!busy && !uiMouse ? hv : null);
+
+        // ---- view cube held: drag turns the view (the cube: free orbit, the ring: around the vertical), a click picks a face
+        if (cubeDrag)
+        {
+            var d = Input.MouseDelta; cubeMoved += d.Length();
+            var cam = cubeViewport.Camera;
+            // like grabbing the cube: the view turns with the mouse
+            if (cubeMoved > 3) { if (cubeOnFace) cam.Orbit(d.X, d.Y); else cam.Orbit(d.X, 0); }
+            if (!Input.Down(MouseButtons.Left))
+            {
+                cubeDrag = false;
+                if (cubeMoved <= 3 && cubeOnFace) { cam.SetView(cubeKind); if (cubeKind == ViewKind.Perspective) FrameSelection(cubeViewport); }
+            }
+            return;
+        }
+
+        // ---- left button
+        if (Input.Pressed(MouseButtons.Left) && hv != null && !uiMouse)
+        {
+            ActiveViewport = Array.IndexOf(Viewports, hv);
+            if (ViewCube.InArea(hv, Input.Mouse))
+            {
+                // the view cube: a click picks a face (on release), a press held and dragged turns the view
+                cubeDrag = true; cubeMoved = 0; cubeViewport = hv;
+                cubeOnFace = ViewCube.HitTest(hv, Input.Mouse, out cubeKind);
+            }
+            else if (Tool != Tool.Select && gizmo.Hover != GizmoHandle.None)
+            {
+                // Shift+drag on the gizmo clones the selection and moves the clones (every keymap); Clone Options opens on release
+                shiftClone = false;
+                if (Input.Shift && Level == SubObject.Object && Selected.Count > 0) { CloneSelection(); shiftClone = lastCloneMap.Count > 0; }
+                else if (Input.Shift && Level != SubObject.Object) SubShiftClone(); // edit mode: the copy of the faces / edges moves
+                BeginTransform(hv, gizmo.Hover);
+                xfButton = MouseButtons.Left;
+            }
+            else if (snapHover is { } grab && Tool == Tool.Move && Selected.Count > 0)
+            {
+                // snap on, a point of the selection under the mouse: grab it there and carry it onto a vertex / edge / face
+                shiftClone = false;
+                if (Input.Shift && Level == SubObject.Object) { CloneSelection(); shiftClone = lastCloneMap.Count > 0; }
+                else if (Input.Shift && Level != SubObject.Object) SubShiftClone(); // edit mode: the copy of the faces / edges moves
+                BeginTransform(hv, GizmoHandle.View);
+                snapFrom = grab;
+                xfButton = MouseButtons.Left;
+            }
+            else { lmbTracking = true; lmbDouble = Input.DoubleClick; boxStart = Input.Mouse; boxViewport = hv; boxSelecting = false; }
+        }
+        bool wasTransforming = transforming;
+        if (transforming)
+        {
+            UpdateTransform();
+            if (Input.Released(xfButton) || !Input.Down(xfButton)) EndTransform();
+            if (Input.Pressed(MouseButtons.Right)) CancelTransform();
+        }
+        if (lmbTracking)
+        {
+            if (!boxSelecting && Vector2.Distance(Input.Mouse, boxStart) > 4) boxSelecting = true;
+            if (Input.Released(MouseButtons.Left) || !Input.Down(MouseButtons.Left))
+            {
+                if (boxSelecting) BoxSelect(boxViewport, boxStart, Input.Mouse);
+                else
+                {
+                    // Blender: Alt+click loop (Ctrl+Alt ring); Industry and 3ds Max: double-click loop
+                    bool loop = blender ? Input.Alt : lmbDouble;
+                    if (loop && Level != SubObject.Object) LoopSelect(boxViewport, boxStart, ring: blender && Input.Ctrl);
+                    else ClickSelect(boxViewport, boxStart);
+                }
+                lmbTracking = false; boxSelecting = false;
+            }
+        }
+
+        // ---- right button: Shift+RMB places the 3D cursor, a plain click opens the context menu
+        if (Input.Pressed(MouseButtons.Right) && hv != null && !uiMouse && !wasTransforming)
+        {
+            ActiveViewport = Array.IndexOf(Viewports, hv);
+            if (Input.Shift && !max) PlaceCursor(hv, Input.Mouse);
+            else { rmbTracking = true; rmbStart = Input.Mouse; }
+        }
+        // right button held and moved: game-style look (fly); a click without moving still opens the menu
+        if (rmbTracking && Input.Down(MouseButtons.Right) && Vector2.Distance(rmbStart, Input.Mouse) >= 6 && hv != null)
+        {
+            rmbTracking = false;
+            StartNav(hv, NavMode.Fly, MouseButtons.Right);
+            return;
+        }
+        if (rmbTracking && (Input.Released(MouseButtons.Right) || !Input.Down(MouseButtons.Right)))
+        {
+            rmbTracking = false;
+            if (Vector2.Distance(rmbStart, Input.Mouse) < 6) { quadCenter = Input.Mouse; OpenPopup("context"); }
+        }
+    }
+
+    bool lmbDouble, navDouble;
+    bool cubeDrag, cubeOnFace; float cubeMoved; Viewport cubeViewport; ViewKind cubeKind;
+    float navTravel;
+
+    void StartNav(Viewport vp, NavMode mode, MouseButtons button)
+    {
+        nav = mode; navViewport = vp; navButton = button; navTravel = 0; navDouble = false;
+        ActiveViewport = Array.IndexOf(Viewports, vp);
+    }
+
+    public void FrameSelection(Viewport vp = null)
+    {
+        vp ??= Viewports[ActiveViewport];
+        var objs = Selected.Count > 0 ? Selected.Select(Scene.Find).Where(o => o != null) : Scene.Objects.Where(o => !o.Hidden);
+        // a Drawable node has no geometry of its own: frame its game meshes
+        objs = objs.SelectMany(o => o.GtaType == GtaObjectType.Model ? Scene.Descendants(o).Prepend(o) : new[] { o }).Where(o => o.Mesh.Verts.Count > 0).Distinct().ToList();
+        var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue); bool any = false;
+        var cur = Current;
+        if (cur != null && Level != SubObject.Object)
+        {
+            var verts = SubSel(cur).VerticesOf(cur.Mesh, Level);
+            var w = cur.World;
+            foreach (var v in verts) { var p = Vector3.Transform(cur.Mesh.Verts[v], w); mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); any = true; }
+        }
+        if (!any)
+            foreach (var o in objs) { var (a, b) = o.WorldBounds(); mn = Vector3.Min(mn, a); mx = Vector3.Max(mx, b); any = true; }
+        if (!any) { mn = new Vector3(-5, -5, 0); mx = new Vector3(5, 5, 3); }
+        vp.Camera.Frame(mn, mx);
+    }
+
+    public void FrameAll(Viewport vp = null)
+    {
+        vp ??= Viewports[ActiveViewport];
+        var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue); bool any = false;
+        foreach (var o in Scene.Objects.Where(o => !o.Hidden)) { var (a, b) = o.WorldBounds(); mn = Vector3.Min(mn, a); mx = Vector3.Max(mx, b); any = true; }
+        if (!any) { mn = new Vector3(-5, -5, 0); mx = new Vector3(5, 5, 3); }
+        vp.Camera.Frame(mn, mx);
+    }
+
+    // ---------------------------------------------------------------- 3D cursor
+
+    /// <summary>Puts the 3D cursor on the surface under the mouse, or on the ground grid.</summary>
+    void PlaceCursor(Viewport vp, Vector2 screen)
+    {
+        var ray = RayAt(vp, screen);
+        var hit = Picking.PickObject(Scene, ray);
+        Vector3 p;
+        if (hit.HasValue) p = hit.Value.Point;
+        else if (!Picking.RayGround(ray, 0, out p) && !Picking.RayPlane(ray, vp.Camera.Target, -vp.Camera.Forward, out p)) return;
+        if (Snap) p = new Vector3(SnapValue(p.X, GridStep), SnapValue(p.Y, GridStep), SnapValue(p.Z, GridStep));
+        Cursor3D = p;
+        SetStatus($"3D cursor at {p.X:0.00}, {p.Y:0.00}, {p.Z:0.00}");
+    }
+
+    public void CursorToSelected() { if (SelectionPivot(out var p, out _)) Cursor3D = p; }
+
+    public void SelectionToCursor()
+    {
+        if (!SelectionPivot(out var pivot, out _)) return;
+        var delta = Cursor3D - pivot;
+        var cur = Current;
+        if (Level != SubObject.Object && cur != null)
+        {
+            DoMesh("Selection to Cursor", (o, m, s) =>
+            {
+                Matrix4x4.Invert(o.World, out var inv);
+                var w = o.World;
+                foreach (var v in s.VerticesOf(m, Level)) m.Verts[v] = Vector3.Transform(Vector3.Transform(m.Verts[v], w) + delta, inv);
+            });
+            return;
+        }
+        Do("Selection to Cursor", () => { foreach (var o in SelObjects()) o.Position += delta; });
+    }
+
+    // ---------------------------------------------------------------- selection
+
+    /// <summary>Blender / Industry: Shift toggles (click) or extends (box), Ctrl removes. 3ds Max: Ctrl adds (toggles on click), Alt removes.</summary>
+    void ApplySelection<T>(HashSet<T> target, ICollection<T> hits, bool isClick)
+    {
+        bool max = Settings.Keymap == Keymap.Max;
+        bool shift = max ? Input.Ctrl && !Input.Alt : Input.Shift;
+        bool ctrl = max ? Input.Alt && !Input.Ctrl : Input.Ctrl && !Input.Alt && !isClick; // Blender/Industry: Ctrl+click selects, Ctrl+box removes
+        if (ctrl) { foreach (var h in hits) target.Remove(h); return; }
+        if (shift)
+        {
+            if (isClick && hits.Count > 0 && hits.All(target.Contains)) foreach (var h in hits) target.Remove(h);
+            else foreach (var h in hits) target.Add(h);
+            return;
+        }
+        target.Clear();
+        foreach (var h in hits) target.Add(h);
+    }
+
+    // ---------------------------------------------------------------- visibility for edit-mode selection
+
+    /// <summary>Edit-mode selection only takes what you can see ("Visible only", Alt+Z). Off (default, like 3ds Max): clicks and
+    /// boxes select through the mesh, hidden vertices / edges / faces included.</summary>
+    public bool SelectVisibleOnly;
+    /// <summary>Selection goes through the mesh (the default).</summary>
+    public bool XRay { get => !SelectVisibleOnly; set => SelectVisibleOnly = !value; }
+
+    sealed class Occluder
+    {
+        public Vector3[] Wv; public List<(int A, int B, int C)> Tris = new();
+        public Occluder(SceneObject o)
+        {
+            var m = o.Mesh; var w = o.World;
+            Wv = new Vector3[m.Verts.Count];
+            for (int i = 0; i < Wv.Length; i++) Wv[i] = Vector3.Transform(m.Verts[i], w);
+            foreach (var f in m.Faces)
+                foreach (var (a, b, c) in Triangulator.Triangulate(m, f)) Tris.Add((f.V[a], f.V[b], f.V[c]));
+        }
+    }
+
+    /// <summary>True when nothing of the mesh is in front of this world point, seen from the viewport camera.</summary>
+    bool PointVisible(Viewport vp, Occluder oc, Vector3 wp)
+    {
+        if (XRay || vp.WireframeOnly) return true;
+        if (!vp.Camera.Project(wp, vp.W, vp.H, out var sp, out _)) return false;
+        var ray = vp.Camera.ScreenRay(sp.X, sp.Y, vp.W, vp.H);
+        var dir = Vector3.Normalize(ray.Direction);
+        var r = new Ray(ray.Origin, dir);
+        float target = Vector3.Dot(wp - r.Origin, dir);
+        float eps = MathF.Max(1e-4f, target * 2e-3f);
+        foreach (var (a, b, c) in oc.Tris)
+        {
+            float t = Picking.RayTriangle(r, oc.Wv[a], oc.Wv[b], oc.Wv[c]);
+            if (t > 0 && t < target - eps) return false;
+        }
+        return true;
+    }
+
+    EdgeKey? EdgeUnder(Viewport vp, SceneObject o, Vector2 local, float maxPx = 9f, IEnumerable<EdgeKey> candidates = null, bool visibleOnly = false)
+    {
+        var m = o.Mesh; var w = o.World;
+        var near = new List<(float D, EdgeKey E, Vector2 A, Vector2 B)>();
+        foreach (var e in candidates ?? Edges(o))
+        {
+            if (!vp.Camera.Project(Vector3.Transform(m.Verts[e.A], w), vp.W, vp.H, out var a, out _)) continue;
+            if (!vp.Camera.Project(Vector3.Transform(m.Verts[e.B], w), vp.W, vp.H, out var b, out _)) continue;
+            float d = SegDist(local, a, b);
+            if (d < maxPx) near.Add((d, e, a, b));
+        }
+        if (near.Count == 0) return null;
+        near.Sort((x, y) => x.D.CompareTo(y.D));
+        if (!visibleOnly || XRay || vp.WireframeOnly) return near[0].E;
+        var oc = new Occluder(o);
+        foreach (var (_, e, a, b) in near)
+        {
+            // the point of the edge nearest to the mouse must be visible
+            var ab = b - a; float t = ab.LengthSquared() < 1e-6f ? 0.5f : Math.Clamp(Vector2.Dot(local - a, ab) / ab.LengthSquared(), 0.02f, 0.98f);
+            var wp = Vector3.Lerp(oc.Wv[e.A], oc.Wv[e.B], t);
+            if (PointVisible(vp, oc, wp)) return e;
+        }
+        return null;
+    }
+
+    void ClickSelect(Viewport vp, Vector2 screen)
+    {
+        var local = vp.Local(screen);
+        var ray = vp.Camera.ScreenRay(local.X, local.Y, vp.W, vp.H);
+        var cur = Current;
+        if (Level != SubObject.Object && cur != null)
+        {
+            var s = SubSel(cur); var m = cur.Mesh; var w = cur.World;
+            switch (Level)
+            {
+                case SubObject.Vertex:
+                    {
+                        // nearest vertex on screen that is not hidden behind the mesh
+                        var near = new List<(float D, int I)>();
+                        for (int i = 0; i < m.Verts.Count; i++)
+                        {
+                            var wp = Vector3.Transform(m.Verts[i], w);
+                            if (!vp.Camera.Project(wp, vp.W, vp.H, out var sp, out _)) continue;
+                            float d = Vector2.Distance(sp, local);
+                            if (d <= 12f) near.Add((d, i));
+                        }
+                        near.Sort((x, y) => x.D.CompareTo(y.D));
+                        int best = -1;
+                        var oc = near.Count > 0 && !XRay && !vp.WireframeOnly ? new Occluder(cur) : null;
+                        foreach (var (_, i) in near)
+                            if (oc == null || PointVisible(vp, oc, oc.Wv[i])) { best = i; break; }
+                        ApplySelection(s.Verts, best >= 0 ? new[] { best } : Array.Empty<int>(), true);
+                        break;
+                    }
+                case SubObject.Edge:
+                case SubObject.Border:
+                    {
+                        var e = EdgeUnder(vp, cur, local, 9f, Level == SubObject.Border ? MeshOps.BorderEdges(m) : null, visibleOnly: true);
+                        ICollection<EdgeKey> hit = Array.Empty<EdgeKey>();
+                        if (e.HasValue) hit = Level == SubObject.Border ? MeshOps.BorderLoop(m, e.Value) : new[] { e.Value };
+                        ApplySelection(s.Edges, hit, true);
+                        break;
+                    }
+                default:
+                    {
+                        var h = Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
+                        ICollection<int> hit = Array.Empty<int>();
+                        if (h.HasValue) hit = Level == SubObject.Element ? MeshSelect.Elements(m, new[] { h.Value.Face }) : new[] { h.Value.Face };
+                        ApplySelection(s.Faces, hit, true);
+                        break;
+                    }
+            }
+            return;
+        }
+        var pick = Picking.PickObject(Scene, ray);
+        // lights and Drawable nodes have no faces: they are picked by their marker on screen
+        SceneObject empty = null; float bestPx = 12f;
+        foreach (var e in Scene.Objects)
+        {
+            if (e.Hidden || e.Frozen || e.GtaType is not (GtaObjectType.Light or GtaObjectType.Model)) continue;
+            if (!vp.Camera.Project(e.Position, vp.W, vp.H, out var sp, out _)) continue;
+            float d = Vector2.Distance(sp, local);
+            if (d < bestPx) { bestPx = d; empty = e; }
+        }
+        if (empty != null) pick = new PickHit(empty, -1, 0, empty.Position);
+        if (pick.HasValue)
+        {
+            int id = pick.Value.Object.Id;
+            bool wasSelected = Selected.Contains(id);
+            ApplySelection(Selected, new[] { id }, true);
+            // Blender: Shift+click on a selected but inactive object makes it active instead of deselecting
+            if (Settings.Keymap != Keymap.Max && Input.Shift && wasSelected && ActiveId != id) { Selected.Add(id); ActiveId = id; }
+            else if (Selected.Contains(id)) ActiveId = id;
+        }
+        else if (!Input.Shift && !Input.Ctrl && !Input.Alt) Selected.Clear();
+        SelectionChanged();
+    }
+
+    /// <summary>Alt+click (Blender) / double-click (Industry): edge loop, Ctrl+Alt+click: ring; face loop at polygon level.</summary>
+    void LoopSelect(Viewport vp, Vector2 screen, bool ring)
+    {
+        var cur = Current; if (cur == null) return;
+        var local = vp.Local(screen); var m = cur.Mesh; var s = SubSel(cur);
+        EdgeKey? e;
+        if (Level is SubObject.Polygon or SubObject.Element)
+        {
+            // the edge of the clicked face nearest the mouse decides the direction of the face loop
+            var h = Picking.PickFace(cur, RayAt(vp, screen), cullBack: CulledFor(cur));
+            if (!h.HasValue) return;
+            e = EdgeUnder(vp, cur, local, 10000f, m.FaceEdges(m.Faces[h.Value.Face]));
+            if (!e.HasValue) return;
+            var ringEdge = MeshOps.EdgeRing(m, e.Value).Count > 1 ? e.Value : e.Value;
+            ApplySelection(s.Faces, MeshOps.FaceLoop(m, ringEdge).ToList(), false);
+            return;
+        }
+        e = EdgeUnder(vp, cur, local, 12f);
+        if (!e.HasValue) return;
+        var edges = ring ? MeshOps.EdgeRing(m, e.Value) : MeshOps.EdgeLoop(m, e.Value);
+        if (Level == SubObject.Vertex) ApplySelection(s.Verts, edges.SelectMany(x => new[] { x.A, x.B }).Distinct().ToList(), false);
+        else ApplySelection(s.Edges, edges.ToList(), false);
+    }
+
+    /// <summary>Blender L: select the linked part under the mouse.</summary>
+    public void SelectLinkedUnderMouse()
+    {
+        var cur = Current; var vp = Hovered();
+        if (cur == null || vp == null || Level == SubObject.Object) return;
+        var h = Picking.PickFace(cur, RayAt(vp, Input.Mouse));
+        if (!h.HasValue) return;
+        var faces = MeshSelect.Elements(cur.Mesh, new[] { h.Value.Face });
+        var s = SubSel(cur);
+        var tmp = new PolySelection { Faces = faces };
+        if (Level == SubObject.Vertex) s.Verts.UnionWith(tmp.VerticesOf(cur.Mesh, SubObject.Polygon));
+        else if (Level is SubObject.Edge or SubObject.Border) { tmp.Convert(cur.Mesh, SubObject.Polygon, SubObject.Edge); s.Edges.UnionWith(tmp.Edges); }
+        else s.Faces.UnionWith(faces);
+    }
+
+    /// <summary>Ctrl+L: grow the current selection to whole connected parts.</summary>
+    public void SelectLinked()
+    {
+        var cur = Current; if (cur == null || Level == SubObject.Object) return;
+        var s = SubSel(cur); var m = cur.Mesh;
+        var verts = s.VerticesOf(m, Level);
+        var seed = Enumerable.Range(0, m.Faces.Count).Where(f => m.Faces[f].V.Any(verts.Contains));
+        var faces = MeshSelect.Elements(m, seed);
+        var tmp = new PolySelection { Faces = faces };
+        if (Level == SubObject.Vertex) s.Verts = tmp.VerticesOf(m, SubObject.Polygon);
+        else if (Level is SubObject.Edge or SubObject.Border) { tmp.Convert(m, SubObject.Polygon, SubObject.Edge); s.Edges = tmp.Edges; }
+        else s.Faces = faces;
+    }
+
+    static float SegDist(Vector2 p, Vector2 a, Vector2 b)
+    {
+        var ab = b - a; float l = ab.LengthSquared();
+        float t = l > 1e-6f ? Math.Clamp(Vector2.Dot(p - a, ab) / l, 0, 1) : 0;
+        return Vector2.Distance(p, a + ab * t);
+    }
+
+    void BoxSelect(Viewport vp, Vector2 s0, Vector2 s1)
+    {
+        var a = vp.Local(Vector2.Min(s0, s1)); var b = vp.Local(Vector2.Max(s0, s1));
+        bool In(Vector3 wp) => vp.Camera.Project(wp, vp.W, vp.H, out var sp, out _) && sp.X >= a.X && sp.X <= b.X && sp.Y >= a.Y && sp.Y <= b.Y;
+        var cur = Current;
+        if (Level != SubObject.Object && cur != null)
+        {
+            var s = SubSel(cur); var m = cur.Mesh; var w = cur.World;
+            var inside = new bool[m.Verts.Count];
+            var oc = XRay || vp.WireframeOnly ? null : new Occluder(cur);
+            for (int i = 0; i < inside.Length; i++) inside[i] = In(Vector3.Transform(m.Verts[i], w)) && (oc == null || PointVisible(vp, oc, oc.Wv[i]));
+            bool FaceIn(int f) { var c = Vector3.Transform(m.FaceCenter(f), w); return In(c) && (oc == null || PointVisible(vp, oc, c)); }
+            switch (Level)
+            {
+                case SubObject.Vertex: ApplySelection(s.Verts, Enumerable.Range(0, inside.Length).Where(i => inside[i]).ToList(), false); break;
+                case SubObject.Edge: ApplySelection(s.Edges, Edges(cur).Where(e => inside[e.A] && inside[e.B]).ToList(), false); break;
+                case SubObject.Border: ApplySelection(s.Edges, MeshOps.BorderEdges(m).Where(e => inside[e.A] && inside[e.B]).ToList(), false); break;
+                case SubObject.Polygon: ApplySelection(s.Faces, Enumerable.Range(0, m.Faces.Count).Where(FaceIn).ToList(), false); break;
+                case SubObject.Element:
+                    ApplySelection(s.Faces, MeshSelect.Elements(m, Enumerable.Range(0, m.Faces.Count).Where(FaceIn)).ToList(), false); break;
+            }
+            return;
+        }
+        var hits = new List<int>();
+        foreach (var o in Scene.Objects)
+        {
+            if (o.Hidden || o.Frozen) continue;
+            var w = o.World;
+            if (o.Mesh.Verts.Any(v => In(Vector3.Transform(v, w)))) hits.Add(o.Id);
+        }
+        ApplySelection(Selected, hits, false);
+        if (hits.Count > 0 && Selected.Contains(hits[0]) && !Selected.Contains(ActiveId)) ActiveId = hits[0];
+        SelectionChanged();
+    }
+
+    /// <summary>Back faces of this object are not drawn (Backface Cull, MLO rooms always): picking skips them too.</summary>
+    bool CulledFor(SceneObject o) => !FaceOrientation && o.GtaType != GtaObjectType.Portal && (BackfaceCull || o.GtaType == GtaObjectType.MloRoom);
+
+    void SelectionChanged()
+    {
+        if (!Selected.Contains(ActiveId)) ActiveId = Selected.Count > 0 ? Selected.First() : -1;
+        if (Level != SubObject.Object && Current == null) Level = SubObject.Object;
+    }
+
+    // ---------------------------------------------------------------- gizmo transforms (Move / Rotate / Scale tools)
+
+    MouseButtons xfButton = MouseButtons.Left;
+
+    void BeginTransform(Viewport vp, GizmoHandle h)
+    {
+        xfButton = MouseButtons.Left;
+        if (!SelectionPivot(out var pivot, out var orient)) return;
+        Undo.Record(Tool == Tool.Move ? "Move" : Tool == Tool.Rotate ? "Rotate" : "Scale", Scene);
+        lastAdd = null; ctrlLatch = false;
+        transforming = true; xfViewport = vp; gizmo.Active = h; xfMouseStart = Input.Mouse; xfPivot = pivot; xfPivotLive = pivot;
+        xfAxes = new[]
+        {
+            Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitX, orient)),
+            Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitY, orient)),
+            Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitZ, orient)),
+        };
+        CaptureOriginals();
+        if (Tool == Tool.Move) CaptureSnapFrom(vp, pivot);
+        var ray = RayAt(vp, Input.Mouse);
+        int ax = AxisIndex(h);
+        if (Tool == Tool.Move && ax >= 0) xfParamStart = Picking.RayLineParam(ray, pivot, xfAxes[ax]);
+        else Picking.RayPlane(ray, pivot, PlaneNormal(vp, h), out xfPlaneStart);
+    }
+
+    /// <summary>Remembers object transforms or world vertex positions before a transform.</summary>
+    void CaptureOriginals()
+    {
+        xfObjects.Clear(); xfVerts.Clear();
+        var cur = Current;
+        if (Level != SubObject.Object && cur != null)
+        {
+            var w = cur.World;
+            foreach (var v in SubSel(cur).VerticesOf(cur.Mesh, Level)) xfVerts[v] = Vector3.Transform(cur.Mesh.Verts[v], w);
+        }
+        else
+        {
+            // children follow their parent (3ds Max / GIMS hierarchy)
+            foreach (var id in Selected.ToList())
+            {
+                var o = Scene.Find(id); if (o == null) continue;
+                xfObjects[id] = (o.Position, o.Rotation, o.Scale);
+                foreach (var c in Scene.Descendants(o)) xfObjects.TryAdd(c.Id, (c.Position, c.Rotation, c.Scale));
+            }
+        }
+    }
+
+    static int AxisIndex(GizmoHandle h) => h switch { GizmoHandle.X => 0, GizmoHandle.Y => 1, GizmoHandle.Z => 2, _ => -1 };
+
+    Vector3 PlaneNormal(Viewport vp, GizmoHandle h) => h switch
+    {
+        GizmoHandle.XY => xfAxes[2],
+        GizmoHandle.YZ => xfAxes[0],
+        GizmoHandle.ZX => xfAxes[1],
+        _ => -vp.Camera.Forward,
+    };
+
+    static Ray RayAt(Viewport vp, Vector2 screen)
+    {
+        var l = vp.Local(screen);
+        return vp.Camera.ScreenRay(l.X, l.Y, vp.W, vp.H);
+    }
+
+    float SnapValue(float v, float step) => step > 0 ? MathF.Round(v / step) * step : v;
+    bool ctrlLatch;
+    bool SnapActive => Snap ^ (Input.Ctrl && !ctrlLatch && Settings.Keymap != Keymap.Max); // Ctrl inverts snapping while dragging, like Blender
+
+    void UpdateTransform()
+    {
+        var vp = xfViewport; var h = gizmo.Active; var ray = RayAt(vp, Input.Mouse);
+        int ax = AxisIndex(h);
+        if (Tool == Tool.Move)
+        {
+            Vector3 delta;
+            int planeAx = h switch { GizmoHandle.XY => 2, GizmoHandle.YZ => 0, GizmoHandle.ZX => 1, _ => -1 };
+            if (ax >= 0) delta = xfAxes[ax] * (Picking.RayLineParam(ray, xfPivot, xfAxes[ax]) - xfParamStart);
+            else
+            {
+                if (!Picking.RayPlane(ray, xfPivot, PlaneNormal(vp, h), out var p)) return;
+                delta = p - xfPlaneStart;
+            }
+            delta = ApplySnaps(vp, delta, xfPivot, xfAxes, ax >= 0 ? ax : planeAx, ax < 0 && planeAx >= 0);
+            xfPivotLive = xfPivot + delta;
+            ApplyLive(p => p + delta, (pos, rot, sc) => (pos + delta, rot, sc));
+            SetStatus($"Move  X {delta.X:0.000}  Y {delta.Y:0.000}  Z {delta.Z:0.000} m");
+        }
+        else if (Tool == Tool.Rotate)
+        {
+            var dm = Input.Mouse - xfMouseStart;
+            float deg = (dm.X - dm.Y) * 0.5f;
+            if (SnapActive && SnapGrid) deg = SnapValue(deg, AngleSnap);
+            var axis = ax >= 0 ? xfAxes[ax] : -vp.Camera.Forward;
+            ApplyRotation(axis, deg * MathF.PI / 180f, xfPivot);
+            SetStatus($"Rotate {deg:0.0}°");
+        }
+        else if (Tool == Tool.Scale)
+        {
+            var dm = Input.Mouse - xfMouseStart;
+            float f = MathF.Max(0.001f, 1f + (dm.X - dm.Y) * 0.008f);
+            if (SnapActive) f = MathF.Max(0.1f, MathF.Round(f * 10) / 10);
+            var fv = ax switch { 0 => new Vector3(f, 1, 1), 1 => new Vector3(1, f, 1), 2 => new Vector3(1, 1, f), _ => new Vector3(f) };
+            ApplyScale(fv, xfPivot, xfAxes);
+            SetStatus($"Scale {f * 100:0.0}%");
+        }
+    }
+
+    void ApplyRotation(Vector3 axis, float radians, Vector3 pivot)
+    {
+        var q = Quaternion.CreateFromAxisAngle(Vector3.Normalize(axis), radians);
+        ApplyLive(p => pivot + Vector3.Transform(p - pivot, q),
+                  (pos, rot, sc) => (pivot + Vector3.Transform(pos - pivot, q), Quaternion.Normalize(q * rot), sc));
+    }
+
+    void ApplyScale(Vector3 fv, Vector3 pivot, Vector3[] axes)
+    {
+        ApplyLive(p =>
+        {
+            var d = p - pivot;
+            var l = new Vector3(Vector3.Dot(d, axes[0]), Vector3.Dot(d, axes[1]), Vector3.Dot(d, axes[2])) * fv;
+            return pivot + axes[0] * l.X + axes[1] * l.Y + axes[2] * l.Z;
+        },
+        (pos, rot, sc) =>
+        {
+            var d = pos - pivot;
+            var l = new Vector3(Vector3.Dot(d, axes[0]), Vector3.Dot(d, axes[1]), Vector3.Dot(d, axes[2])) * fv;
+            var np = Selected.Count > 1 ? pivot + axes[0] * l.X + axes[1] * l.Y + axes[2] * l.Z : pos;
+            return (np, rot, sc * fv);
+        });
+    }
+
+    void ApplyLive(Func<Vector3, Vector3> vertexFn, Func<Vector3, Quaternion, Vector3, (Vector3, Quaternion, Vector3)> objectFn)
+    {
+        var cur = Current;
+        if (xfVerts.Count > 0 && cur != null)
+        {
+            Matrix4x4.Invert(cur.World, out var inv);
+            foreach (var kv in xfVerts) if (kv.Key < cur.Mesh.Verts.Count) cur.Mesh.Verts[kv.Key] = Vector3.Transform(vertexFn(kv.Value), inv);
+            cur.Touch();
+        }
+        else
+        {
+            foreach (var kv in xfObjects)
+            {
+                var o = Scene.Find(kv.Key); if (o == null) continue;
+                (o.Position, o.Rotation, o.Scale) = objectFn(kv.Value.Pos, kv.Value.Rot, kv.Value.Scale);
+            }
+        }
+    }
+
+    void RestoreOriginals()
+    {
+        ApplyLive(p => p, (pos, rot, sc) => (pos, rot, sc));
+    }
+
+    void EndTransform()
+    {
+        transforming = false; gizmo.Active = GizmoHandle.None; Dirty = true;
+        if (shiftClone)
+        {
+            shiftClone = false;
+            shiftCloneDelta = Tool == Tool.Move ? xfPivotLive - xfPivot : Vector3.Zero;
+            shiftCloneCount = 1; shiftCloneMode = lastCloneInstance ? 1 : 0;
+            OpenPopup("Clone Options##shift");
+        }
+    }
+    bool shiftClone; Vector3 shiftCloneDelta; int shiftCloneCount = 1, shiftCloneMode;
+
+    void CancelTransform()
+    {
+        RestoreOriginals();
+        Undo.DropLast();
+        transforming = false; gizmo.Active = GizmoHandle.None;
+        SetStatus("Transform cancelled");
+    }
+}

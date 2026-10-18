@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Example MoloMax add-on. Build with: dotnet build -c Release
+       then copy bin\Release\net8.0-windows\MoloExampleAddon.dll to %APPDATA%\MoloMax\addons and restart MoloMax. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- MoloMax.Core and ImGui.NET come from MoloMax itself: reference them, do not copy them -->
+    <Reference Include="MoloMax.Core"><HintPath>..\..\out\MoloMax.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ImGui.NET"><HintPath>..\..\out\ImGui.NET.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

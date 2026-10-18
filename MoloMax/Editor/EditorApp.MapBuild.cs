@@ -1,0 +1,176 @@
+using System.Numerics;
+using ImGuiNET;
+using MoloMax.Core.Gta;
+using MoloMax.Core.Gta.Export;
+using MoloMax.Core.Gta.Map;
+using MoloMax.Core.Mesh;
+using MoloMax.Core.Scenes;
+using MoloMax.UI;
+
+namespace MoloMax.Editor;
+
+/// <summary>
+/// Modeling right on the map: objects made in MAP mode (primitives, Edit Poly, the MLO Room Builder, sculpt, paint...) and
+/// game models opened for editing in place. They are written with the map: new models (.ydr), their .ytyp, an MLO when
+/// there are rooms, and the entities that place them, in the same FiveM resource as the edited .ymap files.
+/// </summary>
+public sealed partial class EditorApp
+{
+    public const string MapBuildFolder = "Polymorph build";
+
+    /// <summary>An object made here in MAP mode (not a game entity): every modeling tool works on it.</summary>
+    public bool MapEditable(SceneObject o) => o != null && o.Id >= 0 && o.Gta.MapArchetype == null && !entOf.ContainsKey(o.Id) && !intEntOf.ContainsKey(o.Id) && o.Id != placeGhost;
+
+    /// <summary>The objects that will be written as new models when the map is saved.</summary>
+    List<SceneObject> MapBuildObjects() => Scene.Objects.Where(o => MapEditable(o) && o.Gta.Role != GtaRole.Ignore && (o.Mesh.Faces.Count > 0 || o.GtaType is GtaObjectType.Light or GtaObjectType.Portal)).ToList();
+
+    /// <summary>Undo in MAP mode copies the meshes of what is modeled here (game meshes stay shared, they never change).</summary>
+    void MapUndoSetup() { if (MapMode && Undo != null) Undo.MutableMesh = o => o.Id >= 0 && o.Gta.MapArchetype == null; }
+
+    /// <summary>Ground point at the middle of the view (where new objects and the room plan go).</summary>
+    Vector3 MapGround()
+    {
+        var vp = Viewports[ActiveViewport];
+        var mid = new Vector2(vp.X + vp.W * 0.5f, vp.Y + vp.H * 0.5f);
+        return MapPick(vp, mid, -1, out var p, out _) ? p : MapFocus();
+    }
+
+    /// <summary>Called before edit mode in MAP: true when the current object can be edited (a game model is turned into an own copy first).</summary>
+    bool MapCanEdit()
+    {
+        var o = Current;
+        if (MapEditable(o)) return true;
+        if (o != null && entOf.ContainsKey(o.Id)) return EditInPlace(o);
+        SetStatus(o == null ? "Select an object to edit it." : "This object belongs to a game interior: open it as a model to edit its mesh.");
+        return false;
+    }
+
+    /// <summary>
+    /// A game model of the map becomes an own model: its mesh is copied (the other places that use it are untouched), the
+    /// entity leaves its .ymap and the copy is written as a new model when the map is saved.
+    /// </summary>
+    public bool EditInPlace(SceneObject o)
+    {
+        if (o == null || !entOf.TryGetValue(o.Id, out var de)) return false;
+        if (archSlots.TryGetValue(de.Ent.ArchetypeHash, out var slot) && slot.State != 2) { SetStatus("This model is still loading: try again in a moment."); return false; }
+        string name = MapSafeName((de.Ent.Archetype ?? de.Ent.ArchetypeHash.ToString("x8")) + "_edit");
+        Do("Edit game model in place", () =>
+        {
+            de.Doc.Remove(de.Ent); objOf.Remove(de.Ent); entOf.Remove(o.Id); de.Doc.Modified = true;
+            o.Mesh = o.Mesh.Clone(); o.InstanceKey = null; o.Touch();
+            o.Gta.MapArchetype = null; o.Gta.Role = GtaRole.Auto; o.Gta.PropCollision = GtaPropCollision.Mesh;
+            o.Name = Scene.UniqueName(name); o.Folder = MapBuildFolder;
+            if (!Scene.Folders.Contains(MapBuildFolder)) Scene.Folders.Add(MapBuildFolder);
+        });
+        SetStatus($"{o.Name}: your own copy of this game model, edit it freely. Saved as a new model with the map (the game's collision of the original stays in its .ybn).");
+        return true;
+    }
+
+    /// <summary>New object in MAP mode: in the build folder.</summary>
+    void MapAdopt(SceneObject o)
+    {
+        if (!MapMode || o == null || o.Gta.MapArchetype != null) return;
+        if (string.IsNullOrEmpty(o.Folder)) { o.Folder = MapBuildFolder; if (!Scene.Folders.Contains(MapBuildFolder)) Scene.Folders.Add(MapBuildFolder); }
+    }
+
+    /// <summary>
+    /// Writes what was modeled on the map into <c>stream/build</c> of the map resource: models, .ytyp, MLO, collisions and
+    /// the entities placing them. Returns the number of files written.
+    /// </summary>
+    int SaveMapBuild(string dir, List<string> errors)
+    {
+        var buildDir = Path.Combine(dir, "stream", "build");
+        var objs = MapBuildObjects();
+        if (objs.Count == 0)
+        {
+            if (Directory.Exists(buildDir)) try { Directory.Delete(buildDir, true); } catch { }
+            return 0;
+        }
+        BakeAllPaint();
+        // a small scene of its own, around an anchor (an MLO is placed by its origin; world-sized offsets inside it are avoided)
+        var anchor = MapBuildAnchor(objs);
+        var sc = new Scene(); sc.Materials.Clear(); sc.Materials.AddRange(Scene.Materials); sc.NextMaterialId = Scene.NextMaterialId; sc.Folders.Clear();
+        var keep = objs.Select(o => o.Id).ToHashSet();
+        foreach (var o in objs)
+        {
+            var c = o.Clone();
+            c.Position -= anchor;
+            if (c.ParentId >= 0 && !keep.Contains(c.ParentId)) c.ParentId = -1;
+            sc.Objects.Add(c);
+        }
+        sc.NextObjectId = Scene.NextObjectId;
+        sc.GtaOrigin = anchor;
+        var res = MapSafeName(Path.GetFileName(dir) + "_build");
+        sc.Gta = (modelScene?.Gta ?? new GtaProjectSettings()).Clone();
+        sc.Gta.ResourceName = res; sc.Gta.Heading = 0; sc.Gta.SharedPivot = false; // models keep their own pivot: they stand where they were made
+        var tmp = Path.Combine(Path.GetTempPath(), "polymorph_build_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var rep = GtaExporter.Export(sc, tmp, LoadImageRgba, renderer.Textures.SearchFolders.ToList());
+            errors.AddRange(rep.Errors.Select(e => "build: " + e));
+            mapBuildReport = rep;
+            if (!rep.Ok && rep.Models == 0) return 0;
+            var src = Path.Combine(tmp, res, "stream");
+            if (Directory.Exists(buildDir)) Directory.Delete(buildDir, true);
+            int n = 0;
+            foreach (var f in Directory.Exists(src) ? Directory.GetFiles(src, "*", SearchOption.AllDirectories) : Array.Empty<string>())
+            {
+                var rel = Path.GetRelativePath(src, f);
+                var to = Path.Combine(buildDir, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(to));
+                File.Copy(f, to, true); n++;
+            }
+            return n;
+        }
+        catch (Exception e) { errors.Add("build: " + e.Message); return 0; }
+        finally { try { Directory.Delete(tmp, true); } catch { } }
+    }
+    ExportReport mapBuildReport;
+
+    /// <summary>Where the build sits: the room plan's origin when there are rooms, else the middle of the built objects on the ground.</summary>
+    Vector3 MapBuildAnchor(List<SceneObject> objs)
+    {
+        if (objs.Any(o => o.Folder == PlanFolder && o.GtaType == GtaObjectType.MloRoom) && Scene.Plan != null)
+            return new Vector3(Scene.Plan.OriginX, Scene.Plan.OriginY, Scene.Plan.OriginZ);
+        var mn = objs.Select(o => o.WorldBounds().Min).Aggregate(Vector3.Min); var mx = objs.Select(o => o.WorldBounds().Max).Aggregate(Vector3.Max);
+        return new Vector3(MathF.Round((mn.X + mx.X) * 0.5f), MathF.Round((mn.Y + mx.Y) * 0.5f), MathF.Floor(mn.Z));
+    }
+
+    /// <summary>Self-tests and films: the map scene starts without anything modeled in it.</summary>
+    void ClearMapBuild() { Scene.Objects.RemoveAll(o => MapEditable(o)); Scene.Plan = new MoloMax.Core.Tools.RoomPlanData(); Selected.Clear(); SelectionChanged(); }
+
+    /// <summary>Map panel: what is modeled here and where it goes.</summary>
+    void MapBuildPanel()
+    {
+        Ui.Text("Model on the map");
+        Theme.Tip("Everything made here is written with the map: new models, an MLO when you draw rooms, and the entities that place them.");
+        float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
+        if (ImGui.Button("Box here", new Vector2(w2, 0))) { Cursor3D = MapGround(); AddPrimitive(CreateKind.Box); }
+        TutRect("map_box");
+        Theme.Tip("A box on the ground at the middle of the view. Tab (or 1-5) to edit it like in MODEL mode.");
+        ImGui.SameLine(0, 4);
+        if (ImGui.Button("MLO rooms here", new Vector2(w2, 0))) OpenPlanOnMap();
+        TutRect("map_mlo");
+        Theme.Tip("Opens the MLO Room Builder with its plan on the ground at the middle of the view: the rooms build right on the map.");
+        if (Current != null && entOf.ContainsKey(Current.Id))
+        {
+            if (ImGui.Button("Edit this game model", new Vector2(-1, 0)) && EditInPlace(Current)) SetLevel(SubObject.Polygon);
+            TutRect("map_edit");
+            Theme.Tip("Makes your own copy of the selected game model, right where it is, and opens it in edit mode.");
+        }
+        var n = MapBuildObjects().Count;
+        Ui.TextDisabled(n == 0 ? "Nothing modeled yet." : $"{n} object(s) modeled here, written to stream/build on save.");
+    }
+
+    /// <summary>Room Builder on the map: the plan's origin goes to the ground at the middle of the view (when the plan is new).</summary>
+    void OpenPlanOnMap()
+    {
+        Scene.Plan ??= new MoloMax.Core.Tools.RoomPlanData();
+        if (Scene.Plan.Rooms.Count == 0)
+        {
+            var g = MapGround();
+            Scene.Plan.OriginX = MathF.Round(g.X); Scene.Plan.OriginY = MathF.Round(g.Y); Scene.Plan.OriginZ = MathF.Round(g.Z * 10) / 10;
+        }
+        planOpen = true;
+    }
+}

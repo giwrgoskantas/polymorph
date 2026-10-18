@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+
+molomax_crash.txt
+molomax_errors.txt
+
+# tutorial videos live on the release page
+docs/videos/

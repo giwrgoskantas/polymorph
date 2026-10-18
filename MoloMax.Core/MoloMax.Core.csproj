@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>MoloMax.Core</RootNamespace>
+    <AssemblyName>MoloMax.Core</AssemblyName>
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+
+  <!-- GTA export: CodeWalker.Core turns CodeWalker XML into game files (see third_party/README.md). -->
+  <ItemGroup>
+    <Reference Include="CodeWalker.Core"><HintPath>..\third_party\CodeWalker\CodeWalker.Core.dll</HintPath></Reference>
+    <Reference Include="SharpDX"><HintPath>..\third_party\SharpDX\SharpDX.dll</HintPath></Reference>
+    <Reference Include="SharpDX.Mathematics"><HintPath>..\third_party\SharpDX\SharpDX.Mathematics.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\third_party\szio\Shaders.xml"><LogicalName>Shaders.xml</LogicalName></EmbeddedResource>
+    <!-- CodeWalker needs it next to the exe to read GTA V Enhanced (gen9) models -->
+    <None Include="..\third_party\CodeWalker\ShadersGen9Conversion.xml" Link="ShadersGen9Conversion.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
