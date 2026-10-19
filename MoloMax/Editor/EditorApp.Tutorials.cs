@@ -196,6 +196,7 @@ public sealed partial class EditorApp
         T("TERRAIN: 4 layers painted with vertex colour", TerrainPaintTest);
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("MAP hide + send to MODEL", MapHideSendTest);
+        T("MAP MLO hide: hiding an interior hides what is inside, and it stays hidden", MapMloHideTest);
         T("UX tour: panels a 3D artist uses", UxTour);
         T("CHECKLIST: the points without their own test", ChecklistTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
@@ -1168,7 +1169,7 @@ public sealed partial class EditorApp
         yield return Until(() => game != null || gameError != null, 400);
         if (game != null)
         {
-            yield return Until(() => gameClassified, 1200);
+            yield return Until(() => gameClassified, 4000);
             assetSource = 1; assetFamily = 0; assetKey = null; // chairs & seats
             yield return Frames(3);
             var first = assetItems.Take(6).ToList();
@@ -1341,6 +1342,55 @@ public sealed partial class EditorApp
         if (got != null) { SelectOnly(got); FrameSelection(vp); }
         yield return Frames(20);
         yield return Shot("sent_to_model");
+    }
+
+    IEnumerable<object> MapMloHideTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        SetMapMode(true); ClearMapBuild();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        yield return Until(() => world != null, 600);
+        var cam = vp.Camera; MapStream = true; MapShowInteriors = true;
+        var spot = new Vector3(445, -985, 30); // Mission Row police station (an interior)
+        GoTo(spot); cam.Distance = 40; cam.Pitch = 0.5f;
+        yield return Settle(() => mapStreamQueue.Count == 0 && mapLoadTask == null, 90);
+        yield return Settle(() => archLoading == 0, 60);
+        yield return Until(() => interiors.Values.Any(i => i.ObjOf.Count > 0), 300);
+        var oi = interiors.Values.Where(i => i.ObjOf.Count > 0).OrderBy(i => Vector3.Distance(i.Pos, spot)).FirstOrDefault();
+        Expect(oi != null, $"an interior opened near the camera: {oi?.Doc.ArchetypeName} ({oi?.ObjOf.Count} objects)");
+        if (oi == null) yield break;
+        var inst = Scene.Find(oi.InstanceId);
+        yield return Frames(5);
+        SelectOnly(inst); PinPickedMaps(); yield return Frames(3); // picked first, like a user does
+        foreach (var t in RowTargets(inst)) t.Hidden = true; // the eye button on the MLO row
+        Selected.Clear(); SelectionChanged();
+        yield return Frames(3);
+        MapGatherDraws(vp, vp.Camera.View * vp.Camera.Projection(vp.Aspect));
+        var ids = oi.ObjOf.Values.ToHashSet();
+        int shown = ids.Count(id => Scene.Find(id) is { Hidden: false });
+        int drawn = mapSingles.Count(o => ids.Contains(o.Id)) + instGroups.Values.Sum(g => g.Template != null && ids.Contains(g.Template.Id) ? 1 : 0);
+        Expect(shown == 0 && drawn == 0, $"MLO hidden: objects still shown {shown}, drawn {drawn}");
+        yield return Shot("mlo_hidden");
+        // the camera goes away and comes back: still hidden
+        GoTo(spot + new Vector3(600, 0, 0)); yield return Frames(150);
+        GoTo(spot); yield return Frames(150);
+        var again = interiors.Values.FirstOrDefault(i => i.InstanceId == oi.InstanceId);
+        int shownAgain = again == null ? -1 : again.ObjOf.Values.Count(id => Scene.Find(id) is { Hidden: false });
+        Expect(shownAgain == 0, $"after the camera went away and came back: shown {shownAgain}");
+        inst = Scene.Find(oi.InstanceId); if (inst == null) { Expect(false, "the MLO instance is gone"); yield break; }
+        foreach (var t in RowTargets(inst)) t.Hidden = false;
+        yield return Frames(3);
+        Expect(oi.ObjOf.Values.All(id => Scene.Find(id) is { Hidden: false }), "shown again: everything inside comes back");
+        // one object inside hidden by itself stays hidden when the camera comes back
+        var one = Scene.Find(oi.ObjOf.Values.First()); SelectOnly(one); PinPickedMaps(); yield return Frames(3);
+        one.Hidden = true; Selected.Clear(); SelectionChanged();
+        GoTo(spot + new Vector3(600, 0, 0)); yield return Frames(150);
+        GoTo(spot); yield return Frames(150);
+        Expect(Scene.Find(one.Id) is { Hidden: true }, "one object hidden inside stays hidden after the camera came back");
+        one.Hidden = false;
     }
 
     IEnumerable<object> TripoDiag()

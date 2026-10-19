@@ -136,6 +136,7 @@ public sealed partial class EditorApp
     void Fresh()
     {
         if (Current is { ModEdit: not null } me) EndModifierEdit(me);
+        if (MapMode) SetMapMode(false); // a MAP test before leaves MODEL mode to the next one
         Level = SubObject.Object; Dirty = false; NewScene(); Cursor3D = Vector3.Zero; importReportOpen = false;
     }
 

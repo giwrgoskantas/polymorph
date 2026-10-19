@@ -19,6 +19,21 @@ public sealed partial class EditorApp
         public readonly Dictionary<MloEntity, int> ObjOf = new();
         /// <summary>Opened by itself because the camera came near (view only until edited).</summary>
         public bool Auto;
+        /// <summary>The instance's Hidden state last passed on to the room objects.</summary>
+        public bool Hidden;
+    }
+
+    /// <summary>Hiding an interior (its MLO instance) hides what is inside it too, and showing it brings it back.</summary>
+    void SyncInteriorHidden()
+    {
+        foreach (var oi in interiors.Values)
+        {
+            var inst = Scene.Find(oi.InstanceId);
+            bool h = inst != null && inst.Hidden;
+            if (h == oi.Hidden) continue;
+            oi.Hidden = h;
+            foreach (var id in oi.ObjOf.Values) if (Scene.Find(id) is { } o) o.Hidden = h;
+        }
     }
     /// <summary>MAP: show the inside of the interiors (MLO) near the camera.</summary>
     public bool MapShowInteriors = true;
@@ -37,7 +52,8 @@ public sealed partial class EditorApp
         {
             var inst = Scene.Find(oi.InstanceId);
             bool far = inst == null || !MapShowInteriors || Vector2.Distance(new Vector2(oi.Pos.X, oi.Pos.Y), new Vector2(p.X, p.Y)) > MapInteriorRadius * 1.5f;
-            if (far && !oi.Doc.Modified && !SyncInterior(oi, apply: false)) CloseInterior(oi);
+            // an interior with hidden objects stays open (closing and reopening it would show them again)
+            if (far && !oi.Doc.Modified && !oi.Hidden && !oi.ObjOf.Values.Any(id => Scene.Find(id) is { Hidden: true }) && !SyncInterior(oi, apply: false)) CloseInterior(oi);
         }
         if (!MapShowInteriors || !HdStreamingNow) return;
         int opened = 0;
@@ -87,7 +103,7 @@ public sealed partial class EditorApp
         catch (Exception e) { SetStatus("Interior not readable: " + e.Message); return false; }
         if (string.IsNullOrEmpty(doc.ArchetypeName)) doc.ArchetypeName = de.Ent.Archetype ?? yname;
         var folder = "interior " + doc.ArchetypeName;
-        var oi = new OpenInterior { Doc = doc, InstanceId = inst.Id, Pos = de.Ent.Position, Rot = Quaternion.Normalize(de.Ent.Rotation), Folder = folder };
+        var oi = new OpenInterior { Doc = doc, InstanceId = inst.Id, Pos = de.Ent.Position, Rot = Quaternion.Normalize(de.Ent.Rotation), Folder = folder, Hidden = inst.Hidden };
         interiors[folder] = oi;
         if (!Scene.Folders.Contains(folder)) Scene.Folders.Add(folder);
         foreach (var e in doc.Entities) SpawnInteriorEntity(oi, e);
@@ -108,6 +124,7 @@ public sealed partial class EditorApp
         };
         o.Gta.MapArchetype = e.Archetype ?? e.ArchetypeHash.ToString("X8");
         o.Gta.Role = GtaRole.Ignore;
+        o.Hidden = oi.Hidden;
         Scene.Objects.Add(o);
         intEntOf[o.Id] = (oi, e); oi.ObjOf[e] = o.Id;
         return o;

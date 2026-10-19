@@ -41,6 +41,7 @@ public sealed partial class EditorApp
         var eye = vp.Camera.Eye;
         float pix = vp.Camera.Ortho ? 0 : 1.6f / MathF.Max(vp.H, 1); // ~ angular size of one pixel at fov 60
         MapVisible = 0;
+        SyncInteriorHidden();
         UpdateHiddenClip(eye);
         var live = MapLive();
         for (int i = 0, n = live.Count + backdrop.Count; i < n; i++)

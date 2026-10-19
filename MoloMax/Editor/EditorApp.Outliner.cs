@@ -100,6 +100,11 @@ public sealed partial class EditorApp
             {
                 for (var pp = Scene.Parent(act); pp != null; pp = Scene.Parent(pp)) closedObjs.Remove(pp.Id);
                 var top = act; while (Scene.Parent(top) is { } up) top = up;
+                // MAP: only the picked model's map opens; the maps opened before by a pick close again
+                // (hundreds of rows per .ymap: a long list costs frames). Folders you opened yourself stay open.
+                if (MapMode)
+                    foreach (var f in Scene.Folders)
+                        if (f != (top.Folder ?? "") && !outUserOpened.Contains(f)) closedFolders.Add(f);
                 closedFolders.Remove(top.Folder ?? "");
                 outRevealId = act.Id; outlinerSigTime = -1;
             }
@@ -206,10 +211,11 @@ public sealed partial class EditorApp
     void CollapseAll()
     {
         foreach (var f in AllFolders().Append("")) closedFolders.Add(f);
+        outUserOpened.Clear();
         foreach (var o in Scene.Objects) if (o.ParentId >= 0) closedObjs.Add(o.ParentId);
     }
 
-    void ExpandAll() { closedFolders.Clear(); closedObjs.Clear(); }
+    void ExpandAll() { closedFolders.Clear(); closedObjs.Clear(); foreach (var f in AllFolders()) outUserOpened.Add(f); }
 
     long outlinerSig = long.MinValue; double outlinerSigTime = -10;
     int outStreamedHidden;
@@ -299,6 +305,8 @@ public sealed partial class EditorApp
     struct ORow { public SceneObject Obj; public List<SceneObject> Kids; public string Folder; public List<SceneObject> FolderObjs; public int Depth; }
     readonly List<ORow> orows = new();
     readonly HashSet<string> closedFolders = new();
+    /// <summary>Folders opened by hand (a pick in MAP mode leaves them open).</summary>
+    readonly HashSet<string> outUserOpened = new();
     readonly HashSet<int> closedObjs = new();
     readonly Dictionary<string, int> instCount = new();
 
@@ -325,7 +333,7 @@ public sealed partial class EditorApp
         bool isOpen = !closedFolders.Contains(folder);
         ImGui.SetNextItemOpen(isOpen);
         bool open = ImGui.TreeNodeEx("##fold", ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.OpenOnDoubleClick | ImGuiTreeNodeFlags.NoTreePushOnOpen, "");
-        if (open != isOpen) { if (open) closedFolders.Remove(folder); else closedFolders.Add(folder); }
+        if (open != isOpen) { if (open) { closedFolders.Remove(folder); outUserOpened.Add(folder); } else { closedFolders.Add(folder); outUserOpened.Remove(folder); } }
         var min = ImGui.GetItemRectMin();
         if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
         {
