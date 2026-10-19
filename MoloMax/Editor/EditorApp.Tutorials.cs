@@ -193,6 +193,7 @@ public sealed partial class EditorApp
         T("MAP diag: duplicates", MapDiag);
         T("MAP terrain: 4-layer ground", MapTerrainTest);
         T("TERRAIN: 4 layers painted with vertex colour", TerrainPaintTest);
+        T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("ASSETS: browser thumbnails + placing", AssetTest);
         T("PLANAR: level vertices", PlanarTest);
     }
@@ -1149,6 +1150,27 @@ public sealed partial class EditorApp
         assetsOpen = false;
     }
 
+    IEnumerable<object> TripoDiag()
+    {
+        Fresh();
+        var dir = TripoFolder;
+        var files = Directory.Exists(dir) ? new DirectoryInfo(dir).GetFiles("*.glb", SearchOption.AllDirectories).OrderByDescending(f => f.LastWriteTime).Take(4).ToList() : new();
+        Expect(true, $"{files.Count} recent .glb in {dir}");
+        foreach (var fi in files)
+        {
+            var bytes = File.ReadAllBytes(fi.FullName);
+            string json = "";
+            if (bytes.Length > 20) { int len = BitConverter.ToInt32(bytes, 12); json = System.Text.Encoding.UTF8.GetString(bytes, 20, Math.Min(len, bytes.Length - 20)); }
+            var mimes = System.Text.RegularExpressions.Regex.Matches(json, "\"mimeType\"\\s*:\\s*\"([^\"]+)\"").Select(m => m.Groups[1].Value);
+            var exts = System.Text.RegularExpressions.Regex.Match(json, "\"extensionsUsed\"\\s*:\\s*\\[([^\\]]*)\\]").Groups[1].Value;
+            var r = Core.IO.ModelImporter.Import(fi.FullName, new Core.IO.ImportOptions { TextureFolder = StPath("tripo_tex", Path.GetFileNameWithoutExtension(fi.Name)) });
+            var tex = r.Materials.Select(m => m.DiffuseTexture).Where(t => t != null).ToList();
+            var loads = tex.Select(t => { try { using var b = new System.Drawing.Bitmap(t); return $"{Path.GetFileName(t)} ok {b.Width}"; } catch (Exception e) { return $"{Path.GetFileName(t)} FAIL {e.Message}"; } });
+            Expect(true, $"{fi.Name} ({fi.LastWriteTime:HH:mm}): images [{string.Join(",", mimes)}], extensions [{exts}], {r.Materials.Count} materials, diffuse: {string.Join(" | ", loads)}; warnings: {string.Join(" | ", r.Warnings.Take(4))}");
+        }
+        yield return Frames(2);
+    }
+
     IEnumerable<object> TerrainPaintTest()
     {
         Fresh();
@@ -1742,6 +1764,8 @@ public sealed partial class EditorApp
         if (MapMode) SetMapMode(false);
         Maximized = true; ActiveViewport = 3;
         var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false;
+        yield return Frames(2);
+        foreach (var x in ClickAt(new Vector2(vp.X + 40, vp.Y + vp.H - 40))) yield return x; // closes a menu another test left open
         var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "lvl";
         box.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.4f); box.Touch();
         vp.Camera.Frame(new Vector3(-3, -3, -2), new Vector3(3, 3, 3));
@@ -1769,8 +1793,8 @@ public sealed partial class EditorApp
         yield return Shot("planar_done");
         SetLevel(SubObject.Object);
         // a click on another mesh in polygon level goes on editing that mesh
-        var b2 = Prim(CreateKind.Box, new Vector3(4, 0, 0)); b2.Name = "other";
-        vp.Camera.Frame(new Vector3(-3, -3, -2), new Vector3(7, 3, 3)); yield return Frames(3);
+        var b2 = Prim(CreateKind.Box, new Vector3(9, 0, 0)); b2.Name = "other";
+        vp.Camera.Frame(new Vector3(7, -2, -1), new Vector3(11, 2, 3)); yield return Frames(3); // only the other box under the mouse
         SelectOnly(Obj("lvl")); SetLevel(SubObject.Polygon); Tool = Tool.Select; yield return Frames(2);
         int top = FaceToward(b2, Vector3.UnitZ);
         foreach (var x in ClickAt(FaceScreen(vp, b2, top))) yield return x;
