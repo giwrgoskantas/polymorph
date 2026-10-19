@@ -1041,9 +1041,13 @@ public sealed partial class EditorApp
 
         // 8 Subdivision Surface
         NewCube(small.Item1, small.Item2); b = Count(cube);
-        foreach (var x in Say("8. Subdivision Surface", "Smooths the shape by cutting every face (level 2)", 30)) yield return x;
-        var sd = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); yield return Frames(30);
+        foreach (var x in Say("8. Subdivision Surface", "Simple (default): cuts every face, the shape stays the same", 30)) yield return x;
+        var sd = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); yield return Frames(20);
         sd.LevelsViewport = 2; cube.Touch(); yield return Frames(50);
+        var ext = cube.Evaluated().Verts; bool sameShape = ext.Max(v => MathF.Abs(v.X)) > 0.99f && ext.Min(v => v.Z) < 0.01f && ext.Max(v => v.Z) > 1.99f;
+        Expect(!sd.CatmullClark && sameShape, $"Subdivision Simple by default keeps the cube shape (simple {!sd.CatmullClark}, same shape {sameShape})");
+        foreach (var x in Say("8. Subdivision Surface", "Option Catmull-Clark: rounds the shape", 20)) yield return x;
+        sd.CatmullClark = true; cube.Touch(); yield return Frames(45);
         Report("Subdivision Surface", b, cube.Evaluated().Faces.Count == 96);
 
         // 9 Triangulate
@@ -1081,7 +1085,7 @@ public sealed partial class EditorApp
         NewCube(small.Item1, small.Item2); b = Count(cube);
         vp.EdgedFaces = false;
         foreach (var x in Say("13. Smooth by Angle", "Shading only: soft between faces under 30 degrees, hard edges stay hard", 30)) yield return x;
-        var sa0 = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); sa0.LevelsViewport = 2; cube.Touch(); yield return Frames(30);
+        var sa0 = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); sa0.CatmullClark = true; sa0.LevelsViewport = 2; cube.Touch(); yield return Frames(30);
         Add(new MoloMax.Core.Modifiers.SmoothByAngleModifier()); yield return Frames(50);
         Note($"Smooth by Angle: {b} -> {Count(cube)} (shading only, same points)");
         Expect(cube.Modifiers.Count == 2, "Smooth by Angle added (it changes the shading, not the points)");

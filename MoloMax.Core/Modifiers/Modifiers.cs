@@ -318,7 +318,7 @@ public sealed class SolidifyModifier : Modifier
 
 public sealed class SubdivisionModifier : Modifier
 {
-    public bool CatmullClark = true; // false = Simple
+    public bool CatmullClark; // false = Simple (adds faces, keeps the shape, the default); true = Catmull-Clark (rounds)
     public int LevelsViewport = 1, LevelsRender = 2;
 
     public SubdivisionModifier() { Name = "Subdivision"; ShowInEditMode = true; }
