@@ -58,6 +58,23 @@ public sealed partial class EditorApp
     // ------------------------------------------------------------------------------ setup
 
     /// <summary>One texture set per material of the object (each gets its own "_paint" material and textures).</summary>
+    /// <summary>The toolbar Paint button: paint mode on the selected model (UVs made when it has none), or off.</summary>
+    public void TogglePaintMode()
+    {
+        if (paintMode) { paintMode = false; SetStatus("Paint mode off"); return; }
+        var o = Current;
+        if (o == null || o.Mesh == null || o.Mesh.Faces.Count == 0) { SetStatus("Select one model to paint."); return; }
+        if (SculptMode) ToggleSculptMode();
+        if (Level != SubObject.Object) Level = SubObject.Object;
+        if (o.Paint == null)
+        {
+            if (!TexelMap.HasUsableUvs(o.Mesh)) DoMesh("Smart UV Project", (oo, m, s) => UvUnwrap.SmartProject(m));
+            StartPaint(o);
+        }
+        else paintMode = true;
+        if (paintMode) { propTab = PropTab.Paint; ShowPanel = true; SetStatus("Paint mode: LMB paints, [ ] brush size, B brush, E eraser, F fill. Esc or Paint to leave."); }
+    }
+
     void StartPaint(SceneObject o)
     {
         if (!TexelMap.HasUsableUvs(o.Mesh)) { SetStatus("This object has no UVs to paint on: use Smart UV Project first."); return; }

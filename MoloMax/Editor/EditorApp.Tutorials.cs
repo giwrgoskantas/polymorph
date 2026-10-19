@@ -191,6 +191,7 @@ public sealed partial class EditorApp
         T("TUTO 10 modeling on the map", TutMapBuild);
         T("TUTO 11 weapon forge", TutWeaponForge);
         T("TUTO 12 vehicle forge", TutVehicleForge);
+        T("TUTO 13 demo: sculpt and paint", TutSculptPaintDemo);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
@@ -936,6 +937,89 @@ public sealed partial class EditorApp
     }
 
     /// <summary>Films: a sofa modeled and painted like in a texturing app: a GTA V fabric, worn edges, stitched seams, seat wear, dust.</summary>
+    /// <summary>A brush stroke with the real mouse between two points on a mesh (held buttons: 1 left, +4 Shift, +8 Ctrl).</summary>
+    IEnumerable<object> Stroke(Vector2 a, Vector2 b, int frames = 30, int buttons = 1)
+    {
+        foreach (var x in MouseTo(a, 14)) yield return x;
+        yield return Frames(3);
+        PostMouse(0x201, a, buttons); tutClick = 0.35f; yield return Frames(2);
+        for (int i = 1; i <= frames; i++) { PostMouse(0x200, Vector2.Lerp(a, b, Ease(i / (float)frames)), buttons); yield return Frames(1); }
+        PostMouse(0x202, b, 0); yield return Frames(6);
+    }
+
+    /// <summary>Demo film: the Sculpt and Paint buttons, the sculpt brushes on a rock, then Molo Paint (Substance-like).</summary>
+    IEnumerable<object> TutSculptPaintDemo()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true;
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; vp.Shading = ShadingMode.Realistic;
+        Params.Radius = 1; Params.Segments = 96;
+        var rock = Prim(CreateKind.Sphere, Vector3.Zero); rock.Name = "rock";
+        var ctr = rock.Mesh.Verts.Aggregate(Vector3.Zero, (q, w) => q + w) / rock.Mesh.Verts.Count;
+        SelectOnly(rock); cam.Frame(ctr - new Vector3(1.5f), ctr + new Vector3(1.5f)); cam.Pitch = 0.25f; cam.Yaw = -1.9f;
+        yield return Frames(10);
+        foreach (var x in StartFilm("13_demo_sculpt_paint", 9)) yield return x;
+        foreach (var x in Say("Sculpt and Paint", "Two buttons in the top bar: Sculpt and Paint", 70)) yield return x;
+        // 1. the Sculpt button
+        foreach (var x in Say("1. Select a mesh, click Sculpt", "The brushes open in the panel on the right", 30)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tb_sculpt"), false, 30)) yield return x;
+        yield return Frames(30);
+        Vector2 On(float u, float v)
+        {
+            // a point on the side of the rock facing the camera, u / v across the view
+            var right = Vector3.Normalize(Vector3.Cross(cam.Forward, Vector3.UnitZ)); var up = Vector3.Cross(right, cam.Forward);
+            var d = Vector3.Normalize(-cam.Forward + right * u + up * v);
+            return ScreenOf(vp, ctr + d * 1.0f);
+        }
+        if (SculptMode)
+        {
+            Sculpt.SymX = false; Sculpt.Strength = 1f;
+            // Draw
+            Sculpt.Brush = SculptBrush.Draw; Sculpt.Radius = 0.3f;
+            foreach (var x in Say("2. Draw: hold the left button", "It raises the surface under the brush", 20)) yield return x;
+            for (int k = 0; k < 4; k++) foreach (var x in Stroke(On(-0.55f, 0.45f - k * 0.3f), On(0.55f, 0.35f - k * 0.3f), 28)) yield return x;
+            // Ctrl digs
+            foreach (var x in Say("3. Ctrl + drag digs", "Ctrl inverts any brush", 20)) yield return x;
+            KeyDownT(Keys.ControlKey); yield return Frames(2);
+            foreach (var x in Stroke(On(-0.5f, -0.1f), On(0.5f, 0.05f), 32, 1 | 8)) yield return x;
+            KeyUpT(Keys.ControlKey);
+            // Inflate
+            Sculpt.Brush = SculptBrush.Inflate; Sculpt.Radius = 0.4f;
+            foreach (var x in Say("4. Inflate", "Swells the shape (pick the brush in the panel)", 20)) yield return x;
+            foreach (var x in Stroke(On(0.3f, 0.5f), On(0.5f, 0.1f), 30)) yield return x;
+            // Grab
+            Sculpt.Brush = SculptBrush.Grab; Sculpt.Radius = 0.5f;
+            foreach (var x in Say("5. Grab", "Pulls a whole area with the mouse", 20)) yield return x;
+            foreach (var x in Stroke(On(-0.2f, 0.75f), On(-0.2f, 0.75f) + new Vector2(-40, -90), 34)) yield return x;
+            // Shift smooths
+            Sculpt.Brush = SculptBrush.Draw; Sculpt.Radius = 0.35f;
+            foreach (var x in Say("6. Shift + drag smooths", "Shift smooths with any brush", 20)) yield return x;
+            KeyDownT(Keys.ShiftKey); yield return Frames(2);
+            foreach (var x in Stroke(On(-0.5f, 0.2f), On(0.5f, 0.2f), 34, 1 | 4)) yield return x;
+            KeyUpT(Keys.ShiftKey);
+            for (int i = 0; i < 70; i++) { cam.Orbit(1.6f, 0); yield return Frames(1); }
+            foreach (var x in ClickAt(TutCentre("tb_sculpt"), false, 24)) yield return x; // leave sculpt
+        }
+        else Note("sculpt mode did not start: " + status);
+        // 2. Paint
+        foreach (var x in Say("7. Paint: click Paint", "UVs are made by themselves; layers, smart materials, masks like Substance", 30)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tb_paint"), false, 30)) yield return x;
+        yield return Frames(40);
+        if (paintMode)
+        {
+            paintTool = PaintTool.Brush; brush.Color = true; brush.ColorValue = new Vector3(0.75f, 0.2f, 0.12f); brush.Strength = 0.9f; brush.Radius = 0.18f;
+            foreach (var x in Say("8. Paint with the brush", "B brush, E eraser, F fill, [ ] size", 15)) yield return x;
+            for (int k = 0; k < 3; k++) foreach (var x in Stroke(On(-0.5f, 0.3f - k * 0.25f), On(0.5f, 0.25f - k * 0.25f), 26)) yield return x;
+            foreach (var x in ClickAt(TutCentre("tb_paint"), false, 24)) yield return x; // leave paint
+        }
+        else Note("paint mode did not start: " + status);
+        // 3. the full Molo Paint: a sofa with smart materials, wear, dust
+        foreach (var x in Say("9. Smart materials, wear, dust, bake", "Then export straight to GTA textures (DDS)", 40)) yield return x;
+        Fresh(); Maximized = true; vp = Viewports[ActiveViewport]; vp.Shading = ShadingMode.Realistic;
+        foreach (var x in TrailerPaint(vp)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
+    }
+
     IEnumerable<object> TrailerPaint(Viewport vp)
     {
         var cam = vp.Camera;

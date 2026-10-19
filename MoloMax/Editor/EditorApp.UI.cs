@@ -254,6 +254,10 @@ public sealed partial class EditorApp
         ImGui.SameLine(); if (ImGui.Button("Ped")) AddPedReference();
         Theme.Tip("Add a GTA ped (1.818 m) to check the scale. Never exported. Auto scale in the Tool tab.");
         Theme.Tip("Alt+Z. Off (default, like 3ds Max): edit-mode clicks and boxes select through the mesh. On: only the vertices, edges and polygons you can see.");
+        ImGui.SameLine(); if (Theme.Toggle("Sculpt", SculptMode)) ToggleSculptMode(); TutRect("tb_sculpt");
+        Theme.Tip("Sculpt the selected mesh: draw, smooth, inflate, grab, pinch, flatten... (brushes in the panel, Esc leaves)");
+        ImGui.SameLine(); if (Theme.Toggle("Paint", paintMode)) TogglePaintMode(); TutRect("tb_paint");
+        Theme.Tip("Molo Paint: paint the selected model in layers like Substance (smart materials, masks, bake, GTA textures)");
         ImGui.SameLine(); if (Theme.Toggle("Assets", assetsOpen)) { if (assetsOpen) assetsOpen = false; else OpenAssetBrowser(); }
         Theme.Tip("Asset Browser: your models and the game props as thumbnails; double-click or drag into the view");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
