@@ -674,7 +674,7 @@ public sealed partial class EditorApp
             for (int i = 0; i < 80; i++) { cam.Orbit(1.5f, 0); yield return Frames(1); }
         }
         recordDir = held;
-        foreach (var x in Say("Polymorph · free forever", "Open source (MIT), made by Molo Modding", 90)) yield return x;
+        foreach (var x in Say("Polymorph · free forever", "Made by Molo Modding", 90)) yield return x;
         foreach (var x in EndFilm()) yield return x;
         SetMapMode(false); Maximized = false;
     }
@@ -1547,7 +1547,7 @@ public sealed partial class EditorApp
         var nearKeys = MapLive().Where(o => o.InstanceKey != null && Vector3.Distance(o.Position, vp.Camera.Target) < 150).Select(o => o.InstanceKey).ToHashSet();
         var localSlots = archSlots.Values.Where(sl => stream.ModelFile(sl.Hash) != null && nearKeys.Contains("map:" + sl.Hash.ToString("X8"))).ToList();
         int ready = localSlots.Count(sl => sl.State == 2);
-        Expect(localSlots.Count > 0 && ready >= localSlots.Count * 0.8, $"its own models drawn: {ready}/{localSlots.Count}" + string.Join(" | ", localSlots.Where(sl => sl.State == 3).Take(3).Select(sl => sl.Name + ": " + sl.Error)));
+        Expect(localSlots.Count > 0 && localSlots.All(sl => sl.State == 2), $"its own models drawn: {ready}/{localSlots.Count}" + string.Join(" | ", localSlots.Where(sl => sl.State == 3).Take(3).Select(sl => sl.Name + ": " + sl.Error)));
         var camT = vp.Camera.Target;
         Expect(MathF.Abs(camT.X) < 10000 && MathF.Abs(camT.Y) < 10000, $"the camera goes to the folder's maps: {camT}");
         yield return Shot("stream_folder");

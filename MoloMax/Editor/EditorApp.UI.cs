@@ -185,6 +185,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Report a bug (GitHub)")) OpenUrl("https://github.com/molossen/polymorph/issues");
             if (ImGui.MenuItem("Molo Modding Discord")) OpenUrl("https://discord.com/invite/molomodding");
             if (ImGui.MenuItem("Get Tripo (AI 3D models)")) OpenUrl(TripoLink);
+            if (ImGui.MenuItem("Licence")) { var lic = Path.Combine(AppContext.BaseDirectory, "LICENSE"); if (File.Exists(lic)) { try { System.Diagnostics.Process.Start("notepad.exe", "\"" + lic + "\""); } catch { } } else OpenUrl("https://github.com/molossen/polymorph/blob/main/LICENSE"); }
             ImGui.EndMenu();
         }
         ModeTabs();

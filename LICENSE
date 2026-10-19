@@ -1,21 +1,42 @@
-MIT License
+Polymorph Licence
+Copyright (c) 2026 Molo Modding (Dimitri Costesèque). All rights reserved.
 
-Copyright (c) 2026 Molo Modding
+Polymorph is free software in the sense of "free of charge": it is not open source.
+This licence applies to Polymorph from version 1.0.0 published on 19 October 2026 onwards.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. USE
+   You may download Polymorph from its official pages (the Polymorph website and the Molo Modding GitHub
+   releases) and use it for free, for personal and commercial projects.
+   Everything you make with Polymorph (models, maps, MLO, textures, animations, FiveM resources) belongs to you.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. WHAT IS NOT ALLOWED
+   Without written permission from Molo Modding, you may not:
+   a) sell, rent, lend or sublicense Polymorph, or charge for access to it;
+   b) redistribute Polymorph, modified or not, or publish it under another name or brand;
+   c) decompile, disassemble or reverse engineer Polymorph, or extract its code, interface or tools to put them
+      in another product, except where the law that applies to you expressly allows it and only within that limit;
+   d) remove or change the copyright notices, the credits or this licence.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. SOURCE CODE
+   Where the source code is visible (for example on GitHub), it is shown for transparency and reference only.
+   Being able to read it gives no other right than those of this licence.
+
+4. THIRD-PARTY COMPONENTS
+   Polymorph is built with third-party components (CodeWalker, ImGui, SharpDX, .NET, Sollumz shader definitions...).
+   Each keeps its own licence: see THIRD-PARTY-NOTICES.txt. Nothing in this licence limits your rights over them.
+
+5. GAME FILES
+   Grand Theft Auto V belongs to Rockstar Games / Take-Two Interactive. Polymorph reads your own copy of the game
+   and contains none of its files. Polymorph is a community tool, not affiliated with them.
+
+6. NO WARRANTY
+   Polymorph is provided "as is", without warranty of any kind. Molo Modding is not liable for any damage or
+   loss of data coming from its use, to the extent the law allows. Keep backups of your work.
+
+7. NAME
+   "Polymorph" and "Molo Modding" are the names and brands of Molo Modding.
+
+------------------------------------------------------------------------------------------------
+En bref (FR) : Polymorph est gratuit, pour tes projets perso et commerciaux, et ce que tu crées avec
+t'appartient. Interdit sans accord écrit : le revendre, le redistribuer ou le renommer, le décompiler ou
+en reprendre le code, retirer les crédits. Télécharge-le uniquement depuis les pages officielles.

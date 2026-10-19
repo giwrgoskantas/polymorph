@@ -26,5 +26,6 @@ CONFIGURATION
 - Windows 10/11 64 bits, carte graphique DirectX 11.
 - Ta copie de GTA V (Polymorph lit tes fichiers, il n'en contient aucun).
 
+Licence : LICENSE (gratuit, perso et commercial ; interdit de revendre, redistribuer ou décompiler)
 Licences des composants utilisés : THIRD-PARTY-NOTICES.txt
 Nouveautés : CHANGELOG.md

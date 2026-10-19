@@ -564,9 +564,10 @@ public sealed partial class EditorApp
             bool dict = local.EndsWith(".ydd", StringComparison.OrdinalIgnoreCase);
             var lp = lr.Meshes.Where(m => m.GtaType != GtaObjectType.Collision && (!dict || m.DrawableHash == hash)).ToList();
             var lld = Merge(lr, lp);
-            if (lld.Mesh.Faces.Count > 0) { (lld.Min, lld.Max) = lld.Mesh.Bounds(); lld.Groups = MoloMax.Core.Mesh.RenderMeshBuilder.Build(lld.Mesh); }
-            else lld.Why = "no geometry in " + Path.GetFileName(local);
-            return lld;
+            if (lld.Mesh.Faces.Count > 0) { (lld.Min, lld.Max) = lld.Mesh.Bounds(); lld.Groups = MoloMax.Core.Mesh.RenderMeshBuilder.Build(lld.Mesh); return lld; }
+            // not in the folder's file after all (a .ydd of the folder that does not hold this model): the game's model
+            if (g == null) { lld.Why = "no geometry in " + Path.GetFileName(local); return lld; }
+            a ??= g.FindModel(hash);
         }
         var ld = FromCache(hash) ?? new ArchLoad();
         if (ld.Mesh == null)

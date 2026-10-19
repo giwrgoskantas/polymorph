@@ -44,7 +44,7 @@
   <ItemGroup>
     <!-- brand assets and fonts (Unbounded, IBM Plex Mono: SIL Open Font License) -->
     <None Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\THIRD-PARTY-NOTICES.txt;..\CHANGELOG.md;..\LISEZ-MOI.txt" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="..\LICENSE;..\THIRD-PARTY-NOTICES.txt;..\CHANGELOG.md;..\LISEZ-MOI.txt" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
     <!-- Python API + MCP server, shipped next to the exe -->
     <None Include="..\python\**\*.py;..\python\**\*.md" Exclude="..\python\**\__pycache__\**" Link="python\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

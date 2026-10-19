@@ -6,7 +6,7 @@ Polymorph takes the best of **3ds Max** and **Blender** and combines them in one
 the modifier stack and the snaps of 3ds Max, the speed and the shortcuts of Blender, and a viewport that renders like the game.
 Build props, MLO interiors and whole map edits, then export a FiveM resource that is ready to `ensure`.
 
-**Free forever.** Open source under the MIT licence: use it, change it, share it, build on it.
+**Free forever.** Free to use for your personal and commercial projects; what you make with it is yours. Polymorph itself is not open source: see [LICENSE](LICENSE).
 
 > Version 1.0.0 — see [CHANGELOG.md](CHANGELOG.md). Download the ready-to-run zip from the [Releases](../../releases) page.
 
@@ -70,5 +70,5 @@ release.bat    :: self-contained zip in release\
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Third-party components keep their own licences: see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
+Polymorph Licence — free to use, all rights reserved: no resale, no redistribution, no decompiling. See [LICENSE](LICENSE). Third-party components keep their own licences: see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
 Grand Theft Auto V belongs to Rockstar Games / Take-Two Interactive; Polymorph is a free community tool, not affiliated with them.

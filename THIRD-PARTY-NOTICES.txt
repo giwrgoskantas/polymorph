@@ -1,7 +1,7 @@
 Polymorph — third-party notices
 =================================
 
-Polymorph (c) Molo Modding is free software for GTA V / FiveM creators.
+Polymorph (c) Molo Modding is a free (no charge) tool for GTA V / FiveM creators; its own licence is in LICENSE.
 It is built with the components below; each keeps its own license.
 Grand Theft Auto V and its files belong to Rockstar Games / Take-Two Interactive.
 Polymorph reads your own installed copy of the game; it does not ship any game file.
