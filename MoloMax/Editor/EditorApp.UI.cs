@@ -258,6 +258,8 @@ public sealed partial class EditorApp
         Theme.Tip("Sculpt the selected mesh: draw, smooth, inflate, grab, pinch, flatten... (brushes in the panel, Esc leaves)");
         ImGui.SameLine(); if (Theme.Toggle("Paint", paintMode)) TogglePaintMode(); TutRect("tb_paint");
         Theme.Tip("Molo Paint: paint the selected model in layers like Substance (smart materials, masks, bake, GTA textures)");
+        ImGui.SameLine(); if (Theme.Toggle("Timeline", TimelineOpen)) ToggleTimeline(); TutRect("tb_timeline");
+        Theme.Tip("Animation: timeline, keyframes (I), auto key, camera keys, GTA .ycd import / export");
         ImGui.SameLine(); if (Theme.Toggle("Assets", assetsOpen)) { if (assetsOpen) assetsOpen = false; else OpenAssetBrowser(); }
         Theme.Tip("Asset Browser: your models and the game props as thumbnails; double-click or drag into the view");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();

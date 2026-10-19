@@ -30,6 +30,8 @@ struct ObjectVarsCB
     public Matrix4x4 NormalMatrix;
     public Vector4 WireColour;
     public Vector4 Highlight;
+    /// <summary>UV animation rows (GTA globalAnimUV0 / 1); w = 1 when animated, 0 leaves the UVs as they are.</summary>
+    public Vector4 UvRow0, UvRow1;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -426,7 +428,7 @@ public sealed class SceneRenderer : IDisposable
         var ov = new ObjectVarsCB
         {
             World = world, NormalMatrix = Matrix4x4.Transpose(inv),
-            WireColour = new Vector4(o.WireColour, 1), Highlight = highlight,
+            WireColour = new Vector4(o.WireColour, 1), Highlight = highlight, UvRow0 = o.UvRow0, UvRow1 = o.UvRow1,
         };
         ctx.UpdateSubresource(ref ov, objectCB);
         // MLO rooms are meant to be seen from inside: always cull so the walls vanish from outside like in game.

@@ -41,6 +41,7 @@ public static class SceneIO
         public int NextObjectId { get; set; } public int NextMaterialId { get; set; } public float[] GtaOrigin { get; set; } public List<string> Folders { get; set; } public MoloMax.Core.Tools.RoomPlanData Plan { get; set; }
         public List<MatDto> Materials { get; set; } public List<ObjDto> Objects { get; set; }
         public GtaProjectSettings Gta { get; set; }
+        public MoloMax.Core.Anim.SceneAnim Anim { get; set; }
     }
 
     // GtaInfo / GtaProjectSettings are plain field classes
@@ -58,6 +59,7 @@ public static class SceneIO
         var dto = new SceneDto
         {
             NextObjectId = s.NextObjectId, NextMaterialId = s.NextMaterialId, GtaOrigin = A(s.GtaOrigin), Gta = s.Gta, Folders = s.Folders.Count > 0 ? s.Folders : null, Plan = s.Plan?.Rooms.Count > 0 ? s.Plan : null,
+            Anim = s.Anim == null || s.Anim.IsEmpty ? null : s.Anim,
             Materials = s.Materials.Select(m => new MatDto
             {
                 Id = m.Id, Name = m.Name, Shader = m.Shader, Diffuse = m.DiffuseTexture, Bump = m.BumpTexture, Spec = m.SpecTexture, Detail = m.DetailTexture,
@@ -105,7 +107,7 @@ public static class SceneIO
     {
         var dto = JsonSerializer.Deserialize<SceneDto>(json, jsonOptions) ?? throw new InvalidDataException("Empty scene file.");
         if (dto.Format != "MoloMax") throw new InvalidDataException("This is not a MoloMax scene.");
-        var s = new Scene { NextObjectId = dto.NextObjectId, NextMaterialId = dto.NextMaterialId, GtaOrigin = V3(dto.GtaOrigin), Gta = dto.Gta ?? new GtaProjectSettings(), Folders = dto.Folders ?? new(), Plan = dto.Plan ?? new() };
+        var s = new Scene { NextObjectId = dto.NextObjectId, NextMaterialId = dto.NextMaterialId, GtaOrigin = V3(dto.GtaOrigin), Gta = dto.Gta ?? new GtaProjectSettings(), Folders = dto.Folders ?? new(), Plan = dto.Plan ?? new(), Anim = dto.Anim ?? new() };
         s.Materials.Clear();
         foreach (var m in dto.Materials ?? new())
             s.Materials.Add(new GtaMaterial

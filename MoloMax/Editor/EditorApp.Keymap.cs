@@ -71,6 +71,7 @@ public sealed partial class EditorApp
         if (transforming) { if (ImGui.IsKeyPressed(ImGuiKey.Escape, false)) CancelTransform(); return; }
         bool ctrl = io.KeyCtrl, shift = io.KeyShift, alt = io.KeyAlt;
         if (PaintKeys(ctrl)) return;
+        if (!SculptMode && !paintMode && AnimKeys(ctrl, io.KeyShift, io.KeyAlt)) return;
         // menu search: F3 (Standard), Space (Industry Compatible: Tab is the edit mode toggle there too); preferences: Ctrl+,
         // search every command: F3 (Blender keymap), X in the classic / industry keymaps (Space too in industry)
         if (!ctrl && !shift && !alt && (BlenderKeymap ? P(ImGuiKey.F3) : (P(ImGuiKey.X) || Settings.Keymap == Keymap.Industry && P(ImGuiKey.Space)))) { OpenSearch(); return; }

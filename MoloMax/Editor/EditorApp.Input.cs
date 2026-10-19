@@ -832,6 +832,7 @@ public sealed partial class EditorApp
     void EndTransform()
     {
         transforming = false; gizmo.Active = GizmoHandle.None; Dirty = true;
+        AutoKeyAfterTransform();
         if (shiftClone)
         {
             shiftClone = false;

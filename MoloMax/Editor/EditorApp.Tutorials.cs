@@ -201,6 +201,7 @@ public sealed partial class EditorApp
         T("MAP hide + send to MODEL", MapHideSendTest);
         T("MAP MLO hide: hiding an interior hides what is inside, and it stays hidden", MapMloHideTest);
         T("UNDO: move then Ctrl+Z, in MODEL and on a MAP ground", UndoMoveTest);
+        T("ANIM: timeline, I key, auto key, play, UV keys, camera, .ycd out and in, your .ycd files", AnimTest);
         T("MAP STREAM: open a stream folder (ymap, ytyp, ydr), edit, save in place", MapStreamTest);
         T("UX tour: panels a 3D artist uses", UxTour);
         T("CHECKLIST: the points without their own test", ChecklistTest);
@@ -1504,6 +1505,81 @@ public sealed partial class EditorApp
         }
         CloseStreamFolder();
         Expect(stream == null && !mapDocs.Values.Any(d => d.FilePath != null && d.FilePath.StartsWith(dir, StringComparison.OrdinalIgnoreCase)), "closed: its maps leave the scene");
+    }
+
+    IEnumerable<object> AnimTest()
+    {
+        Fresh();
+        UI.ImGuiBackend.SyntheticInput = true;
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "molo_anim_box";
+        vp.Camera.Frame(new Vector3(-4, -4, -1), new Vector3(8, 4, 4));
+        SelectOnly(box); Tool = Tool.Move;
+        if (!TimelineOpen) ToggleTimeline();
+        yield return Frames(5);
+        // 1. frame 0: I keys location / rotation / scale
+        SetFrame(0); yield return Frames(2);
+        KeyDownT(System.Windows.Forms.Keys.I); yield return Frames(3); KeyUpT(System.Windows.Forms.Keys.I); yield return Frames(3);
+        var t = Scene.Anim.Track(box.Id);
+        Expect(t != null && t.Curves.Count == 9 && t.Curves.All(c => c.Keys.Count == 1), $"I at frame 0: {t?.Curves.Count ?? 0} curves keyed ({status})");
+        // 2. auto key: frame 60, drag the X arrow
+        AutoKey = true; SetFrame(60); yield return Frames(3);
+        box = Scene.Find(box.Id);
+        var gx = GizmoGrip(vp, GizmoHandle.X);
+        SelectionPivot(out var pv, out _); var dir = Vector2.Normalize(ScreenOf(vp, pv + Vector3.UnitX) - ScreenOf(vp, pv));
+        foreach (var x in DragTo(gx, gx + dir * 160)) yield return x;
+        box = Scene.Find(box.Id); t = Scene.Anim.Track(box.Id);
+        float x60 = box.Position.X;
+        Expect(x60 > 0.5f && t.Curve(Core.Anim.Ch.LocX).Keys.Count == 2, $"auto key: moved to x {x60:0.00} at frame 60, X location keys {t.Curve(Core.Anim.Ch.LocX).Keys.Count}");
+        AutoKey = false;
+        // 3. scrub to 30: half way (smooth)
+        SetFrame(30); yield return Frames(3);
+        box = Scene.Find(box.Id);
+        Expect(box.Position.X > x60 * 0.3f && box.Position.X < x60 * 0.7f, $"frame 30: x {box.Position.X:0.00} between 0 and {x60:0.00}");
+        // 4. play
+        SetFrame(0); AnimPlaying = true; yield return Frames(40); AnimPlaying = false;
+        float fPlay = animFrame;
+        Expect(fPlay > 5, $"Play: the frame runs ({fPlay:0.0} after 40 drawn frames)");
+        // 5. UV keys: offset V 0 -> 1 between 0 and 60
+        Undo.Record("uv", Scene);
+        var bt = Scene.Anim.Track(box.Id, true);
+        bt.Curve(Core.Anim.Ch.UvV, true).SetKey(0, 0, Core.Anim.KeyInterp.Linear); bt.Curve(Core.Anim.Ch.UvV).SetKey(60, 1);
+        SetFrame(30); animShownFrame = float.NaN; yield return Frames(3);
+        box = Scene.Find(box.Id);
+        Expect(MathF.Abs(box.UvRow1.Z - 0.5f) < 0.01f && box.UvRow1.W > 0, $"UV offset keyed: row 1 at frame 30 = {box.UvRow1}");
+        yield return Shot("anim_timeline");
+        // 6. camera keys
+        var cam = vp.Camera; SetFrame(0); cam.Yaw = 0; KeyCamera();
+        SetFrame(60); cam.Yaw = MathF.PI / 2; KeyCamera();
+        SetFrame(30); animShownFrame = float.NaN; yield return Frames(3);
+        Expect(cam.Yaw > 0.2f && cam.Yaw < 1.4f, $"camera keys: yaw at frame 30 = {cam.Yaw * 180 / MathF.PI:0} degrees");
+        // 7. keys moved in the dope sheet / deleted
+        int before = Scene.Anim.KeyFrames(new[] { box.Id }).Count;
+        // 8. .ycd out, then back onto a fresh box
+        var path = StPath("molo_anim_test.ycd");
+        Expect(ExportYcd(path) && File.Exists(path), $"export .ycd: {status}");
+        var copy = Prim(CreateKind.Box, Vector3.Zero); copy.Name = "molo_anim_box";
+        SelectOnly(copy); yield return Frames(2);
+        Undo.Record("clear", Scene);
+        int applied = ImportYcd(path);
+        var ct = Scene.Anim.Track(copy.Id);
+        Expect(ycdClips != null && ycdClips.Count >= 2 && ct != null && ct.Has(Core.Anim.Ch.LocX), $"import back: {ycdClips?.Count} clip(s), {applied} applied, the copy has keys {ct?.Curves.Count ?? 0}  ({status})");
+        ycdWindow = false;
+        // 9. every .ycd of your resources reads
+        var root = @"C:\Users\molo3\Desktop\base_para_testes\resources";
+        if (Directory.Exists(root))
+        {
+            int files = 0, clips = 0, bones = 0, uv = 0; var bad = new List<string>();
+            foreach (var f in Directory.EnumerateFiles(root, "*.ycd", SearchOption.AllDirectories))
+            {
+                files++;
+                try { var cl = Core.Gta.Anim.YcdIO.Read(File.ReadAllBytes(f), Path.GetFileName(f)); clips += cl.Count; uv += cl.Count(c => c.IsUv); bones += cl.Count(c => c.Tracks.Any(tt => tt.Bone != 0)); if (files <= 6) Note(Path.GetFileName(f) + ": " + string.Join(", ", cl.Take(3).Select(Core.Anim.AnimGta.Describe))); }
+                catch (Exception e) { bad.Add(Path.GetFileName(f) + ": " + e.Message); }
+            }
+            Expect(bad.Count == 0 && clips > 0, $"your .ycd files: {files} read, {clips} clips ({uv} UV, {bones} with a skeleton); errors: {string.Join(" | ", bad.Take(3))}");
+        }
+        UI.ImGuiBackend.SyntheticInput = false;
+        if (TimelineOpen) ToggleTimeline();
     }
 
     IEnumerable<object> UndoMoveTest()

@@ -201,6 +201,7 @@ public static class GtaExporter
             var extEntities = new List<EntityDef>();
             var written = new List<(string Dir, string Name, string Xml, string Kind, List<ExportTexture> Tex)>();
             var uvClips = new List<UvClip>();
+            var keyedUvClips = new List<MoloMax.Core.Gta.Anim.YcdClip>(); // UV animation keyed on the timeline
             string animDir = null;
 
             // ---- MLO shell (split at the vertex budget)
@@ -296,9 +297,27 @@ public static class GtaExporter
                 if (pm.First.Gta.Fragment) WriteFragment(pm.Model, pm.First, anyInMlo ? mloDir : extDir, written, bank, st, archetypes, rep);
                 else WriteModel(pm.Model, anyInMlo ? mloDir : extDir, written, bank, st, archetypes, rep);
 
+                // UV animation keyed on the timeline: one clip per shader that can animate UVs
+                if (scene.Anim?.Track(pm.First.Id) is { } uvTrack && MoloMax.Core.Anim.Ch.Uv.Any(uvTrack.Has))
+                {
+                    var shaderMats = pm.Model.Parts.Select(p => p.Material).DistinctBy(m => m.Id).ToList();
+                    int added = 0;
+                    for (int si = 0; si < shaderMats.Count; si++)
+                    {
+                        var def = ShaderDb.FromPreset(shaderMats[si].Shader)?.Def;
+                        if (def == null || !def.Params.Any(p => p.Name == "globalAnimUV0")) { rep.Warnings.Add($"{pm.Name}: shader '{shaderMats[si].Shader}' cannot animate UVs."); continue; }
+                        if (MoloMax.Core.Anim.AnimGta.UvClipFor(scene, pm.First, pm.Name, si) is { } kc) { keyedUvClips.Add(kc); added++; }
+                    }
+                    if (added > 0)
+                    {
+                        var arch = archetypes.Last(a => a.Name == pm.Name);
+                        arch.Flags |= 1024; arch.ClipDictionary = res + "_anims";
+                        animDir = anyInMlo ? mloDir : animDir ?? extDir;
+                    }
+                }
                 // UV animation: one clip per animated shader of the model, all in <res>_anims.ycd
                 var anim = pm.First.Gta.Anim;
-                if (anim != null && anim.Kind != UvAnimKind.None)
+                if (anim != null && anim.Kind != UvAnimKind.None && !keyedUvClips.Any(k => k.Name.StartsWith(pm.Name + "_uv_")))
                 {
                     var shaderMats = pm.Model.Parts.Select(p => p.Material).DistinctBy(m => m.Id).ToList();
                     int added = 0;
@@ -409,10 +428,12 @@ public static class GtaExporter
                 }
             }
 
-            if (uvClips.Count > 0)
+            if (uvClips.Count > 0 || keyedUvClips.Count > 0)
             {
-                written.Add((animDir ?? (isMlo ? mloDir : extDir), res + "_anims", AnimXml.ClipDictionary(uvClips), "ycd", null));
-                rep.Info.Add($"{uvClips.Count} UV animation(s) at 30 fps in {res}_anims.ycd (archetype flag 1024).");
+                var xml = keyedUvClips.Count == 0 ? AnimXml.ClipDictionary(uvClips)
+                    : MoloMax.Core.Gta.Anim.YcdIO.ToXml(uvClips.Select(MoloMax.Core.Anim.AnimGta.FromUvClip).Concat(keyedUvClips));
+                written.Add((animDir ?? (isMlo ? mloDir : extDir), res + "_anims", xml, "ycd", null));
+                rep.Info.Add($"{uvClips.Count + keyedUvClips.Count} UV animation(s) at 30 fps in {res}_anims.ycd (archetype flag 1024){(keyedUvClips.Count > 0 ? $", {keyedUvClips.Count} from the timeline keys" : "")}.");
             }
 
             // ---- ytyp and ymaps

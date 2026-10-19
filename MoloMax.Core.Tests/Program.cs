@@ -853,6 +853,36 @@ Console.WriteLine("UV animation (YCD)");
     });
 }
 
+Console.WriteLine("UV animation keyed on the timeline (YCD)");
+{
+    var scene = new Scene();
+    scene.Gta.ResourceName = "molo_key_test";
+    var sign = scene.Add("Screen", Primitives.Plane(2, 1), new System.Numerics.Vector3(0, 0, 1));
+    var mat = scene.AddMaterial("screen", new System.Numerics.Vector3(0.2f, 0.6f, 1)); mat.Shader = "emissive";
+    sign.Mesh.SetAllMaterial(mat.Id);
+    sign.Gta.Role = GtaRole.Prop;
+    scene.Anim.End = 90;
+    var t = scene.Anim.Track(sign.Id, true);
+    t.Curve(MoloMax.Core.Anim.Ch.UvU, true).SetKey(0, 0, MoloMax.Core.Anim.KeyInterp.Linear); t.Curve(MoloMax.Core.Anim.Ch.UvU).SetKey(90, 3);
+    var outDir = Path.Combine(tmpDir, "anim_key_export");
+    var rep = MoloMax.Core.Gta.Export.GtaExporter.Export(scene, outDir, null);
+    foreach (var i in rep.Info.Where(i => i.Contains("UV"))) Console.WriteLine("       " + i);
+    var res = Path.Combine(outDir, "molo_key_test", "stream", "exterior");
+    Check("export: timeline UV keys become the model's UV clip (91 frames, scroll 0 -> 3), flag 1024", () =>
+    {
+        var path = Path.Combine(res, "molo_key_test_anims.ycd");
+        if (!rep.Ok || !File.Exists(path)) return false;
+        var clips = MoloMax.Core.Gta.Anim.YcdIO.Read(File.ReadAllBytes(path), "molo_key_test_anims.ycd");
+        var model = sign.Name.ToLowerInvariant().StartsWith("molo_key_test") ? sign.Name.ToLowerInvariant() : "molo_key_test_" + sign.Name.ToLowerInvariant();
+        var c = clips.FirstOrDefault(x => x.IsUv);
+        var u0 = c?.Track(0, 17);
+        Console.WriteLine($"       {string.Join(", ", clips.Select(MoloMax.Core.Anim.AnimGta.Describe))}  hash {c?.Hash:X8} want {MoloMax.Core.Gta.Export.AnimXml.ClipHash(model, 0):X8}");
+        var ty = new CodeWalker.GameFiles.YtypFile(); ty.Load(File.ReadAllBytes(Path.Combine(res, "molo_key_test.ytyp")));
+        bool flag = ty.AllArchetypes.Any(a => (a._BaseArchetypeDef.flags & 1024) != 0);
+        return c != null && c.Frames == 91 && Near(u0.Values[90].Z, 3) && Near(u0.Values[45].Z, 1.5f) && c.Hash == MoloMax.Core.Gta.Export.AnimXml.ClipHash(model, 0) && flag;
+    });
+}
+
 Console.WriteLine("Modifiers (Blender stack)");
 {
     var cube = Primitives.Box(1, 1, 1);
@@ -2085,6 +2115,78 @@ Console.WriteLine("\n== map editing: .ymap write / read / edit");
 }
 
 Console.WriteLine();
+// ---- animation: curves, Euler, UV rows, scene apply / save
+Check("anim: smooth curve passes through its keys, flat at the ends, no overshoot", () =>
+{
+    var c = new MoloMax.Core.Anim.AnimCurve(); c.SetKey(0, 0); c.SetKey(10, 10); c.SetKey(20, 10);
+    float mid = c.Evaluate(5), over = Enumerable.Range(0, 21).Max(f => c.Evaluate(f));
+    return Near(c.Evaluate(0), 0) && Near(c.Evaluate(10), 10) && Near(c.Evaluate(20), 10) && mid > 3 && mid < 7 && over <= 10.0001f;
+});
+Check("anim: linear and constant keys", () =>
+{
+    var c = new MoloMax.Core.Anim.AnimCurve(); c.SetKey(0, 0, MoloMax.Core.Anim.KeyInterp.Linear); c.SetKey(10, 10, MoloMax.Core.Anim.KeyInterp.Constant); c.SetKey(20, 30);
+    return Near(c.Evaluate(2.5f), 2.5f) && Near(c.Evaluate(15), 10) && Near(c.Evaluate(25), 30);
+});
+Check("anim: Euler XYZ degrees round trip (Blender order)", () =>
+{
+    var e = new Vector3(20, -35, 120);
+    var q = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(e);
+    var back = MoloMax.Core.Anim.SceneAnim.ToEulerDeg(q);
+    var q2 = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(back);
+    // Rz(90): X axis goes to Y
+    var rz = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(new Vector3(0, 0, 90));
+    return Vector3.Distance(back, e) < 0.01f && MathF.Abs(MathF.Abs(Quaternion.Dot(q, q2)) - 1) < 1e-5f && Vector3.Distance(Vector3.Transform(Vector3.UnitX, rz), Vector3.UnitY) < 1e-4f;
+});
+Check("anim: a spin keyed past 180 degrees keeps turning the same way", () =>
+{
+    var sc = new Scene(); var o = sc.Add("fan", Primitives.Box(1, 1, 1), Vector3.Zero);
+    sc.Anim.KeyObject(o, 0, MoloMax.Core.Anim.Ch.Rot);
+    o.Rotation = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(new Vector3(0, 0, 170)); sc.Anim.KeyObject(o, 10, MoloMax.Core.Anim.Ch.Rot);
+    o.Rotation = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(new Vector3(0, 0, -20)); sc.Anim.KeyObject(o, 20, MoloMax.Core.Anim.Ch.Rot); // = 340: continues
+    var z = sc.Anim.Track(o.Id).Curve(MoloMax.Core.Anim.Ch.RotZ);
+    return Near(z.Keys[2].Value, 340);
+});
+Check("anim: apply moves the object, UV rows set, save / open keeps the keys", () =>
+{
+    var sc = new Scene(); var o = sc.Add("door", Primitives.Box(1, 1, 1), Vector3.Zero);
+    sc.Anim.KeyObject(o, 0, MoloMax.Core.Anim.Ch.Loc);
+    o.Position = new Vector3(4, 0, 2); sc.Anim.KeyObject(o, 30, MoloMax.Core.Anim.Ch.Loc);
+    var t = sc.Anim.Track(o.Id); t.Curve(MoloMax.Core.Anim.Ch.UvU, true).SetKey(0, 0, MoloMax.Core.Anim.KeyInterp.Linear); t.Curve(MoloMax.Core.Anim.Ch.UvU).SetKey(30, 1);
+    sc.Anim.Apply(sc, 15);
+    bool mid = Near(o.Position.X, 2) && Near(o.Position.Z, 1) && Near(o.UvRow0.Z, 0.5f) && Near(o.UvRow0.W, 1) && Near(o.UvRow0.X, 1);
+    var back = SceneIO.FromJson(SceneIO.ToJson(sc));
+    var bt = back.Anim.Track(o.Id);
+    return mid && bt != null && bt.Curve(MoloMax.Core.Anim.Ch.LocX).Keys.Count == 2 && Near(bt.Curve(MoloMax.Core.Anim.Ch.LocX).Keys[1].Value, 4) && back.Anim.End == 120;
+});
+Check("anim: keys -> .ycd (binary) -> keys again: same move, spin and UV scroll", () =>
+{
+    var sc = new Scene(); var o = sc.Add("molo_fan", Primitives.Box(1, 1, 1), new Vector3(10, 5, 2));
+    o.Rotation = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(new Vector3(0, 0, 30));
+    sc.Anim.End = 60;
+    sc.Anim.KeyObject(o, 0, MoloMax.Core.Anim.Ch.Loc.Concat(MoloMax.Core.Anim.Ch.Rot).ToArray());
+    o.Position = new Vector3(12, 5, 3); o.Rotation = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(new Vector3(0, 0, 200));
+    sc.Anim.KeyObject(o, 60, MoloMax.Core.Anim.Ch.Loc.Concat(MoloMax.Core.Anim.Ch.Rot).ToArray());
+    var t = sc.Anim.Track(o.Id); t.Curve(MoloMax.Core.Anim.Ch.UvV, true).SetKey(0, 0, MoloMax.Core.Anim.KeyInterp.Linear); t.Curve(MoloMax.Core.Anim.Ch.UvV).SetKey(60, 2);
+    var clips = MoloMax.Core.Anim.AnimGta.ToClips(sc);
+    var bytes = MoloMax.Core.Gta.Anim.YcdIO.Write(clips);
+    var back = MoloMax.Core.Gta.Anim.YcdIO.Read(bytes, "test.ycd");
+    var mv = back.FirstOrDefault(c => !c.IsUv); var uvc = back.FirstOrDefault(c => c.IsUv);
+    Console.WriteLine($"       {string.Join(", ", back.Select(MoloMax.Core.Anim.AnimGta.Describe))}");
+    if (mv == null || uvc == null || mv.Frames != 61) return false;
+    // onto a copy standing where the original started
+    var sc2 = new Scene(); var o2 = sc2.Add("molo_fan", Primitives.Box(1, 1, 1), new Vector3(10, 5, 2)); o2.Rotation = MoloMax.Core.Anim.SceneAnim.FromEulerDeg(new Vector3(0, 0, 30));
+    int keys = MoloMax.Core.Anim.AnimGta.ApplyClip(sc2.Anim, o2, mv, 0) + MoloMax.Core.Anim.AnimGta.ApplyClip(sc2.Anim, o2, uvc, 0);
+    bool ok = true;
+    foreach (var f in new[] { 0, 17, 30, 45, 60 })
+    {
+        sc.Anim.Apply(sc, f); sc2.Anim.Apply(sc2, f);
+        ok &= Vector3.Distance(o.Position, o2.Position) < 0.01f && MathF.Abs(MathF.Abs(Quaternion.Dot(o.Rotation, o2.Rotation)) - 1) < 1e-3f
+              && Vector4.Distance(o.UvRow1, o2.UvRow1) < 0.01f;
+    }
+    var hash = MoloMax.Core.Gta.Export.AnimXml.ClipHash(o.Name.ToLowerInvariant(), 0);
+    Console.WriteLine($"       {keys} keys after thinning (61 frames x 8 values sampled)");
+    return ok && keys > 4 && keys < 200 && uvc.Hash == hash;
+});
 Console.WriteLine($"{pass} passed, {fail} failed");
 return fail == 0 ? 0 : 1;
 

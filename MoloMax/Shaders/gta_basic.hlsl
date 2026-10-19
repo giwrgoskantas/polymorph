@@ -32,6 +32,8 @@ cbuffer ObjectVars : register(b1)
     row_major float4x4 NormalMatrix; // transpose(inverse(World))
     float4 WireColour;
     float4 Highlight;                // rgb, a = strength (frozen/selected tint)
+    float4 UvRow0;                   // UV animation (globalAnimUV0 / 1): u' = dot(xyz, (u, v, 1)); w = 1 when animated
+    float4 UvRow1;
 };
 
 cbuffer MaterialVars : register(b2)
@@ -132,6 +134,7 @@ VS_OUTPUT VSMain(VS_INPUT input)
     o.Tangent = float4(t, input.Tangent.w);
     o.Bitangent = float4(cross(t, n) * input.Tangent.w, 0);
     o.Texcoord = input.Texcoord;
+    if (UvRow0.w > 0.5) o.Texcoord = float2(dot(UvRow0.xyz, float3(input.Texcoord, 1)), dot(UvRow1.xyz, float3(input.Texcoord, 1)));
     o.Colour0 = input.Colour0;
     o.Colour1 = input.Colour1;
     return o;

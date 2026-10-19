@@ -232,6 +232,8 @@ public sealed class SceneObject
     /// <summary>Instance group (3ds Max instance / Blender linked duplicate): objects with the same key share one mesh,
     /// its modifiers and its paint. Null = a unique object. GTA export writes the model once and places it several times.</summary>
     public string InstanceKey;
+    /// <summary>UV animation rows at the current frame (GTA globalAnimUV0 / 1), w = 1 when set; drawn only, never saved.</summary>
+    public Vector4 UvRow0, UvRow1;
 
     /// <summary>Blender-style modifier stack, evaluated on top of <see cref="Mesh"/> (non-destructive).</summary>
     public List<global::MoloMax.Core.Modifiers.Modifier> Modifiers = new();
@@ -324,7 +326,7 @@ public sealed class SceneObject
     {
         Id = Id, Name = Name, Mesh = mesh ?? Mesh.Clone(), Position = Position, Rotation = Rotation, Scale = Scale,
         WireColour = WireColour, Hidden = Hidden, Frozen = Frozen, Folder = Folder, ParentId = ParentId, GtaType = GtaType, Version = Version,
-        Gta = (Gta ?? new GtaInfo()).Clone(), TripoTaskId = TripoTaskId, Paint = Paint, PaintFile = PaintFile, InstanceKey = InstanceKey,
+        Gta = (Gta ?? new GtaInfo()).Clone(), TripoTaskId = TripoTaskId, Paint = Paint, PaintFile = PaintFile, InstanceKey = InstanceKey, UvRow0 = UvRow0, UvRow1 = UvRow1,
         Modifiers = (Modifiers ?? new()).Select(m => m.Clone()).ToList(),
         ModEdit = ModEdit == null ? null : new ModEditState { Base = ModEdit.Base, All = ModEdit.All.Select(m => m.Clone()).ToList(), Index = ModEdit.Index },
     };
@@ -428,6 +430,8 @@ public sealed class Scene
     /// <summary>World offset of the scene origin in GTA coordinates (where the model sits on the map).</summary>
     public Vector3 GtaOrigin;
     public GtaProjectSettings Gta = new();
+    /// <summary>Keyframe animation: timeline range and the curves of each object / the camera.</summary>
+    public MoloMax.Core.Anim.SceneAnim Anim = new();
 
     // 3ds Max wire colours, picked in turn for new objects
     static readonly Vector3[] wires =
@@ -662,6 +666,7 @@ public sealed class Scene
             Materials = Materials.Select(m => m.Clone()).ToList(),
             Folders = Folders.ToList(),
             Plan = System.Text.Json.JsonSerializer.Deserialize<MoloMax.Core.Tools.RoomPlanData>(System.Text.Json.JsonSerializer.Serialize(Plan ?? new())),
+            Anim = (Anim ?? new()).Clone(),
         };
         return s;
     }
