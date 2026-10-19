@@ -158,6 +158,7 @@ public sealed partial class EditorApp
         T("smart UV + UV editor", Uv);
         T("selection: edit-mode picking keeps working with X-Ray", XRayTest);
         T("vertex selection goes through the mesh by default, Visible only limits it", SelectThroughTest);
+        T("SMALL BOX: a small box inside a big object or face still selects it", SmallBoxTest);
         T("GIMS: create Drawable, collision, light, LODs", Gims);
         T("instances: Alt+D / Clone Options, shared edits, Drawable hierarchy, make unique, undo", InstancesTest);
         T("Edit Poly + Unwrap UVW modifiers inside the stack", ModifierEditTest);
@@ -354,6 +355,25 @@ public sealed partial class EditorApp
         yield return Shot("xray_edit_mode");
         XRay = false; SetLevel(SubObject.Object);
         Expect(true, "X-Ray toggled in edit mode without errors");
+    }
+
+    IEnumerable<object> SmallBoxTest()
+    {
+        Fresh();
+        var plane = Prim(CreateKind.Box, Vector3.Zero);
+        plane.Scale = new Vector3(20, 20, 1);
+        Selected.Clear(); SelectionChanged();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.WireframeOnly = false;
+        vp.Camera.Frame(new Vector3(-3, -3, -1), new Vector3(3, 3, 2));
+        yield return Frames(3);
+        var c = ScreenOf(vp, new Vector3(0, 0, plane.WorldBounds().Max.Z));
+        int inside = plane.Mesh.Verts.Count(v => { var sp = ScreenOf(vp, Vector3.Transform(v, plane.World)); return MathF.Abs(sp.X - c.X) < 15 && MathF.Abs(sp.Y - c.Y) < 15; });
+        BoxSelect(vp, c - new Vector2(15), c + new Vector2(15));
+        Expect(inside == 0 && Selected.Contains(plane.Id), $"object mode: a 30 px box in the middle of a big box (no vertex in it: {inside}) selects it");
+        SelectOnly(plane); SetLevel(SubObject.Polygon); SubSel(plane).Clear();
+        BoxSelect(vp, c - new Vector2(15), c + new Vector2(15));
+        Expect(SubSel(plane).Faces.Count == 1, $"polygon level: a small box on the big top face selects it ({SubSel(plane).Faces.Count})");
+        SetLevel(SubObject.Object);
     }
 
     /// <summary>Default (like 3ds Max): a box over a cube in vertex mode takes the hidden back corners too; "Visible only" keeps

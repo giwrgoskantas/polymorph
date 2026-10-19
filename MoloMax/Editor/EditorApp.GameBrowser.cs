@@ -67,12 +67,7 @@ public sealed partial class EditorApp
         }
 
         // classify the models into families once (background), then the type index for the textures
-        if (gameClassify == null) gameClassify = System.Threading.Tasks.Task.Run(() =>
-        {
-            foreach (var m in game.Models) m.Categories = GameCategories.Classify(m.Name);
-            gameClassified = true;
-            try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { }
-        });
+        StartClassify();
 
         // search bar
         ImGui.SetNextItemWidth(280);
@@ -80,7 +75,7 @@ public sealed partial class EditorApp
         ImGui.SameLine(); ImGui.Checkbox("ydr", ref gYdr); ImGui.SameLine(); ImGui.Checkbox("yft", ref gYft); ImGui.SameLine(); ImGui.Checkbox("ydd", ref gYdd); ImGui.SameLine(); ImGui.Checkbox("ybn", ref gYbn);
         ImGui.SameLine(); Ui.TextDisabled(gameStatus);
         bool classified = gameClassified;
-        var key = $"{gameSearch}|{gYdr}{gYft}{gYdd}{gYbn}|{gameCat}|{classified}";
+        var key = $"{gameSearch}|{gYdr}{gYft}{gYdd}{gYbn}|{gameCat}|{classified}|{familyRev}";
         if (key != gameKey)
         {
             gameKey = key;
@@ -121,6 +116,7 @@ public sealed partial class EditorApp
                         gameSel = a;
                         if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) GameImport(a, null);
                     }
+                    if (ImGui.BeginPopupContextItem($"##gctx{i}")) { gameSel = a; FamilyMenu(a); ImGui.EndPopup(); }
                 }
             clip.End(); clip.Destroy();
         }
@@ -189,6 +185,62 @@ public sealed partial class EditorApp
     // ---------------------------------------------------------------- 3D viewer
 
     int gameCat = -1;
+    /// <summary>Bumped when a model changes family by hand: the lists rebuild.</summary>
+    int familyRev;
+
+    static string FamilyKey(GameAsset a) => (a.Name + a.Ext).ToLowerInvariant();
+
+    /// <summary>Sorts the game models into families once, in the background (names first, then your own choices).</summary>
+    void StartClassify()
+    {
+        if (gameClassify != null || game == null) return;
+        var overrides = new Dictionary<string, long>(Settings.FamilyOverrides);
+        gameClassify = System.Threading.Tasks.Task.Run(() =>
+        {
+            foreach (var m in game.Models)
+            {
+                try { m.Categories = overrides.TryGetValue(FamilyKey(m), out var o) ? o : GameCategories.Classify(m.Name); }
+                catch { m.Categories = 0; }
+            }
+            gameClassified = true;
+            try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { }
+        });
+    }
+
+    /// <summary>Right-click menu of a game model: tick the families (Game Files and Asset Browser) it belongs to.</summary>
+    void FamilyMenu(GameAsset a)
+    {
+        Ui.TextDisabled(a.Name + a.Ext);
+        ImGui.Separator();
+        Ui.Label("FAMILIES (ASSET BROWSER)", Theme.TextDim);
+        if (!gameClassified) { Ui.TextDisabled("sorting the models..."); return; }
+        // the menu stays open: several families can be ticked in a row
+        ImGui.PushItemFlag(ImGuiItemFlags.AutoClosePopups, false);
+        for (int i = 0; i < GameCategories.All.Length; i++)
+        {
+            long bit = 1L << i;
+            bool on = (a.Categories & bit) != 0;
+            if (ImGui.MenuItem(GameCategories.All[i].Name, null, on))
+                SetFamilies(a, on ? a.Categories & ~bit : a.Categories | bit);
+        }
+        ImGui.PopItemFlag();
+        ImGui.Separator();
+        bool custom = Settings.FamilyOverrides.ContainsKey(FamilyKey(a));
+        if (ImGui.MenuItem("Back to automatic", null, false, custom))
+        {
+            Settings.FamilyOverrides.Remove(FamilyKey(a)); Settings.Save();
+            a.Categories = GameCategories.Classify(a.Name); familyRev++; assetKey = null;
+        }
+        if (custom) Ui.TextDisabled("(families set by hand)");
+    }
+
+    void SetFamilies(GameAsset a, long mask)
+    {
+        a.Categories = mask;
+        Settings.FamilyOverrides[FamilyKey(a)] = mask; Settings.Save();
+        familyRev++; assetKey = null;
+        SetStatus($"{a.Name}: {(mask == 0 ? "no family" : string.Join(", ", Enumerable.Range(0, GameCategories.All.Length).Where(i => (mask & (1L << i)) != 0).Select(i => GameCategories.All[i].Name)))}");
+    }
     System.Threading.Tasks.Task gameClassify;
     /// <summary>The models are sorted into families (the type index may still be building).</summary>
     volatile bool gameClassified;
@@ -263,9 +315,12 @@ public sealed partial class EditorApp
         size = new Vector2(MathF.Max(64, MathF.Floor(size.X)), MathF.Max(64, MathF.Floor(size.Y)));
         if (previewRt == null || previewRt.Width != (int)size.X || previewRt.Height != (int)size.Y) { previewRt?.Dispose(); previewRt = new PreviewTarget(gpu.Device, (int)size.X, (int)size.Y); }
         var p0 = ImGui.GetCursorScreenPos();
-        ImGui.Image(imgui.IdOf(previewRt.Srv), size);
-        bool hover = ImGui.IsItemHovered();
-        if (hover && ImGui.IsMouseDragging(ImGuiMouseButton.Left)) { var d = ImGui.GetIO().MouseDelta; previewYaw -= d.X * 0.01f; previewPitch = Math.Clamp(previewPitch + d.Y * 0.01f, -1.4f, 1.4f); previewSpin = false; }
+        // an invisible button over the picture takes the mouse: a drag turns the model, it does not move the window
+        ImGui.InvisibleButton("##gview", size);
+        bool hover = ImGui.IsItemHovered(), held = ImGui.IsItemActive();
+        ImGui.GetWindowDrawList().AddImage(imgui.IdOf(previewRt.Srv), p0, p0 + size);
+        if (ImGui.BeginPopupContextItem("##gviewctx") && gameSel != null) { FamilyMenu(gameSel); ImGui.EndPopup(); }
+        if (held && ImGui.IsMouseDragging(ImGuiMouseButton.Left)) { var d = ImGui.GetIO().MouseDelta; previewYaw -= d.X * 0.01f; previewPitch = Math.Clamp(previewPitch + d.Y * 0.01f, -1.4f, 1.4f); previewSpin = false; }
         if (hover && ImGui.GetIO().MouseWheel != 0) previewDist *= MathF.Pow(0.88f, ImGui.GetIO().MouseWheel);
         if (hover && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) previewSpin = true;
         var dl = ImGui.GetWindowDrawList();

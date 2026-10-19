@@ -52,6 +52,8 @@ public sealed class AppSettings
     public List<string> Bookmarks { get; set; } = new();
     /// <summary>Folders of your own models shown in the Asset Browser.</summary>
     public List<string> AssetFolders { get; set; } = new();
+    /// <summary>Game models put in other families by hand (right-click > Families): "name.ext" -> family bits.</summary>
+    public Dictionary<string, long> FamilyOverrides { get; set; } = new();
     /// <summary>Last folder of each kind of window (by its title).</summary>
     public Dictionary<string, string> LastFolders { get; set; } = new();
     /// <summary>GTA V install folder (for the game files browser).</summary>

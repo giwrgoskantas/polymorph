@@ -75,7 +75,7 @@ public sealed partial class EditorApp
         }
         else
         {
-            if (gameClassify == null) gameClassify = System.Threading.Tasks.Task.Run(() => { foreach (var m in game.Models) m.Categories = GameCategories.Classify(m.Name); gameClassified = true; try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { } });
+            StartClassify();
             for (int i = 0; i < GameCategories.All.Length; i++)
                 if (ImGui.Selectable(GameCategories.All[i].Name + "##gf" + i, assetSource == 1 && assetFamily == i)) { assetSource = 1; assetFamily = i; assetSel = null; }
         }
@@ -113,6 +113,7 @@ public sealed partial class EditorApp
                 if (ImGui.InvisibleButton("##t", new Vector2(cell, cell))) assetSel = a;
                 bool hov = ImGui.IsItemHovered();
                 if (hov && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) PlaceAsset(a, null);
+                if (a.Game != null && ImGui.BeginPopupContextItem("##actx")) { assetSel = a; FamilyMenu(a.Game); ImGui.EndPopup(); }
                 if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.SourceNoPreviewTooltip)) { assetDrag = a; assetSel = a; ImGui.SetDragDropPayload("POLY_ASSET", IntPtr.Zero, 0); ImGui.TextUnformatted(a.Name); ImGui.EndDragDropSource(); }
                 var tp = ThumbPath(a);
                 var srv = File.Exists(tp) ? renderer.Textures.Thumb(tp) : null;
@@ -134,7 +135,7 @@ public sealed partial class EditorApp
 
     void RefreshAssetItems()
     {
-        var key = $"{assetSource}|{assetFamily}|{assetSearch}|{Settings.AssetFolders.Count}|{game != null}|{gameClassified}";
+        var key = $"{assetSource}|{assetFamily}|{assetSearch}|{Settings.AssetFolders.Count}|{game != null}|{gameClassified}|{familyRev}";
         if (key == assetKey) return;
         assetKey = key;
         var text = assetSearch.Trim();

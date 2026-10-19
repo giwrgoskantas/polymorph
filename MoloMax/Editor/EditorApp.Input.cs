@@ -242,12 +242,12 @@ public sealed partial class EditorApp
         }
         if (lmbTracking)
         {
-            // a click that moves a little (mouse / pen jitter) stays a click: the box starts past 8 px
-            if (!boxSelecting && Vector2.Distance(Input.Mouse, boxStart) > 8) boxSelecting = true;
+            // a click that moves a little (mouse / pen jitter) stays a click: the box starts past 6 px
+            if (!boxSelecting && Vector2.Distance(Input.Mouse, boxStart) > 6) boxSelecting = true;
             if (Input.Released(MouseButtons.Left) || !Input.Down(MouseButtons.Left))
             {
                 var bd = Input.Mouse - boxStart;
-                if (boxSelecting && (MathF.Abs(bd.X) >= 12 || MathF.Abs(bd.Y) >= 12)) BoxSelect(boxViewport, boxStart, Input.Mouse);
+                if (boxSelecting && (MathF.Abs(bd.X) >= 6 || MathF.Abs(bd.Y) >= 6)) BoxSelect(boxViewport, boxStart, Input.Mouse);
                 else
                 {
                     // Blender: Alt+click loop (Ctrl+Alt ring); Industry and 3ds Max: double-click loop
@@ -614,9 +614,9 @@ public sealed partial class EditorApp
                 case SubObject.Vertex: ApplySelection(s.Verts, Enumerable.Range(0, inside.Length).Where(i => inside[i]).ToList(), false); break;
                 case SubObject.Edge: ApplySelection(s.Edges, Edges(cur).Where(e => inside[e.A] && inside[e.B]).ToList(), false); break;
                 case SubObject.Border: ApplySelection(s.Edges, MeshOps.BorderEdges(m).Where(e => inside[e.A] && inside[e.B]).ToList(), false); break;
-                case SubObject.Polygon: ApplySelection(s.Faces, Enumerable.Range(0, m.Faces.Count).Where(FaceIn).ToList(), false); break;
+                case SubObject.Polygon: ApplySelection(s.Faces, Enumerable.Range(0, m.Faces.Count).Where(FaceIn).Union(BoxRayFaces(vp, cur, s0, s1)).ToList(), false); break;
                 case SubObject.Element:
-                    ApplySelection(s.Faces, MeshSelect.Elements(m, Enumerable.Range(0, m.Faces.Count).Where(FaceIn)).ToList(), false); break;
+                    ApplySelection(s.Faces, MeshSelect.Elements(m, Enumerable.Range(0, m.Faces.Count).Where(FaceIn).Union(BoxRayFaces(vp, cur, s0, s1))).ToList(), false); break;
             }
             return;
         }
@@ -626,10 +626,42 @@ public sealed partial class EditorApp
             if (o.Hidden || o.Frozen) continue;
             var w = o.World;
             if (o.Mesh.Verts.Any(v => In(Vector3.Transform(v, w)))) hits.Add(o.Id);
+            else if (o.GtaType is GtaObjectType.Light or GtaObjectType.Model && In(o.Position)) hits.Add(o.Id);
+        }
+        // crossing (3ds Max): a box drawn inside a big object, with none of its vertices in it, still picks
+        // what the box touches on screen
+        foreach (var p in BoxSamples(s0, s1))
+        {
+            var lp = vp.Local(p);
+            var hit = Picking.PickObject(Scene, vp.Camera.ScreenRay(lp.X, lp.Y, vp.W, vp.H));
+            if (hit.HasValue && !hit.Value.Object.Hidden && !hit.Value.Object.Frozen && !hits.Contains(hit.Value.Object.Id)) hits.Add(hit.Value.Object.Id);
         }
         ApplySelection(Selected, hits, false);
         if (hits.Count > 0 && Selected.Contains(hits[0]) && !Selected.Contains(ActiveId)) ActiveId = hits[0];
         SelectionChanged();
+    }
+
+    /// <summary>Screen points spread over a selection box (about every 6 px, at most 32 x 32).</summary>
+    static IEnumerable<Vector2> BoxSamples(Vector2 s0, Vector2 s1)
+    {
+        var a = Vector2.Min(s0, s1); var b = Vector2.Max(s0, s1);
+        int nx = Math.Clamp((int)((b.X - a.X) / 6) + 1, 2, 32), ny = Math.Clamp((int)((b.Y - a.Y) / 6) + 1, 2, 32);
+        for (int j = 0; j < ny; j++)
+            for (int i = 0; i < nx; i++)
+                yield return new Vector2(a.X + (b.X - a.X) * i / (nx - 1), a.Y + (b.Y - a.Y) * j / (ny - 1));
+    }
+
+    /// <summary>The visible faces of o under a selection box (so a small box on a big face selects it).</summary>
+    IEnumerable<int> BoxRayFaces(Viewport vp, SceneObject o, Vector2 s0, Vector2 s1)
+    {
+        var set = new HashSet<int>();
+        foreach (var p in BoxSamples(s0, s1))
+        {
+            var lp = vp.Local(p);
+            var h = Picking.PickFace(o, vp.Camera.ScreenRay(lp.X, lp.Y, vp.W, vp.H), cullBack: CulledFor(o));
+            if (h.HasValue) set.Add(h.Value.Face);
+        }
+        return set;
     }
 
     /// <summary>Back faces of this object are not drawn (Backface Cull, MLO rooms always): picking skips them too.</summary>

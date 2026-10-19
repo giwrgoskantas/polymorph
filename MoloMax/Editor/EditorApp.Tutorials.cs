@@ -1,3 +1,4 @@
+using MoloMax.Core.Gta.Game;
 using MoloMax.Core.Gta.Library;
 using System.Numerics;
 using ImGuiNET;
@@ -198,6 +199,7 @@ public sealed partial class EditorApp
         T("UX tour: panels a 3D artist uses", UxTour);
         T("CHECKLIST: the points without their own test", ChecklistTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
+        T("FAMILIES: right-click puts a game model in a family (kept), viewer drag turns the model", FamilyTest);
         T("PLANAR: level vertices", PlanarTest);
     }
 
@@ -1110,6 +1112,32 @@ public sealed partial class EditorApp
             yield return Shot("tower_on_map2");
         }
         SetMapMode(false);
+    }
+
+    IEnumerable<object> FamilyTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        if (game == null) { Expect(false, "game files loaded: " + gameError); yield break; }
+        StartClassify();
+        yield return Until(() => gameClassified, 1200);
+        Expect(gameClassified, "the models are sorted into families");
+        var buoy = game.Models.FirstOrDefault(m => m.Name == "apa_prop_yacht_float_1a") ?? game.Models.First(m => m.Ext == ".ydr");
+        int veg = Array.FindIndex(GameCategories.All, c => c.Name == "Vegetation");
+        Settings.FamilyOverrides.Remove(FamilyKey(buoy)); buoy.Categories = GameCategories.Classify(buoy.Name);
+        Expect((buoy.Categories & (1L << veg)) == 0, $"{buoy.Name} is not vegetation by its name");
+        SetFamilies(buoy, buoy.Categories | (1L << veg));
+        OpenAssetBrowser(); assetSource = 1; assetFamily = veg; assetSearch = buoy.Name; assetKey = null;
+        yield return Frames(3);
+        Expect(assetItems.Any(i => i.Game == buoy), $"after right-click > Vegetation it is in the Asset Browser's Vegetation ({assetItems.Count})");
+        Expect(Settings.FamilyOverrides.TryGetValue(FamilyKey(buoy), out var kept) && (kept & (1L << veg)) != 0, "the choice is kept in the settings (next launch too)");
+        // back to automatic
+        Settings.FamilyOverrides.Remove(FamilyKey(buoy)); buoy.Categories = GameCategories.Classify(buoy.Name); familyRev++; assetKey = null;
+        yield return Frames(2);
+        Expect(!assetItems.Any(i => i.Game == buoy), "back to automatic: out of Vegetation");
+        assetsOpen = false; assetSearch = "";
     }
 
     IEnumerable<object> AssetTest()
