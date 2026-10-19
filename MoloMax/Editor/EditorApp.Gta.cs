@@ -63,7 +63,7 @@ public sealed partial class EditorApp
         Ui.TextColored(HubAccent, hubPage switch
         {
             HubPage.Home => "MOLO GTA  -  choose a task",
-            HubPage.Export => "EXPORT FIVEM RESOURCE",
+            HubPage.Export => exportSelectedOnly ? "EXPORT MODELS" : "EXPORT FIVEM RESOURCE",
             HubPage.Mlo => "MLO BUILDER",
             HubPage.Object => "OBJECT PROPERTIES",
             HubPage.Collision => "COLLISION",

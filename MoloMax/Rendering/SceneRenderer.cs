@@ -73,7 +73,20 @@ public sealed class SceneRenderer : IDisposable
     readonly InputLayout layout, layoutInst;
     Buffer instBuf; int instCap;
     VertexBufferBinding[] instBindings = new VertexBufferBinding[2];
-    readonly Buffer sceneCB, objectCB, materialCB, lightCB;
+    readonly Buffer sceneCB, objectCB, materialCB, lightCB, clipCB;
+    readonly Vector4[] clipData = new Vector4[ClipMax * 2 + 1];
+    public const int ClipMax = 16;
+    bool clipOn;
+    /// <summary>MAP: boxes where far models are not drawn (over the models the user hid). Empty = off.</summary>
+    public void SetClip(IReadOnlyList<(Vector3 Min, Vector3 Max)> boxes)
+    {
+        int n = boxes == null ? 0 : Math.Min(boxes.Count, ClipMax);
+        if (n == 0 && !clipOn) return;
+        for (int i = 0; i < n; i++) { clipData[i] = new Vector4(boxes[i].Min, 0); clipData[ClipMax + i] = new Vector4(boxes[i].Max, 0); }
+        clipData[ClipMax * 2] = new Vector4(n, 0, 0, 0);
+        ctx.UpdateSubresource(clipData, clipCB);
+        clipOn = n > 0;
+    }
     public const int MaxLights = 32, ShadowSize = 2048;
     const int LightVec4s = 7 + MaxLights * 5;
     public Vector3 FaceFront = new(0.19f, 0.36f, 1f), FaceBack = new(1f, 0.12f, 0.12f);
@@ -129,6 +142,8 @@ public sealed class SceneRenderer : IDisposable
         sceneCB = CB<SceneVarsCB>(); objectCB = CB<ObjectVarsCB>(); materialCB = CB<MaterialVarsCB>();
         lightCB = new Buffer(device, LightVec4s * 16, ResourceUsage.Default, BindFlags.ConstantBuffer, CpuAccessFlags.None, ResourceOptionFlags.None, 0);
         ctx.UpdateSubresource(lightData, lightCB);
+        clipCB = new Buffer(device, clipData.Length * 16, ResourceUsage.Default, BindFlags.ConstantBuffer, CpuAccessFlags.None, ResourceOptionFlags.None, 0);
+        ctx.UpdateSubresource(clipData, clipCB);
         shadowSampler = new SamplerState(device, new SamplerStateDescription
         {
             Filter = Filter.ComparisonMinMagLinearMipPoint, AddressU = TextureAddressMode.Border, AddressV = TextureAddressMode.Border, AddressW = TextureAddressMode.Border,
@@ -253,6 +268,7 @@ public sealed class SceneRenderer : IDisposable
         ctx.PixelShader.SetConstantBuffer(0, sceneCB); ctx.PixelShader.SetConstantBuffer(1, objectCB); ctx.PixelShader.SetConstantBuffer(2, materialCB);
         ctx.PixelShader.SetSampler(0, sampler);
         ctx.PixelShader.SetConstantBuffer(3, lightCB);
+        ctx.PixelShader.SetConstantBuffer(4, clipCB);
         ctx.PixelShader.SetSampler(1, shadowSampler);
         ctx.PixelShader.SetShaderResource(5, shadowSrv);
         ctx.GeometryShader.Set(null);
@@ -485,7 +501,7 @@ public sealed class SceneRenderer : IDisposable
         Textures.Dispose();
         CullBack.Dispose(); CullNone.Dispose(); LinesState.Dispose();
         DepthDefault.Dispose(); DepthRead.Dispose(); DepthOff.Dispose(); Opaque.Dispose(); Alpha.Dispose();
-        shadowSrv?.Dispose(); shadowDsv?.Dispose(); shadowTex?.Dispose(); shadowSampler.Dispose(); shadowRas.Dispose(); lightCB.Dispose();
+        shadowSrv?.Dispose(); shadowDsv?.Dispose(); shadowTex?.Dispose(); shadowSampler.Dispose(); shadowRas.Dispose(); lightCB.Dispose(); clipCB.Dispose();
         sampler.Dispose(); sceneCB.Dispose(); objectCB.Dispose(); materialCB.Dispose();
         layout.Dispose(); ps.Dispose(); vs.Dispose();
     }

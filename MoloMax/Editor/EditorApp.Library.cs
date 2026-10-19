@@ -9,7 +9,7 @@ using MoloMax.UI;
 
 namespace MoloMax.Editor;
 
-public enum LibraryAction { Browse, Fill, Stamp, Assign, Decal, RoomSlot, CubeProj }
+public enum LibraryAction { Browse, Fill, Stamp, Assign, Decal, RoomSlot, CubeProj, TerrainLayer }
 
 /// <summary>
 /// Molo Materials: the Molo texture library (every GTA V interior material, normal / spec included) inside MoloMax.
@@ -29,6 +29,7 @@ public sealed partial class EditorApp
     Vector2? libWinAt; // films: where the window stands
     string libResultsKey;
 
+    GtaMaterial libLayerMat; int libLayerIndex;
     void OpenLibrary(LibraryAction action)
     {
         libraryOpen = true; libraryAction = action;
@@ -58,6 +59,7 @@ public sealed partial class EditorApp
             LibraryAction.Fill => "Molo Materials - pick a fill for Molo Paint",
             LibraryAction.Stamp => "Molo Materials - pick a decal stamp",
             LibraryAction.RoomSlot => "Molo Materials - pick the " + RoomSlotNames[libRoomSlot].ToLowerInvariant() + " material",
+            LibraryAction.TerrainLayer => $"Molo Materials - pick terrain layer {libLayerIndex + 1}",
             _ => "Molo Materials - GTA V texture library",
         };
         if (!ImGui.Begin(title + "###library", ref libraryOpen, ImGuiWindowFlags.NoSavedSettings)) { ImGui.End(); return; }
@@ -182,6 +184,17 @@ public sealed partial class EditorApp
                     libraryOpen = false;
                     break;
                 }
+            case LibraryAction.TerrainLayer:
+                if (libLayerMat != null)
+                {
+                    Undo.Record("Terrain layer", Scene);
+                    libLayerMat.EnsureLayers();
+                    libLayerMat.Layers[libLayerIndex] = m.Diffuse; libLayerMat.LayerBumps[libLayerIndex] = m.Bump;
+                    Dirty = true;
+                    SetStatus($"Terrain layer {libLayerIndex + 1}: {m.Name}");
+                }
+                libraryOpen = false;
+                break;
             case LibraryAction.CubeProj:
                 if (cubeProj != null)
                 {

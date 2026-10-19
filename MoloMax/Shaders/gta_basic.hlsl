@@ -74,6 +74,14 @@ cbuffer LightVars : register(b3)
     float4 FaceBack;
 };
 
+// MAP: far models are cut away inside these boxes (over the models the user hid)
+cbuffer ClipVars : register(b4)
+{
+    float4 ClipMin[16];
+    float4 ClipMax[16];
+    float4 ClipCount;
+};
+
 Texture2D<float4> Colourmap : register(t0);
 Texture2D<float> ShadowMap : register(t5);
 SamplerComparisonState ShadowSS : register(s1);
@@ -266,6 +274,8 @@ float Checker(float2 uv)
 
 float4 PSMain(VS_OUTPUT input, bool front : SV_IsFrontFace) : SV_TARGET
 {
+    [loop] for (uint ci = 0; ci < (uint)ClipCount.x; ci++)
+        if (all(input.WorldPos >= ClipMin[ci].xyz) && all(input.WorldPos <= ClipMax[ci].xyz)) discard;
     float3 nrm = normalize(input.Normal);
     if ((SceneFlags & 8) != 0)
     {

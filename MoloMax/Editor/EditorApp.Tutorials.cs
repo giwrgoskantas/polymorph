@@ -1221,7 +1221,8 @@ public sealed partial class EditorApp
         bool drawnInst = pick.InstanceKey != null && instGroups.TryGetValue(pick.InstanceKey, out var gi) && Enumerable.Range(0, gi.Count).Any(k => Vector3.Distance(gi.Worlds[k].Translation, pick.Position) < 0.01f);
         var same = Scene.Objects.Where(o => o != pick && !o.Hidden && o.Gta.MapArchetype == pick.Gta.MapArchetype && Vector3.Distance(o.Position, pick.Position) < 0.05f).Select(o => o.Name + "@" + o.Folder).ToList();
         var lodsOver = backdrop.Where(o => !o.Hidden && o.Mesh != null && !FarSteppedAside(o, vp.Camera.Eye) && FarLodVisible(o, vp.Camera.Eye)).Where(o => { var (a, b) = o.FastWorldBounds(); return c.X >= a.X && c.X <= b.X && c.Y >= a.Y && c.Y <= b.Y; }).Select(o => o.Name).Take(6).ToList();
-        Expect(!drawnSingle && !drawnInst && same.Count == 0 && lodsOver.Count == 0, $"hidden: drawn alone {drawnSingle}, drawn instanced {drawnInst}, same model same place {same.Count} ({string.Join(", ", same.Take(4))}); far models over it: {string.Join(", ", lodsOver)}");
+        bool clipped = hiddenClip.Any(b => c.X >= b.Min.X && c.X <= b.Max.X && c.Y >= b.Min.Y && c.Y <= b.Max.Y);
+        Expect(!drawnSingle && !drawnInst && same.Count == 0 && clipped, $"hidden: far models cut away over it {clipped},  drawn alone {drawnSingle}, drawn instanced {drawnInst}, same model same place {same.Count} ({string.Join(", ", same.Take(4))}); far models over it: {string.Join(", ", lodsOver)}");
         yield return Shot("map_after_hide");
         foreach (var t in RowTargets(pick)) t.Hidden = false;
         // send to MODEL

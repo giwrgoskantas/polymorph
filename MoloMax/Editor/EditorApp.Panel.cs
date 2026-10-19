@@ -514,11 +514,15 @@ public sealed partial class EditorApp
     void TerrainLayerSlots(GtaMaterial mat)
     {
         mat.EnsureLayers();
-        Ui.TextDisabled("Terrain layers (paint them with the vertex colour brush > Terrain layers)");
+        Ui.TextDisabled("4 ground textures, blended by painting (Paint tab > Terrain layers)");
         for (int i = 0; i < 4; i++)
         {
+            ImGui.PushID("tl" + i);
+            if (ImGui.SmallButton($"Pick layer {i + 1} from Molo Materials")) { libLayerMat = mat; libLayerIndex = i; OpenLibrary(LibraryAction.TerrainLayer); }
+            Theme.Tip("Choose a GTA material: its texture and normal map fill this layer.");
             TexSlot($"Layer {i + 1}", ref mat.Layers[i], true);
-            TexSlot($"Layer {i + 1} normal", ref mat.LayerBumps[i], true);
+            TexSlot($"  normal", ref mat.LayerBumps[i], true);
+            ImGui.PopID();
         }
     }
 

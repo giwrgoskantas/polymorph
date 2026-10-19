@@ -16,6 +16,7 @@ public sealed partial class EditorApp
 {
     enum PropTab { Map, Tool, Scene, Object, Modifiers, Data, Material, Light, Paint, Gta, Weapon, Vehicle, Tripo, Addons }
     PropTab propTab = PropTab.Object;
+    SubObject propLastLevel = SubObject.Object; PropTab? propTabBeforeEdit;
     int materialSlot;
 
     static readonly (PropTab Tab, string Tip, uint Colour)[] PropTabs =
@@ -25,7 +26,7 @@ public sealed partial class EditorApp
         (PropTab.Scene, "Scene: lighting, import options, preferences, checks", 0xFFB0B0B0),
         (PropTab.Object, "Object: name, transform, origin, visibility", 0xFF3D9BF5),   // orange (ABGR)
         (PropTab.Modifiers, "Modifiers", 0xFFE0A050),                                   // blue wrench
-        (PropTab.Data, "Data: mesh, UV, vertex colour, normals, edit tools", 0xFF60C060), // green triangle
+        (PropTab.Data, "Edit: modeling tools (extrude, bevel, make planar...), UV, vertex colour, normals", 0xFF60C060), // green triangle
         (PropTab.Material, "Material: slots and GTA shader", 0xFF6060E0),                  // red sphere
         (PropTab.Light, "Light: scene lights, light settings, sun, sky, shadows, exposure", 0xFF50D8F8),
         (PropTab.Paint, "Molo Paint: texture painting, smart materials, GTA library", 0xFF40A0F0),
@@ -73,6 +74,15 @@ public sealed partial class EditorApp
         ImGui.EndChild();
         ImGui.SameLine(0, 0);
 
+        // entering edit mode brings the edit tools (Data tab) to the front; leaving it goes back to where you were
+        if (Level != propLastLevel)
+        {
+            if (propLastLevel == SubObject.Object && Level != SubObject.Object && propTab is PropTab.Object or PropTab.Tool or PropTab.Scene or PropTab.Modifiers)
+            { propTabBeforeEdit = propTab; propTab = PropTab.Data; }
+            else if (Level == SubObject.Object && propTabBeforeEdit is { } back && propTab == PropTab.Data) propTab = back;
+            if (Level == SubObject.Object) propTabBeforeEdit = null;
+            propLastLevel = Level;
+        }
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(8, 6));
         ImGui.BeginChild("##pbody", Vector2.Zero, ImGuiChildFlags.AlwaysUseWindowPadding);
         switch (propTab)
@@ -593,6 +603,7 @@ public sealed partial class EditorApp
                 if (ImGui.Button("Edge Rings", new Vector2(w2, 0))) Ring();
             }
         }
+        if (Ui.Header("Align / Make Planar", Open)) MakePlanarUi();
         if ((Level == SubObject.Polygon || Level == SubObject.Element) && Ui.Header("Faces (exact values)"))
         {
             ImGui.Checkbox("Individual faces", ref byPolygon);
@@ -687,11 +698,14 @@ public sealed partial class EditorApp
         Ui.TextWrapped(p.Notes);
         if (Ui.Header("Textures", Open))
         {
-            TexSlot("Diffuse", ref mat.DiffuseTexture, true);
-            TexSlot("Normal", ref mat.BumpTexture, p.Bump);
-            TexSlot("Specular", ref mat.SpecTexture, p.Spec);
-            TexSlot("Detail", ref mat.DetailTexture, p.Detail);
             if (mat.IsTerrain) TerrainLayerSlots(mat);
+            else
+            {
+                TexSlot("Diffuse", ref mat.DiffuseTexture, true);
+                TexSlot("Normal", ref mat.BumpTexture, p.Bump);
+                TexSlot("Specular", ref mat.SpecTexture, p.Spec);
+                TexSlot("Detail", ref mat.DetailTexture, p.Detail);
+            }
         }
         if (Ui.Header("Parameters", Open))
         {

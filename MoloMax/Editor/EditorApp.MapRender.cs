@@ -41,6 +41,7 @@ public sealed partial class EditorApp
         var eye = vp.Camera.Eye;
         float pix = vp.Camera.Ortho ? 0 : 1.6f / MathF.Max(vp.H, 1); // ~ angular size of one pixel at fov 60
         MapVisible = 0;
+        UpdateHiddenClip(eye);
         var live = MapLive();
         for (int i = 0, n = live.Count + backdrop.Count; i < n; i++)
         {
@@ -68,18 +69,38 @@ public sealed partial class EditorApp
     void MapDraw(bool alphaPass)
     {
         if (!alphaPass) MapDrawCalls = 0;
+        // the far models are cut away over the models the user hid (else the far copy shows where the model was)
         foreach (var g in instGroups.Values)
         {
             if (g.Count == 0) continue;
+            renderer.SetClip(g.Template.Id < 0 ? hiddenClip : null);
             if (g.Count == 1) { renderer.DrawObject(Scene, g.Template, alphaPass, Vector4.Zero, BackfaceCull); MapDrawCalls++; continue; }
             renderer.DrawInstanced(Scene, g.Template, g.Worlds, g.Count, alphaPass, BackfaceCull);
             MapDrawCalls++;
         }
         foreach (var o in mapSingles)
         {
+            renderer.SetClip(o.Id < 0 ? hiddenClip : null);
             var hl = o.Frozen ? new Vector4(0.55f, 0.55f, 0.6f, 0.6f) : Vector4.Zero;
             renderer.DrawObject(Scene, o, alphaPass, alphaPass ? Vector4.Zero : hl, BackfaceCull);
             MapDrawCalls++;
         }
+        renderer.SetClip(null);
+    }
+
+    /// <summary>Footprints of the map models the user hid near the camera (grown a little), refreshed with the draw list.</summary>
+    readonly List<(Vector3 Min, Vector3 Max)> hiddenClip = new();
+    void UpdateHiddenClip(Vector3 eye)
+    {
+        hiddenClip.Clear();
+        foreach (var o in MapLive())
+        {
+            if (!o.Hidden || o.Id < 0 || !entOf.TryGetValue(o.Id, out var de) || !de.Ent.IsHd || !MapLevelOn[de.Ent.LodLevel]) continue;
+            var (mn, mx) = o.FastWorldBounds();
+            hiddenClip.Add((mn - new Vector3(0.05f, 0.05f, 1.5f), mx + new Vector3(0.05f, 0.05f, 0.5f)));
+            if (hiddenClip.Count >= MoloMax.Rendering.SceneRenderer.ClipMax) break;
+        }
+        // nearest first when there are more than the shader takes
+        hiddenClip.Sort((a, b) => Vector3.DistanceSquared((a.Min + a.Max) * 0.5f, eye).CompareTo(Vector3.DistanceSquared((b.Min + b.Max) * 0.5f, eye)));
     }
 }

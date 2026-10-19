@@ -58,6 +58,16 @@ public sealed partial class EditorApp
         var doc = o.Paint;
         if (doc == null)
         {
+            if (TerrainMaterialOf(o) != null)
+            {
+                Ui.TextWrapped("This model uses a terrain material: paint where each of its 4 ground textures shows.");
+                if (Theme.Toggle("PAINT TERRAIN LAYERS", true, new Vector2(-1, 40)))
+                {
+                    if (!TexelMap.HasUsableUvs(o.Mesh)) DoMesh("Smart UV Project", (oo, m, s) => UvUnwrap.SmartProject(m));
+                    StartPaint(o); paintTool = PaintTool.VertexColour; terrainPaintLayer = 1; paintMode = true;
+                }
+                ImGui.Separator();
+            }
             Ui.TextWrapped("Paint the model in layers, then Polymorph makes the GTA textures (diffuse, normal, spec).");
             ImGui.Spacing();
             ImGui.SetNextItemWidth(-90);
