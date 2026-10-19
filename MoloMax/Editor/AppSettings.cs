@@ -21,6 +21,8 @@ public sealed class AppSettings
     public float ImportScale { get; set; } = 1f;
     public float ImportSmoothAngle { get; set; } = 40f;
     public bool ImportMerge { get; set; }
+    /// <summary>Moving vertices / edges / polygons keeps the texture in place (3ds Max "Preserve UVs").</summary>
+    public bool PreserveUVs { get; set; }
     public string LastFolder { get; set; }
     public string LibraryFolder { get; set; }
     /// <summary>Tripo API key, encrypted for this Windows user (DPAPI), base64.</summary>

@@ -662,6 +662,7 @@ public sealed partial class EditorApp
         {
             var w = cur.World;
             foreach (var v in SubSel(cur).VerticesOf(cur.Mesh, Level)) xfVerts[v] = Vector3.Transform(cur.Mesh.Verts[v], w);
+            CaptureUvMaps(cur);
         }
         else
         {
@@ -765,6 +766,7 @@ public sealed partial class EditorApp
         {
             Matrix4x4.Invert(cur.World, out var inv);
             foreach (var kv in xfVerts) if (kv.Key < cur.Mesh.Verts.Count) cur.Mesh.Verts[kv.Key] = Vector3.Transform(vertexFn(kv.Value), inv);
+            ApplyUvMaps(cur);
             cur.Touch();
         }
         else

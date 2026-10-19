@@ -1695,5 +1695,25 @@ public sealed partial class EditorApp
         yield return Frames(3);
         Expect(Current == b2 && Level == SubObject.Polygon && SubSel(b2).Faces.Count == 1, $"click on another mesh in polygon level: now editing '{Current?.Name}', {SubSel(b2).Faces.Count} face selected");
         SetLevel(SubObject.Object);
+        // Preserve UVs: a vertex slid along a planar face keeps the texture where it was
+        var pl = Prim(CreateKind.Plane, new Vector3(0, 8, 0)); pl.Name = "uvplane";
+        SelectOnly(pl); SetLevel(SubObject.Vertex); yield return Frames(2);
+        var pm = pl.Mesh; var f0 = pm.Faces[0];
+        int corner = 0, vi = f0.V[corner];
+        var uv0 = f0.UV[corner]; var p0 = pm.Verts[vi];
+        // the uv at the point the vertex will land on, read from the original face
+        var target = p0 + (pm.Verts[f0.V[2]] - p0) * 0.25f; target.Z = p0.Z;
+        var mapRef = FitUvMap(pm, f0);
+        Vector2 expectUv = default;
+        if (mapRef != null) { var d = target - mapRef.C; float qx = Vector3.Dot(d, mapRef.T), qy = Vector3.Dot(d, mapRef.B); expectUv = new Vector2(mapRef.U.X * qx + mapRef.U.Y * qy + mapRef.U.Z, mapRef.V.X * qx + mapRef.V.Y * qy + mapRef.V.Z); }
+        Settings.PreserveUVs = true;
+        SubSel(pl).Clear(); SubSel(pl).Verts.Add(vi);
+        CaptureOriginals();
+        var w0 = Vector3.Transform(target, pl.World);
+        ApplyLive(_ => w0, (a1, b1, c1) => (a1, b1, c1));
+        var uvNow = pl.Mesh.Faces[0].UV[corner];
+        Expect(mapRef != null && Vector2.Distance(uvNow, expectUv) < 1e-3f && Vector2.Distance(uvNow, uv0) > 1e-3f, $"Preserve UVs: moved corner UV {uv0} -> {uvNow} (expected {expectUv})");
+        Settings.PreserveUVs = false;
+        SetLevel(SubObject.Object);
     }
 }

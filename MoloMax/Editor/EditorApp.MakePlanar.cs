@@ -69,6 +69,9 @@ public sealed partial class EditorApp
 
     void MakePlanarUi()
     {
+        bool pu = Settings.PreserveUVs;
+        if (ImGui.Checkbox("Preserve UVs", ref pu)) { Settings.PreserveUVs = pu; Settings.Save(); }
+        Theme.Tip("Moving vertices, edges or polygons keeps the texture in place on the surface (the UVs follow).");
         float avail = ImGui.GetContentRegionAvail().X;
         float bw = (avail - 12) / 4;
         if (ImGui.Button("Make Planar", new Vector2(bw, 0))) MakePlanar(-1);

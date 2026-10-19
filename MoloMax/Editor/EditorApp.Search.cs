@@ -56,6 +56,7 @@ public sealed partial class EditorApp
             new("Select Edge Loops", "Select", Loop, Edit),
             new("Select Edge Rings", "Select", Ring, Edit),
             new("Make Planar (best-fit plane)", "Edit Poly", () => MakePlanar(-1), Edit),
+            new("Preserve UVs (on / off)", "Edit Poly", () => { Settings.PreserveUVs = !Settings.PreserveUVs; Settings.Save(); SetStatus("Preserve UVs " + (Settings.PreserveUVs ? "on" : "off")); }, Edit),
             new("Make Planar X", "Edit Poly", () => MakePlanar(0), Edit),
             new("Make Planar Y", "Edit Poly", () => MakePlanar(1), Edit),
             new("Make Planar Z (level the vertices)", "Edit Poly", () => MakePlanar(2), Edit),
