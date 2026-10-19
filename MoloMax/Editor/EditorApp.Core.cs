@@ -73,8 +73,17 @@ public sealed partial class EditorApp : IDisposable
             if (Settings.Keymap == Keymap.Max) Settings.Keymap = Keymap.Blender;
             Settings.KeymapChosen = true;
         }
+        // Do not persist an implicit first-run decision. Until the Welcome dialog
+        // is answered, run the editor with the safe Standard layout/keymap.
+        // Settings defaults remain unchanged; the user's explicit choice is saved by SetMode.
+        if (!Settings.ModeChosen)
+        {
+            Settings.Mode = UiMode.Blender;
+            Settings.Keymap = Keymap.Blender;
+        }
         Theme.Apply(Settings.Mode);
         Maximized = Settings.Mode == UiMode.Blender;
+        if (Settings.ModeChosen && Settings.Mode == UiMode.Max) TimelineOpen = true;
         Viewports[3].Camera.Frame(new Vector3(-4, -4, 0), new Vector3(4, 4, 3));
         foreach (var v in Viewports.Take(3)) v.Camera.OrthoHeight = 16;
         UpdateTitle();

@@ -32,8 +32,8 @@ public sealed partial class EditorApp
     bool BlenderKeymap => Settings.Keymap == Keymap.Blender;
     bool MaxKeymap => Settings.Keymap == Keymap.Max;
 
-    /// <summary>3ds Max mode (look, keymap, quad menu) is kept in the code but switched off for now.</summary>
-    public const bool MaxModeEnabled = false;
+    /// <summary>Classic mode (look, keymap, quad menu): on, chosen from the Welcome popup; Standard stays the default.</summary>
+    public const bool MaxModeEnabled = true;
     static readonly string[] KeymapNames = MaxModeEnabled ? new[] { "Standard", "Industry Compatible", "Classic" } : new[] { "Standard", "Industry Compatible" };
 
     public void SetKeymap(Keymap k)
@@ -53,6 +53,7 @@ public sealed partial class EditorApp
     {
         Settings.Mode = mode; Settings.ModeChosen = true;
         Theme.Apply(mode);
+        if (mode == UiMode.Max) TimelineOpen = true; // reuse existing animation timeline
         Maximized = mode == UiMode.Blender;
         SetKeymap(mode == UiMode.Blender ? Keymap.Blender : Keymap.Max);
         SetStatus(mode == UiMode.Blender
@@ -65,7 +66,7 @@ public sealed partial class EditorApp
     void HandleShortcuts()
     {
         var io = ImGui.GetIO();
-        if (io.WantTextInput || !Settings.ModeChosen) return;
+        if (io.WantTextInput) return; // Standard shortcuts work before first-run mode choice.
         if (FlyKeysActive) return; // right button held: the letters move the camera (game-style)
         if (ModalActive) { ModalKeys(); return; }
         if (transforming) { if (ImGui.IsKeyPressed(ImGuiKey.Escape, false)) CancelTransform(); return; }
