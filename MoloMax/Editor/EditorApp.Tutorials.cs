@@ -196,6 +196,7 @@ public sealed partial class EditorApp
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("MAP hide + send to MODEL", MapHideSendTest);
         T("UX tour: panels a 3D artist uses", UxTour);
+        T("CHECKLIST: the points without their own test", ChecklistTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
         T("PLANAR: level vertices", PlanarTest);
     }
@@ -1150,6 +1151,82 @@ public sealed partial class EditorApp
             yield return Shot("asset_browser");
         }
         assetsOpen = false;
+    }
+
+    IEnumerable<object> ChecklistTest()
+    {
+        Fresh();
+        if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true; ActiveViewport = 3;
+        var vp = Viewports[3]; vp.Shading = ShadingMode.Realistic;
+        yield return Frames(3);
+        // 1. edit tools come to the front
+        var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "chk_box";
+        SelectOnly(box); propTab = PropTab.Object; yield return Frames(4);
+        SetLevel(SubObject.Vertex); yield return Frames(4);
+        bool toEdit = propTab == PropTab.Data;
+        yield return Shot("chk_edit_tab");
+        SetLevel(SubObject.Object); yield return Frames(4);
+        Expect(toEdit && propTab == PropTab.Object, $"edit mode brings the Edit tab ({toEdit}), object mode goes back to Object ({propTab})");
+        // 2. material panel follows the face
+        var mA = Scene.AddMaterial("chk_red", new Vector3(0.8f, 0.2f, 0.2f)); var mB = Scene.AddMaterial("chk_blue", new Vector3(0.2f, 0.3f, 0.9f));
+        for (int i = 0; i < box.Mesh.Faces.Count; i++) box.Mesh.Faces[i].MatId = i < 3 ? mA.Id : mB.Id;
+        box.Touch();
+        SetLevel(SubObject.Polygon); propTab = PropTab.Material; SubSel(box).Clear(); SubSel(box).Faces.Add(4); yield return Frames(4);
+        bool followB = selectedMaterial == mB.Id;
+        SubSel(box).Clear(); SubSel(box).Faces.Add(0); yield return Frames(4);
+        bool followA = selectedMaterial == mA.Id;
+        yield return Shot("chk_material_follows");
+        Expect(followA && followB, $"material panel follows the selected face (blue {followB}, red {followA})");
+        SetLevel(SubObject.Object);
+        // 3. Scene Explorer goes to a model picked in the view
+        var node = Prim(CreateKind.Box, new Vector3(0, 6, 0)); node.Name = "chk_drawable";
+        var kid = Prim(CreateKind.Box, new Vector3(0, 6, 1)); kid.Name = "chk_drawable_high_0"; kid.ParentId = node.Id;
+        for (int i = 0; i < 120; i++) { var f = Prim(CreateKind.Box, new Vector3(30 + i * 3, 0, 0)); f.Name = $"filler_{i:000}"; }
+        closedObjs.Add(node.Id);
+        Selected.Clear(); yield return Frames(6);
+        Selected.Add(kid.Id); ActiveId = kid.Id; SelectionChanged(); // as a click in the view does
+        yield return Frames(8);
+        bool opened = !closedObjs.Contains(node.Id), onScreen = outBandRows.Any(r => r.Id == kid.Id);
+        yield return Shot("chk_outliner_reveal");
+        Expect(opened && onScreen, $"Scene Explorer opens the parent ({opened}) and scrolls to the picked model ({onScreen})");
+        // 4. terrain layer from Molo Materials + paint button
+        var tm = Scene.AddMaterial("chk_terrain", new Vector3(0.6f)); tm.Shader = "terrain_cb_w_4lyr";
+        EnsureLibrary(); yield return Until(() => library != null && library.Materials.Count > 0, 60);
+        var lm = library?.Materials.FirstOrDefault(x => x.Diffuse != null && x.Bump != null);
+        if (lm != null) { libLayerMat = tm; libLayerIndex = 2; libraryAction = LibraryAction.TerrainLayer; LibraryPrimary(lm); }
+        Expect(lm != null && tm.Layer(2) == lm.Diffuse && tm.LayerBump(2) == lm.Bump, $"terrain layer 3 picked from Molo Materials: {Path.GetFileName(tm.Layer(2) ?? "-")} + {Path.GetFileName(tm.LayerBump(2) ?? "-")}");
+        foreach (var f in box.Mesh.Faces) f.MatId = tm.Id; box.Touch();
+        SelectOnly(box); propTab = PropTab.Paint; yield return Frames(4);
+        Expect(TerrainMaterialOf(box) != null, "Paint tab offers PAINT TERRAIN LAYERS on a terrain model");
+        yield return Shot("chk_paint_terrain_button");
+        // 5. Tripo link
+        propTab = PropTab.Tripo; yield return Frames(4);
+        Expect(TripoLink.StartsWith("https://tripo.pxf.io/"), $"Get Tripo button links to {TripoLink}");
+        yield return Shot("chk_tripo_tab");
+        // 6. MLO rooms are volumes (a real MLO of yours)
+        var ytyp = @"C:\Users\molo3\Desktop\base_para_testes\resources\[map]\molo_bolingbrokeprison\stream\molo_bp.ytyp";
+        if (File.Exists(ytyp))
+        {
+            Fresh(); ImportMlo(ytyp);
+            yield return Until(() => pendingImports.Count == 0, 180);
+            var rooms = Scene.Objects.Where(o => o.GtaType == GtaObjectType.MloRoom && !string.Equals(o.Folder, PlanFolder)).ToList();
+            int vol = rooms.Count(o => IsVolumeOnly(o));
+            var r0 = rooms.FirstOrDefault();
+            bool notPickable = true;
+            if (r0 != null)
+            {
+                var (a, b) = r0.WorldBounds(); var c = (a + b) * 0.5f;
+                var ray = new MoloMax.Core.Scenes.Ray(c + new Vector3(0, 0, 200), -Vector3.UnitZ);
+                var hit = Picking.PickObject(Scene, ray);
+                notPickable = hit == null || hit.Value.Object.GtaType != GtaObjectType.MloRoom;
+                SelectOnly(r0); FrameSelection(vp); Selected.Clear();
+            }
+            yield return Frames(10);
+            yield return Shot("chk_mlo_volumes");
+            Expect(rooms.Count > 0 && vol == rooms.Count && notPickable, $"molo_bp.ytyp: {rooms.Count} rooms, {vol} shown as volumes, a click does not pick them ({notPickable})");
+        }
+        else Note("molo_bp.ytyp not found: MLO volumes not checked");
     }
 
     IEnumerable<object> UxTour()
