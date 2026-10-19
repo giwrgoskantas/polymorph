@@ -1085,12 +1085,9 @@ public sealed partial class EditorApp
             if (intEntOf.TryGetValue(cur.Id, out var ie))
                 Ui.TextDisabled($"interior object  ·  room {(ie.Ent.Room > 0 && ie.Ent.Room < ie.In.Doc.Rooms.Count ? ie.In.Doc.Rooms[ie.Ent.Room].Name : "limbo")}");
             var ms = modelScene;
-            if (ms != null && ImGui.Button("Edit this model in MODEL mode", new Vector2(-1, 0)))
-            {
-                var name = cur.Gta.MapArchetype; var asset = game?.Search(name, true, true, false).FirstOrDefault(a => a.Name == name);
-                SetMapMode(false);
-                if (asset != null) GameImport(asset, null);
-            }
+            int nsel = SelectedMapModels().Count;
+            if (ms != null && ImGui.Button(nsel > 1 ? $"Send the {nsel} selected models to MODEL" : "Send this model to MODEL", new Vector2(-1, 0))) SendSelectedToModel();
+            Theme.Tip("Opens MODEL mode with the game model(s) imported, laid out as on the map. Also in the right-click menu.");
         }
     }
 

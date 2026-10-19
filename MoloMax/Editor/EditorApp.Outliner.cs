@@ -457,6 +457,7 @@ public sealed partial class EditorApp
                 ImGui.EndMenu();
             }
             ImGui.Separator();
+            SendToModelMenuItem();
             if (ImGui.MenuItem("Isolate Selection")) IsolateSelection(forceOn: true);
             ImGui.Separator();
             if (ImGui.MenuItem("Collapse all")) CollapseAll();

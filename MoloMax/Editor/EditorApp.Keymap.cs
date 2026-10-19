@@ -600,6 +600,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Add ped (scale)")) AddPedReference();
             if (ImGui.MenuItem("Flip Normals", null, false, Selected.Count > 0)) { var objs = SelObjects().ToList(); Do("Flip Normals", () => { foreach (var o in objs) { MeshOps.FlipAll(o.Mesh); o.Touch(); } }); }
             ImGui.Separator();
+            SendToModelMenuItem();
             if (ImGui.MenuItem("Isolate Selection", K("/", "Shift+I"), false, Selected.Count > 0)) IsolateSelection(forceOn: true);
             if (isolated && ImGui.MenuItem("End Isolate", K("/", "Shift+I"))) EndIsolate();
             if (ImGui.MenuItem("Delete", K("X", "Del"), false, Selected.Count > 0)) DeleteSelection();

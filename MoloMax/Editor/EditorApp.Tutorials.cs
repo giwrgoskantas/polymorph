@@ -194,6 +194,7 @@ public sealed partial class EditorApp
         T("MAP terrain: 4-layer ground", MapTerrainTest);
         T("TERRAIN: 4 layers painted with vertex colour", TerrainPaintTest);
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
+        T("MAP hide + send to MODEL", MapHideSendTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
         T("PLANAR: level vertices", PlanarTest);
     }
@@ -1148,6 +1149,54 @@ public sealed partial class EditorApp
             yield return Shot("asset_browser");
         }
         assetsOpen = false;
+    }
+
+    IEnumerable<object> MapHideSendTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        SetMapMode(true); ClearMapBuild();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        yield return Until(() => world != null, 600);
+        var cam = vp.Camera; MapStream = true;
+        var spot = new Vector3(445, -1000, 30);
+        GoTo(spot); cam.Distance = 45; cam.Pitch = 0.5f;
+        yield return Settle(() => backdropIn.IsEmpty && backdropMaps >= backdropTotal, 120);
+        yield return Settle(() => mapStreamQueue.Count == 0 && mapLoadTask == null, 60);
+        yield return Settle(() => archLoading == 0, 60);
+        yield return Frames(20);
+        // the biggest HD model near the camera (a ground or a building)
+        var pick = MapLive().Where(o => o.Id >= 0 && !o.Hidden && o.Mesh != null && o.Mesh.Faces.Count > 0 && !string.IsNullOrEmpty(o.Gta.MapArchetype) && Vector3.Distance(o.Position, spot) < 80)
+            .OrderByDescending(o => { var (a, b) = o.FastWorldBounds(); return (b.X - a.X) * (b.Y - a.Y); }).FirstOrDefault();
+        Expect(pick != null, $"picked {pick?.Name} ({pick?.Gta.MapArchetype}) in {pick?.Folder}");
+        if (pick == null) yield break;
+        SelectOnly(pick); PinPickedMaps(); yield return Frames(10);
+        yield return Shot("map_before_hide");
+        // hide it like the eye button does
+        foreach (var t in RowTargets(pick)) t.Hidden = true;
+        Selected.Clear(); SelectionChanged();
+        yield return Frames(10);
+        MapGatherDraws(vp, vp.Camera.View * vp.Camera.Projection(vp.Aspect));
+        var (mn, mx) = pick.FastWorldBounds(); var c = (mn + mx) * 0.5f;
+        bool drawnSingle = mapSingles.Contains(pick);
+        bool drawnInst = pick.InstanceKey != null && instGroups.TryGetValue(pick.InstanceKey, out var gi) && Enumerable.Range(0, gi.Count).Any(k => Vector3.Distance(gi.Worlds[k].Translation, pick.Position) < 0.01f);
+        var same = Scene.Objects.Where(o => o != pick && !o.Hidden && o.Gta.MapArchetype == pick.Gta.MapArchetype && Vector3.Distance(o.Position, pick.Position) < 0.05f).Select(o => o.Name + "@" + o.Folder).ToList();
+        var lodsOver = backdrop.Where(o => !o.Hidden && o.Mesh != null && !FarSteppedAside(o, vp.Camera.Eye) && FarLodVisible(o, vp.Camera.Eye)).Where(o => { var (a, b) = o.FastWorldBounds(); return c.X >= a.X && c.X <= b.X && c.Y >= a.Y && c.Y <= b.Y; }).Select(o => o.Name).Take(6).ToList();
+        Expect(!drawnSingle && !drawnInst && same.Count == 0, $"hidden: drawn alone {drawnSingle}, drawn instanced {drawnInst}, same model same place {same.Count} ({string.Join(", ", same.Take(4))}); far models over it: {string.Join(", ", lodsOver)}");
+        yield return Shot("map_after_hide");
+        foreach (var t in RowTargets(pick)) t.Hidden = false;
+        // send to MODEL
+        SelectOnly(pick); yield return Frames(3);
+        int before = otherMode?.Scene?.Objects.Count ?? 0;
+        SendSelectedToModel();
+        yield return Until(() => !MapMode && Scene.Objects.Any(o => o.Name.Contains(pick.Gta.MapArchetype, StringComparison.OrdinalIgnoreCase)), 120);
+        var got = Scene.Objects.FirstOrDefault(o => o.Name.Contains(pick.Gta.MapArchetype, StringComparison.OrdinalIgnoreCase));
+        Expect(!MapMode && got != null, $"send to MODEL: now in {(MapMode ? "MAP" : "MODEL")}, imported {got?.Name} at {got?.Position}");
+        if (got != null) { SelectOnly(got); FrameSelection(vp); }
+        yield return Frames(20);
+        yield return Shot("sent_to_model");
     }
 
     IEnumerable<object> TripoDiag()
