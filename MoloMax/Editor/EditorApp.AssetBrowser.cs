@@ -75,7 +75,7 @@ public sealed partial class EditorApp
         }
         else
         {
-            if (gameClassify == null) gameClassify = System.Threading.Tasks.Task.Run(() => { foreach (var m in game.Models) m.Categories = GameCategories.Classify(m.Name); });
+            if (gameClassify == null) gameClassify = System.Threading.Tasks.Task.Run(() => { foreach (var m in game.Models) m.Categories = GameCategories.Classify(m.Name); gameClassified = true; try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { } });
             for (int i = 0; i < GameCategories.All.Length; i++)
                 if (ImGui.Selectable(GameCategories.All[i].Name + "##gf" + i, assetSource == 1 && assetFamily == i)) { assetSource = 1; assetFamily = i; assetSel = null; }
         }
@@ -134,7 +134,7 @@ public sealed partial class EditorApp
 
     void RefreshAssetItems()
     {
-        var key = $"{assetSource}|{assetFamily}|{assetSearch}|{Settings.AssetFolders.Count}|{game != null}|{gameClassify?.IsCompleted}";
+        var key = $"{assetSource}|{assetFamily}|{assetSearch}|{Settings.AssetFolders.Count}|{game != null}|{gameClassified}";
         if (key == assetKey) return;
         assetKey = key;
         var text = assetSearch.Trim();
@@ -154,7 +154,7 @@ public sealed partial class EditorApp
             }
             catch { }
         }
-        else if (assetSource == 1 && game != null && gameClassify is { IsCompleted: true })
+        else if (assetSource == 1 && game != null && gameClassified)
         {
             long bit = 1L << assetFamily;
             IEnumerable<GameAsset> q = text.Length >= 2 ? game.Search(text, true, true, false, false) : game.Models.Where(m => m.Ext is ".ydr" or ".yft");

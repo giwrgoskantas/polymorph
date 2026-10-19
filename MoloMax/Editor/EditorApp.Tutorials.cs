@@ -1134,7 +1134,7 @@ public sealed partial class EditorApp
         if (game != null)
         {
             assetSource = 1; assetFamily = 0; assetKey = null; // chairs & seats
-            yield return Settle(() => gameClassify is { IsCompleted: true }, 60);
+            yield return Until(() => gameClassified, 1200);
             yield return Frames(3);
             var first = assetItems.Take(6).ToList();
             foreach (var x in first) { var p = ThumbPath(x); if (File.Exists(p)) File.Delete(p); thumbAsked.Remove(x.Key); }

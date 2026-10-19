@@ -70,6 +70,7 @@ public sealed partial class EditorApp
         if (gameClassify == null) gameClassify = System.Threading.Tasks.Task.Run(() =>
         {
             foreach (var m in game.Models) m.Categories = GameCategories.Classify(m.Name);
+            gameClassified = true;
             try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { }
         });
 
@@ -78,7 +79,7 @@ public sealed partial class EditorApp
         ImGui.InputTextWithHint("##gsearch", "search a model (e.g. chair, ss1_05, prop_bench)", ref gameSearch, 80);
         ImGui.SameLine(); ImGui.Checkbox("ydr", ref gYdr); ImGui.SameLine(); ImGui.Checkbox("yft", ref gYft); ImGui.SameLine(); ImGui.Checkbox("ydd", ref gYdd); ImGui.SameLine(); ImGui.Checkbox("ybn", ref gYbn);
         ImGui.SameLine(); Ui.TextDisabled(gameStatus);
-        bool classified = gameClassify.IsCompleted;
+        bool classified = gameClassified;
         var key = $"{gameSearch}|{gYdr}{gYft}{gYdd}{gYbn}|{gameCat}|{classified}";
         if (key != gameKey)
         {
@@ -189,6 +190,8 @@ public sealed partial class EditorApp
 
     int gameCat = -1;
     System.Threading.Tasks.Task gameClassify;
+    /// <summary>The models are sorted into families (the type index may still be building).</summary>
+    volatile bool gameClassified;
     PreviewTarget previewRt;
     GameAsset previewAsset;
     System.Threading.Tasks.Task<MoloMax.Core.IO.ImportResult> previewTask;
