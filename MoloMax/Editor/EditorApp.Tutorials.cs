@@ -1168,6 +1168,19 @@ public sealed partial class EditorApp
             var loads = tex.Select(t => { try { using var b = new System.Drawing.Bitmap(t); return $"{Path.GetFileName(t)} ok {b.Width}"; } catch (Exception e) { return $"{Path.GetFileName(t)} FAIL {e.Message}"; } });
             Expect(true, $"{fi.Name} ({fi.LastWriteTime:HH:mm}): images [{string.Join(",", mimes)}], extensions [{exts}], {r.Materials.Count} materials, diffuse: {string.Join(" | ", loads)}; warnings: {string.Join(" | ", r.Warnings.Take(4))}");
         }
+        // in the view: imported like the Tripo panel does, realistic shading
+        if (files.Count > 0)
+        {
+            var vp = Viewports[ActiveViewport]; vp.Shading = ShadingMode.Realistic; Maximized = true;
+            var created = ImportFile(files[0].FullName, Vector3.Zero);
+            yield return Frames(10);
+            if (created.Count > 0) { SelectOnly(created[0]); FrameSelection(vp); Selected.Clear(); }
+            yield return Frames(20);
+            var mats = created.SelectMany(o => o.Mesh.Faces.Select(f => f.MatId)).Distinct().Select(id => Scene.Material(id)).ToList();
+            var info = mats.Select(m => $"{m.Name} shader {m.Shader} diffuse {m.DiffuseTexture} resolved {renderer.Textures.Resolve(m.DiffuseTexture)} srv {(renderer.Textures.Get(m.DiffuseTexture) != null)}");
+            Expect(true, $"in the view: {created.Count} object(s); {string.Join(" | ", info)}; texture errors: {string.Join(" | ", renderer.Textures.Errors.TakeLast(4))}");
+            yield return Shot("tripo_in_view");
+        }
         yield return Frames(2);
     }
 
