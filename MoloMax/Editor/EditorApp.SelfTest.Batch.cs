@@ -70,13 +70,14 @@ public sealed partial class EditorApp
         bool hoverShown = snapHover is { } shv && Vector3.Distance(shv, cornerA) < 1e-3f;
         yield return Shot("snap_hover_point");
         PostMouse(0x201, ScreenOf(vps, cornerA), 1); yield return Frames(2);
-        bool grabbed = transforming;
-        for (int i = 1; i <= 10; i++) { PostMouse(0x200, Vector2.Lerp(ScreenOf(vps, cornerA), ScreenOf(vps, cornerB), i / 10f), 1); yield return Frames(1); }
+        bool clickSafe = !transforming; // a press alone does not grab: a plain click still selects
+        bool grabbed = false;
+        for (int i = 1; i <= 10; i++) { PostMouse(0x200, Vector2.Lerp(ScreenOf(vps, cornerA), ScreenOf(vps, cornerB), i / 10f), 1); yield return Frames(1); grabbed |= transforming; }
         yield return Frames(2);
         yield return Shot("snap_drag_target_dots");
         PostMouse(0x202, ScreenOf(vps, cornerB), 0); yield return Frames(2);
         var landed2 = W(ba, ia);
-        Expect(hoverShown && grabbed && Vector3.Distance(landed2, cornerB) < 1e-3f, $"drag a corner without the gizmo: point shown {hoverShown}, grabbed {grabbed}, lands on B's corner (gap {Vector3.Distance(landed2, cornerB):0.0000} m)");
+        Expect(hoverShown && clickSafe && grabbed && Vector3.Distance(landed2, cornerB) < 1e-3f, $"drag a corner without the gizmo: point shown {hoverShown}, press alone does not grab {clickSafe}, grabbed on drag {grabbed}, lands on B's corner (gap {Vector3.Distance(landed2, cornerB):0.0000} m)");
         // same for an edge and a face: grab the middle of A's top edge / the middle of A's top face and drop it on B
         IEnumerable<object> Grab(Vector3 from, Vector3 to, string shot)
         {

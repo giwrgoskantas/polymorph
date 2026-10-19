@@ -1152,6 +1152,7 @@ public sealed partial class EditorApp
     IEnumerable<object> TerrainPaintTest()
     {
         Fresh();
+        if (MapMode) SetMapMode(false);
         Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
         // 4 plain textures (red, green, blue, yellow) so the blend is easy to read
         var dir = StPath("terrain_tex"); Directory.CreateDirectory(dir);
@@ -1738,6 +1739,8 @@ public sealed partial class EditorApp
     IEnumerable<object> PlanarTest()
     {
         Fresh();
+        if (MapMode) SetMapMode(false);
+        Maximized = true; ActiveViewport = 3;
         var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false;
         var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "lvl";
         box.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.4f); box.Touch();
