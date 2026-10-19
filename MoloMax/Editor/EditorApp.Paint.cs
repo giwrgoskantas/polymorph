@@ -372,7 +372,9 @@ public sealed partial class EditorApp
     void VertexStamp(SceneObject o, Vector3 p, Vector3 n, float r)
     {
         int c = 0;
-        foreach (var (mp, mn, _) in Mirrors(p, n, p)) c += VertexPaint.Stamp(o.Mesh, mp, mn, r, vertexColour, brush.Strength, brush.Hardness, brush.BackfaceCull);
+        foreach (var (mp, mn, _) in Mirrors(p, n, p))
+            c += terrainPaintLayer >= 0 ? VertexPaint.StampLayer(o.Mesh, mp, mn, r, terrainPaintLayer, brush.Strength, brush.Hardness, brush.BackfaceCull)
+                                        : VertexPaint.Stamp(o.Mesh, mp, mn, r, vertexColour, brush.Strength, brush.Hardness, brush.BackfaceCull);
         if (c > 0) { o.Touch(); paintMeshVersion[o.Id] = o.Version; Dirty = true; } // colours only: the texel maps stay valid
     }
 

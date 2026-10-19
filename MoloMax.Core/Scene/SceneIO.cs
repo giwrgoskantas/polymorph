@@ -12,7 +12,7 @@ namespace MoloMax.Core.Scenes;
 public static class SceneIO
 {
     // ---- DTOs keep the file format independent of the runtime classes
-    sealed class FaceDto { public int[] V { get; set; } public float[] UV { get; set; } public float[] C { get; set; } public int M { get; set; } public uint S { get; set; } }
+    sealed class FaceDto { public int[] V { get; set; } public float[] UV { get; set; } public float[] C { get; set; } public float[] C1 { get; set; } public int M { get; set; } public uint S { get; set; } }
     sealed class MeshDto { public float[] V { get; set; } public List<FaceDto> F { get; set; } }
     sealed class ObjDto
     {
@@ -29,6 +29,7 @@ public static class SceneIO
     }
     sealed class MatDto
     {
+        public string[] Layers { get; set; } public string[] LayerBumps { get; set; }
         public int Id { get; set; } public string Name { get; set; } public string Shader { get; set; }
         public string Diffuse { get; set; } public string Bump { get; set; } public string Spec { get; set; } public string Detail { get; set; }
         public float Bumpiness { get; set; } public float SpecIntensity { get; set; } public float SpecFalloff { get; set; } public float SpecFresnel { get; set; }
@@ -62,6 +63,7 @@ public static class SceneIO
                 Id = m.Id, Name = m.Name, Shader = m.Shader, Diffuse = m.DiffuseTexture, Bump = m.BumpTexture, Spec = m.SpecTexture, Detail = m.DetailTexture,
                 Bumpiness = m.Bumpiness, SpecIntensity = m.SpecularIntensity, SpecFalloff = m.SpecularFalloff, SpecFresnel = m.SpecularFresnel,
                 SpecMask = A(m.SpecMapIntMask), Emissive = m.EmissiveMultiplier, DetailSettings = A(m.DetailSettings), Colour = A(m.ViewportColour),
+                Layers = m.Layers?.Any(x => x != null) == true ? m.Layers : null, LayerBumps = m.LayerBumps?.Any(x => x != null) == true ? m.LayerBumps : null,
             }).ToList(),
             Objects = s.Objects.Select(o => ObjOut(o, firstOfInst)).ToList(),
         };
@@ -93,6 +95,7 @@ public static class SceneIO
                         V = f.V, M = f.MatId, S = f.Smooth,
                         UV = f.UV.SelectMany(u => new[] { u.X, u.Y }).ToArray(),
                         C = f.Col.SelectMany(c => new[] { c.X, c.Y, c.Z, c.W }).ToArray(),
+                        C1 = f.Col1?.SelectMany(c => new[] { c.X, c.Y, c.Z, c.W }).ToArray(),
                     }).ToList(),
                 },
             };
@@ -110,6 +113,7 @@ public static class SceneIO
                 Id = m.Id, Name = m.Name, Shader = m.Shader, DiffuseTexture = m.Diffuse, BumpTexture = m.Bump, SpecTexture = m.Spec, DetailTexture = m.Detail,
                 Bumpiness = m.Bumpiness, SpecularIntensity = m.SpecIntensity, SpecularFalloff = m.SpecFalloff, SpecularFresnel = m.SpecFresnel,
                 SpecMapIntMask = V3(m.SpecMask), EmissiveMultiplier = m.Emissive, DetailSettings = V4(m.DetailSettings), ViewportColour = V3(m.Colour),
+                Layers = m.Layers, LayerBumps = m.LayerBumps,
             });
         if (s.Materials.Count == 0) s.Materials.Add(GtaMaterial.CreateDefault(0, "default_grey", new Vector3(0.72f)));
         var meshOfId = new Dictionary<int, SceneObject>();
@@ -140,6 +144,7 @@ public static class SceneIO
                 {
                     if (f.UV != null && f.UV.Length >= 2 * f.V.Length) face.UV[i] = new Vector2(f.UV[2 * i], f.UV[2 * i + 1]);
                     if (f.C != null && f.C.Length >= 4 * f.V.Length) face.Col[i] = new Vector4(f.C[4 * i], f.C[4 * i + 1], f.C[4 * i + 2], f.C[4 * i + 3]);
+                    if (f.C1 != null && f.C1.Length >= 4 * f.V.Length) { face.Col1 ??= new Vector4[f.V.Length]; face.Col1[i] = new Vector4(f.C1[4 * i], f.C1[4 * i + 1], f.C1[4 * i + 2], f.C1[4 * i + 3]); }
                 }
                 mesh.Faces.Add(face);
             }

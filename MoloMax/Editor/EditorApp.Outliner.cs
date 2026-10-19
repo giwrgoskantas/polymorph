@@ -92,10 +92,23 @@ public sealed partial class EditorApp
         Theme.Tip("Expand all");
 
         bool filtering = explorerFilter.Length > 0 || outFilter != OutFilter.None;
+        // picked in the view: open its parents and folder so its row exists, then scroll to it (below)
+        if (ActiveId != outRevealSeen)
+        {
+            outRevealSeen = ActiveId;
+            if (ImGui.GetFrameCount() - outClickFrame > 3 && Scene.Find(ActiveId) is { } act)
+            {
+                for (var pp = Scene.Parent(act); pp != null; pp = Scene.Parent(pp)) closedObjs.Remove(pp.Id);
+                var top = act; while (Scene.Parent(top) is { } up) top = up;
+                closedFolders.Remove(top.Folder ?? "");
+                outRevealId = act.Id; outlinerSigTime = -1;
+            }
+        }
+        bool checkNowForced = outlinerSigTime < 0;
         // the row list is rebuilt only when the scene's structure changes (thousands of map entities: no work, no garbage per frame)
         // on a streamed map (tens of thousands of objects) the structure is checked 4 times a second, not every frame
         bool bigScene = Scene.Objects.Count > 3000;
-        bool checkNow = !bigScene || ImGui.GetTime() - outlinerSigTime > 0.25 || filtering;
+        bool checkNow = !bigScene || ImGui.GetTime() - outlinerSigTime > 0.25 || filtering || checkNowForced;
         long sig = outlinerSig;
         if (checkNow)
         {
@@ -117,11 +130,23 @@ public sealed partial class EditorApp
         }
         ImGui.BeginChild("##objs", Vector2.Zero, ImGuiChildFlags.Borders);
         outBandRows.Clear();
+        if (outRevealId >= 0)
+        {
+            int ri = orows.FindIndex(r => r.Obj != null && r.Obj.Id == outRevealId);
+            if (ri >= 0)
+            {
+                float y = ri * outRowH, h = ImGui.GetWindowHeight();
+                // only when it is not already on screen: then centred
+                if (y < ImGui.GetScrollY() || y + outRowH > ImGui.GetScrollY() + h) ImGui.SetScrollY(MathF.Max(0, y - h * 0.4f));
+            }
+            outRevealId = -1;
+        }
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 2));
         unsafe
         {
             var clip = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
             clip.Begin(orows.Count);
+            bool gotH = false;
             while (clip.Step())
                 for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
                 {
@@ -130,6 +155,7 @@ public sealed partial class EditorApp
                     if (ind > 0) ImGui.Indent(ind);
                     if (r.Obj == null) FolderRow(r.Folder, r.FolderObjs); else ObjectRow(r.Obj, r.Kids);
                     if (ind > 0) ImGui.Unindent(ind);
+                    if (!gotH && clip.ItemsHeight > 1) { outRowH = clip.ItemsHeight; gotH = true; }
                 }
             clip.End(); clip.Destroy();
         }
@@ -370,10 +396,17 @@ public sealed partial class EditorApp
         }
         bool sel = Selected.Contains(o.Id);
         bool isOpen = kids.Count > 0 && !closedObjs.Contains(o.Id);
+        // selected rows: pale red (the active one a little stronger), like the selection in the view
+        if (sel)
+        {
+            var red = o.Id == ActiveId ? new Vector4(0.62f, 0.27f, 0.27f, 0.85f) : new Vector4(0.5f, 0.24f, 0.24f, 0.6f);
+            ImGui.PushStyleColor(ImGuiCol.Header, red); ImGui.PushStyleColor(ImGuiCol.HeaderHovered, red * new Vector4(1.15f, 1.15f, 1.15f, 1)); ImGui.PushStyleColor(ImGuiCol.HeaderActive, red);
+        }
         var flags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.NoTreePushOnOpen | (sel ? ImGuiTreeNodeFlags.Selected : 0)
                   | (kids.Count == 0 ? ImGuiTreeNodeFlags.Leaf : 0);
         if (kids.Count > 0) ImGui.SetNextItemOpen(isOpen);
         bool open = ImGui.TreeNodeEx("##obj", flags, "");
+        if (sel) ImGui.PopStyleColor(3);
         if (kids.Count > 0 && open != isOpen) { if (open) closedObjs.Remove(o.Id); else closedObjs.Add(o.Id); }
         var min = ImGui.GetItemRectMin();
         var rmax = ImGui.GetItemRectMax();
@@ -592,8 +625,11 @@ public sealed partial class EditorApp
         if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) { outBandStart = null; outBandBase = null; }
     }
 
+    int outRevealSeen = -1, outRevealId = -1; int outClickFrame = -100; float outRowH = 21;
+
     void OutlinerClick(SceneObject o)
     {
+        outClickFrame = ImGui.GetFrameCount();
         var io = ImGui.GetIO();
         if (io.KeyShift && outlinerAnchor >= 0)
         {

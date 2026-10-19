@@ -473,6 +473,7 @@ public sealed partial class EditorApp
         TexSlot("Normal (bump)", ref mat.BumpTexture, p.Bump);
         TexSlot("Specular", ref mat.SpecTexture, p.Spec);
         TexSlot("Detail", ref mat.DetailTexture, p.Detail);
+        if (mat.IsTerrain) TerrainLayerSlots(mat);
         ImGui.Separator();
         var vc = mat.ViewportColour;
         if (ImGui.ColorEdit3("Viewport colour", ref vc)) mat.ViewportColour = vc;
@@ -507,6 +508,18 @@ public sealed partial class EditorApp
         ImGui.SameLine();
         if (Theme.Toggle("Assign Material to Selection", true, new Vector2(-1, 0))) AssignMaterial(mat.Id);
         ImGui.End();
+    }
+
+    /// <summary>Terrain shaders: the 4 layer textures and their normal maps (the view blends them with vertex colour 1).</summary>
+    void TerrainLayerSlots(GtaMaterial mat)
+    {
+        mat.EnsureLayers();
+        Ui.TextDisabled("Terrain layers (paint them with the vertex colour brush > Terrain layers)");
+        for (int i = 0; i < 4; i++)
+        {
+            TexSlot($"Layer {i + 1}", ref mat.Layers[i], true);
+            TexSlot($"Layer {i + 1} normal", ref mat.LayerBumps[i], true);
+        }
     }
 
     void TexSlot(string label, ref string path, bool enabled)

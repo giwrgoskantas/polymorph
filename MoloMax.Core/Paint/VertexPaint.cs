@@ -38,6 +38,44 @@ public static class VertexPaint
         return changed;
     }
 
+    /// <summary>Colour 1 that shows one terrain layer alone (blue: odd layers, green: layers 2 and 3).</summary>
+    public static Vector4 LayerColour(int layer) => new(0, layer >= 2 ? 1 : 0, (layer & 1) == 1 ? 1 : 0, 1);
+
+    /// <summary>Weights of the 4 terrain layers for a colour 1 (the game's blend: b mixes 0-1 and 2-3, g mixes the two pairs).</summary>
+    public static Vector4 LayerWeights(Vector4 c1) => new((1 - c1.Z) * (1 - c1.Y), c1.Z * (1 - c1.Y), (1 - c1.Z) * c1.Y, c1.Z * c1.Y);
+
+    /// <summary>Terrain: paints one of the 4 layers (moves vertex colour 1 of the corners in the brush towards that layer).</summary>
+    public static int StampLayer(PolyMesh m, Vector3 center, Vector3 normal, float radius, int layer, float strength, float hardness, bool backfaceCull = true)
+    {
+        int changed = 0; float inner = radius * Math.Clamp(hardness, 0, 0.99f);
+        var target = LayerColour(layer);
+        for (int fi = 0; fi < m.Faces.Count; fi++)
+        {
+            var f = m.Faces[fi];
+            if (backfaceCull && Vector3.Dot(m.FaceNormal(f), normal) < 0.05f) continue;
+            for (int i = 0; i < f.V.Length; i++)
+            {
+                float d = Vector3.Distance(m.Verts[f.V[i]], center);
+                if (d > radius) continue;
+                float a = (d <= inner ? 1 : 1 - Smooth((d - inner) / MathF.Max(radius - inner, 1e-6f))) * strength;
+                if (a <= 0) continue;
+                f.Col1 ??= new Vector4[f.V.Length];
+                if (f.Col1[i].W == 0) f.Col1[i].W = 1;
+                var c = f.Col1[i];
+                f.Col1[i] = new Vector4(c.X, c.Y + (target.Y - c.Y) * a, c.Z + (target.Z - c.Z) * a, 1);
+                changed++;
+            }
+        }
+        return changed;
+    }
+
+    /// <summary>Terrain: one layer on whole faces.</summary>
+    public static void FillLayer(PolyMesh m, IEnumerable<int> faces, int layer)
+    {
+        var c = LayerColour(layer);
+        foreach (var fi in faces) { var f = m.Faces[fi]; f.Col1 = new Vector4[f.V.Length]; for (int i = 0; i < f.V.Length; i++) f.Col1[i] = c; }
+    }
+
     /// <summary>Fills faces (all corners) with a colour.</summary>
     public static void Fill(PolyMesh m, IEnumerable<int> faces, Vector4 colour)
     {

@@ -45,6 +45,10 @@ public static class CwXml
                     "SpecSampler" => Tex(m.SpecTexture, TexKind.Specular),
                     "DetailSampler" => Tex(m.DetailTexture, TexKind.Detail),
                     "EnvironmentSampler" => Tex(null, TexKind.Environment),
+                    "TextureSampler_layer0" or "TextureSampler_layer1" or "TextureSampler_layer2" or "TextureSampler_layer3"
+                        => Tex(m.Layer(p.Name[^1] - '0') ?? m.DiffuseTexture, TexKind.Diffuse),
+                    "BumpSampler_layer0" or "BumpSampler_layer1" or "BumpSampler_layer2" or "BumpSampler_layer3"
+                        => Tex(m.LayerBump(p.Name[^1] - '0') ?? m.BumpTexture, TexKind.Normal),
                     _ => Tex(null, p.Name.Contains("Bump") ? TexKind.Normal : p.Name.Contains("Spec") ? TexKind.Specular : TexKind.Diffuse),
                 };
                 s.Values.Add((p, t.Name, default));
@@ -272,8 +276,9 @@ public static class CwXml
                 case "Position": sb.Append(F(v.Position.X)).Append(' ').Append(F(v.Position.Y)).Append(' ').Append(F(v.Position.Z)); break;
                 case "Normal": sb.Append(F(v.Normal.X)).Append(' ').Append(F(v.Normal.Y)).Append(' ').Append(F(v.Normal.Z)); break;
                 case "Colour0":
-                case "Colour1":
                     sb.Append(B(v.Colour.X)).Append(' ').Append(B(v.Colour.Y)).Append(' ').Append(B(v.Colour.Z)).Append(' ').Append(B(v.Colour.W)); break;
+                case "Colour1":
+                    sb.Append(v.Colour1 & 255).Append(' ').Append(v.Colour1 >> 8 & 255).Append(' ').Append(v.Colour1 >> 16 & 255).Append(' ').Append(v.Colour1 >> 24); break;
                 case "Tangent": sb.Append(F(v.Tangent.X)).Append(' ').Append(F(v.Tangent.Y)).Append(' ').Append(F(v.Tangent.Z)).Append(' ').Append(F(v.Tangent.W)); break;
                 default:
                     if (e.StartsWith("TexCoord")) sb.Append(F(v.UV.X)).Append(' ').Append(F(v.UV.Y));

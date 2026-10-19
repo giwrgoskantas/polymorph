@@ -237,8 +237,37 @@ public sealed partial class EditorApp
         Ui.TextDisabled("Shift+click: straight line from the last print.");
     }
 
+    /// <summary>Terrain layer the vertex colour brush paints (-1: it paints vertex colour 0 as usual).</summary>
+    int terrainPaintLayer = -1;
+    Core.Gta.GtaMaterial TerrainMaterialOf(SceneObject o)
+    {
+        if (o?.Mesh == null) return null;
+        foreach (var id in o.Mesh.Faces.Select(f => f.MatId).Distinct()) if (Scene.Material(id) is { IsTerrain: true } m) return m;
+        return null;
+    }
+
+    void TerrainLayerOptions(SceneObject o, Core.Gta.GtaMaterial tm)
+    {
+        Ui.TextDisabled("Terrain layers (4 textures blended by vertex colour 1)");
+        float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
+        for (int i = 0; i < 4; i++)
+        {
+            if (i % 2 == 1) ImGui.SameLine(0, 4);
+            var tex = tm.Layer(i);
+            string label = $"{i + 1}  " + (tex != null ? Path.GetFileNameWithoutExtension(tex) : "(empty)");
+            if (Theme.Toggle(label + "##tl" + i, terrainPaintLayer == i, new Vector2(w2, 26))) terrainPaintLayer = terrainPaintLayer == i ? -1 : i;
+            Theme.Tip("Paint this layer with the brush (click again to paint vertex colours instead).");
+        }
+        if (terrainPaintLayer >= 0 && ImGui.Button($"Fill the whole object with layer {terrainPaintLayer + 1}", new Vector2(-1, 0)))
+            Do("Terrain layer fill", () => { VertexPaint.FillLayer(o.Mesh, Enumerable.Range(0, o.Mesh.Faces.Count), terrainPaintLayer); o.Touch(); });
+        Ui.TextDisabled(terrainPaintLayer >= 0 ? "The view shows the blend live. Ctrl+Z undoes a stroke." : "Pick a layer to paint it.");
+        ImGui.Separator();
+    }
+
     void VertexColourOptions(SceneObject o)
     {
+        if (TerrainMaterialOf(o) is { } tm) TerrainLayerOptions(o, tm);
+        else terrainPaintLayer = -1;
         Ui.TextDisabled("GTA vertex colours (the view shows them)");
         float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
         for (int i = 0; i < VertexPaint.Presets.Length; i++)

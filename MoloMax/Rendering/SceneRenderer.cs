@@ -41,6 +41,7 @@ struct MaterialVarsCB
     public Vector3 SpecMapIntMask; public float EmissiveMult;
     public Vector4 DetailSettings;
     public Vector4 ViewportColour;
+    public uint IsTerrain, TerrainPad0, TerrainPad1, TerrainPad2;
 }
 
 /// <summary>One scene light as the shader sees it.</summary>
@@ -103,6 +104,7 @@ public sealed class SceneRenderer : IDisposable
                 new InputElement("COLOR", 0, Format.R32G32B32A32_Float, 24, 0),
                 new InputElement("TEXCOORD", 0, Format.R32G32_Float, 40, 0),
                 new InputElement("TANGENT", 0, Format.R32G32B32A32_Float, 48, 0),
+                new InputElement("COLOR", 1, Format.R8G8B8A8_UNorm, 64, 0),
             });
         }
         using (var vsi = ShaderLoader.Compile("gta_basic.hlsl", "VSInstanced", "vs_4_0"))
@@ -115,6 +117,7 @@ public sealed class SceneRenderer : IDisposable
                 new InputElement("COLOR", 0, Format.R32G32B32A32_Float, 24, 0),
                 new InputElement("TEXCOORD", 0, Format.R32G32_Float, 40, 0),
                 new InputElement("TANGENT", 0, Format.R32G32B32A32_Float, 48, 0),
+                new InputElement("COLOR", 1, Format.R8G8B8A8_UNorm, 64, 0),
                 new InputElement("TEXCOORD", 4, Format.R32G32B32A32_Float, 0, 1, InputClassification.PerInstanceData, 1),
                 new InputElement("TEXCOORD", 5, Format.R32G32B32A32_Float, 16, 1, InputClassification.PerInstanceData, 1),
                 new InputElement("TEXCOORD", 6, Format.R32G32B32A32_Float, 32, 1, InputClassification.PerInstanceData, 1),
@@ -329,7 +332,11 @@ public sealed class SceneRenderer : IDisposable
     }
 
     /// <summary>Textures of a material as last looked up: thousands of map draws skip four path lookups each.</summary>
-    sealed class MatTex { public int Epoch = -1; public bool Pending; public string D, B, S, T; public GtaShaderPreset P; public ShaderResourceView Diff, Bump, Spec, Det; }
+    sealed class MatTex
+    {
+        public int Epoch = -1; public bool Pending; public string D, B, S, T; public GtaShaderPreset P; public ShaderResourceView Diff, Bump, Spec, Det;
+        public string LayerKey; public ShaderResourceView[] Lay = new ShaderResourceView[4], LayB = new ShaderResourceView[4];
+    }
     readonly System.Runtime.CompilerServices.ConditionalWeakTable<GtaMaterial, MatTex> matTex = new();
 
     ShaderResourceView Tex(string name, ref bool pending)
@@ -343,14 +350,22 @@ public sealed class SceneRenderer : IDisposable
     {
         var p = m.Preset;
         var mt = matTex.GetValue(m, _ => new MatTex());
+        bool terrain = m.IsTerrain;
+        string lk = terrain ? string.Join("|", Enumerable.Range(0, 4).Select(i => m.Layer(i) + ">" + m.LayerBump(i))) : null;
         if (mt.Pending || mt.Epoch != Textures.Epoch || !ReferenceEquals(mt.P, p) || !ReferenceEquals(mt.D, m.DiffuseTexture) || !ReferenceEquals(mt.B, m.BumpTexture)
-            || !ReferenceEquals(mt.S, m.SpecTexture) || !ReferenceEquals(mt.T, m.DetailTexture))
+            || !ReferenceEquals(mt.S, m.SpecTexture) || !ReferenceEquals(mt.T, m.DetailTexture) || mt.LayerKey != lk)
         {
             bool pending = false;
             mt.Diff = Tex(m.DiffuseTexture, ref pending);
             mt.Bump = p.Bump ? Tex(m.BumpTexture, ref pending) : null;
             mt.Spec = p.Spec ? Tex(m.SpecTexture, ref pending) : null;
             mt.Det = p.Detail ? Tex(m.DetailTexture, ref pending) : null;
+            mt.LayerKey = lk;
+            for (int i = 0; i < 4; i++)
+            {
+                mt.Lay[i] = terrain ? Tex(m.Layer(i) ?? m.DiffuseTexture, ref pending) : null;
+                mt.LayB[i] = terrain ? Tex(m.LayerBump(i) ?? m.BumpTexture, ref pending) : null;
+            }
             mt.Pending = pending; mt.Epoch = Textures.Epoch; mt.P = p;
             mt.D = m.DiffuseTexture; mt.B = m.BumpTexture; mt.S = m.SpecTexture; mt.T = m.DetailTexture;
         }
@@ -368,8 +383,15 @@ public sealed class SceneRenderer : IDisposable
             SpecMapIntMask = m.SpecMapIntMask, EmissiveMult = m.EmissiveMultiplier,
             DetailSettings = m.DetailSettings,
             ViewportColour = new Vector4(m.ViewportColour, 1),
+            IsTerrain = terrain ? 1u : 0u,
         };
+        if (terrain) { mv.EnableTexture = 1; mv.EnableNormalMap = 1; mv.EnableDetailMap = 0; }
         ctx.UpdateSubresource(ref mv, materialCB);
+        for (int i = 0; i < 4; i++)
+        {
+            ctx.PixelShader.SetShaderResource(6 + i, mt.Lay[i] ?? diff ?? Textures.White);
+            ctx.PixelShader.SetShaderResource(10 + i, mt.LayB[i] ?? Textures.FlatNormal);
+        }
         ctx.PixelShader.SetShaderResource(0, diff ?? Textures.White);
         ctx.PixelShader.SetShaderResource(2, bump ?? Textures.FlatNormal);
         ctx.PixelShader.SetShaderResource(3, spec ?? Textures.DefaultSpec);

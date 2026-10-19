@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 namespace MoloMax.Core.Mesh;
 
 /// <summary>
-/// GPU vertex in the GTA "PNCTX" spirit: position, normal, colour 0, texcoord 0, tangent (w = handedness).
-/// 64 bytes, sequential, matches the input layout of gta_basic.hlsl.
+/// GPU vertex in the GTA "PNCCTX" spirit: position, normal, colour 0, texcoord 0, tangent (w = handedness), colour 1 (RGBA8,
+/// the terrain layer blend). 68 bytes, sequential, matches the input layout of gta_basic.hlsl.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct RenderVertex
@@ -15,7 +15,11 @@ public struct RenderVertex
     public Vector4 Colour;
     public Vector2 UV;
     public Vector4 Tangent;
-    public const int SizeInBytes = 64;
+    public uint Colour1;
+    public const int SizeInBytes = 68;
+    public static uint Pack(Vector4 c) => (uint)(B(c.X) | B(c.Y) << 8 | B(c.Z) << 16 | B(c.W) << 24);
+    public static Vector4 Unpack(uint c) => new((c & 255) / 255f, (c >> 8 & 255) / 255f, (c >> 16 & 255) / 255f, (c >> 24) / 255f);
+    static int B(float f) => (int)Math.Clamp(f * 255f + 0.5f, 0, 255);
 }
 
 /// <summary>Triangles of one material, ready to upload.</summary>
@@ -157,7 +161,7 @@ public static class RenderMeshBuilder
                 if (t.LengthSquared() < 1e-12f) { Triangulator.Basis(nr, out var bu, out _); t = bu; }
                 t = Vector3.Normalize(t);
                 float w = Vector3.Dot(Vector3.Cross(nr, t), bit) < 0 ? -1f : 1f;
-                vArr[baseIndex + c] = new RenderVertex { Position = m.Verts[f.V[c]], Normal = nr, Colour = f.Col[c], UV = f.UV[c], Tangent = new Vector4(t, w) };
+                vArr[baseIndex + c] = new RenderVertex { Position = m.Verts[f.V[c]], Normal = nr, Colour = f.Col[c], UV = f.UV[c], Tangent = new Vector4(t, w), Colour1 = f.Col1 != null && c < f.Col1.Length ? RenderVertex.Pack(f.Col1[c]) : 0u };
             }
             int ti = tOff[fi];
             for (int q = 0; q < n - 2; q++)

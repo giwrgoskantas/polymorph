@@ -213,15 +213,25 @@ public sealed partial class EditorApp
             }
             else if (snapHover is { } grab && Tool == Tool.Move && Selected.Count > 0)
             {
-                // snap on, a point of the selection under the mouse: grab it there and carry it onto a vertex / edge / face
-                shiftClone = false;
-                if (Input.Shift && Level == SubObject.Object) { CloneSelection(); shiftClone = lastCloneMap.Count > 0; }
-                else if (Input.Shift && Level != SubObject.Object) SubShiftClone(); // edit mode: the copy of the faces / edges moves
-                BeginTransform(hv, GizmoHandle.View);
-                snapFrom = grab;
-                xfButton = MouseButtons.Left;
+                // snap on, a point of the selection under the mouse: a drag grabs it there and carries it onto a vertex / edge / face;
+                // a plain click still selects (the grab starts only once the mouse moves)
+                pendingGrab = grab; pendingGrabVp = hv; pendingGrabStart = Input.Mouse; lmbDouble = Input.DoubleClick;
             }
             else { lmbTracking = true; lmbDouble = Input.DoubleClick; boxStart = Input.Mouse; boxViewport = hv; boxSelecting = false; }
+        }
+        if (pendingGrab is { } pg)
+        {
+            if (!Input.Down(MouseButtons.Left)) { pendingGrab = null; ClickSelect(pendingGrabVp, pendingGrabStart); }
+            else if (Vector2.Distance(Input.Mouse, pendingGrabStart) > 5)
+            {
+                pendingGrab = null;
+                shiftClone = false;
+                if (Input.Shift && Level == SubObject.Object) { CloneSelection(); shiftClone = lastCloneMap.Count > 0; }
+                else if (Input.Shift && Level != SubObject.Object) SubShiftClone();
+                BeginTransform(pendingGrabVp, GizmoHandle.View);
+                snapFrom = pg;
+                xfButton = MouseButtons.Left;
+            }
         }
         bool wasTransforming = transforming;
         if (transforming)
@@ -232,10 +242,12 @@ public sealed partial class EditorApp
         }
         if (lmbTracking)
         {
-            if (!boxSelecting && Vector2.Distance(Input.Mouse, boxStart) > 4) boxSelecting = true;
+            // a click that moves a little (mouse / pen jitter) stays a click: the box starts past 8 px
+            if (!boxSelecting && Vector2.Distance(Input.Mouse, boxStart) > 8) boxSelecting = true;
             if (Input.Released(MouseButtons.Left) || !Input.Down(MouseButtons.Left))
             {
-                if (boxSelecting) BoxSelect(boxViewport, boxStart, Input.Mouse);
+                var bd = Input.Mouse - boxStart;
+                if (boxSelecting && (MathF.Abs(bd.X) >= 12 || MathF.Abs(bd.Y) >= 12)) BoxSelect(boxViewport, boxStart, Input.Mouse);
                 else
                 {
                     // Blender: Alt+click loop (Ctrl+Alt ring); Industry and 3ds Max: double-click loop
@@ -269,6 +281,7 @@ public sealed partial class EditorApp
     }
 
     bool lmbDouble, navDouble;
+    Vector3? pendingGrab; Viewport pendingGrabVp; Vector2 pendingGrabStart;
     bool cubeDrag, cubeOnFace; float cubeMoved; Viewport cubeViewport; ViewKind cubeKind;
     float navTravel;
 

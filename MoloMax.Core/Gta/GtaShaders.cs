@@ -51,11 +51,14 @@ public static class GtaShaders
         new("glass_pv",            "Glass PV",                   false, true,  false, false, false, false, true,  1, "Breakable window glass (cracks when shot)."),
         new("glass_emissive",      "Glass Emissive",             true,  false, false, true,  false, false, false, 0, "Lit glass panels and light covers (opaque)."),
         new("glass_emissive_alpha","Glass Emissive Alpha",       true,  false, false, true,  false, false, true,  1, "Transparent lit glass."),
+        new("terrain_cb_w_4lyr",   "Terrain 4 layers",           true,  false, false, false, false, false, false, 0, "Ground: 4 textures blended by vertex colour 1 (paint them with the vertex colour brush)."),
+        new("terrain_cb_w_4lyr_spec", "Terrain 4 layers Spec",   true,  true,  false, false, false, false, false, 0, "Terrain 4 layers with specular."),
     };
 
     static readonly Dictionary<string, GtaShaderPreset> byName = All.ToDictionary(s => s.Name, StringComparer.OrdinalIgnoreCase);
 
-    public static GtaShaderPreset Get(string name) => name != null && byName.TryGetValue(name, out var s) ? s : All[0];
+    public static GtaShaderPreset Get(string name) => name != null && byName.TryGetValue(name, out var s) ? s
+        : name != null && name.StartsWith("terrain_cb_w_4lyr", StringComparison.OrdinalIgnoreCase) ? byName["terrain_cb_w_4lyr"] : All[0];
 }
 
 /// <summary>A material as GTA understands it: a shader preset, its textures and its parameters.</summary>
@@ -84,7 +87,20 @@ public sealed class GtaMaterial
 
     public GtaShaderPreset Preset => GtaShaders.Get(Shader);
 
-    public GtaMaterial Clone() => (GtaMaterial)MemberwiseClone();
+    /// <summary>Terrain shaders: the 4 layer textures (TextureSampler_layer0..3) and their normal maps (BumpSampler_layer0..3).</summary>
+    public string[] Layers, LayerBumps;
+    /// <summary>A terrain_cb_w_4lyr shader: 4 textures blended by vertex colour 1.</summary>
+    public bool IsTerrain => Shader != null && Shader.StartsWith("terrain_cb_w_4lyr", StringComparison.OrdinalIgnoreCase);
+    public string Layer(int i) => Layers != null && i < Layers.Length ? Layers[i] : null;
+    public string LayerBump(int i) => LayerBumps != null && i < LayerBumps.Length ? LayerBumps[i] : null;
+    public void EnsureLayers() { Layers ??= new string[4]; LayerBumps ??= new string[4]; }
+
+    public GtaMaterial Clone()
+    {
+        var c = (GtaMaterial)MemberwiseClone();
+        c.Layers = (string[])Layers?.Clone(); c.LayerBumps = (string[])LayerBumps?.Clone();
+        return c;
+    }
 
     public static GtaMaterial CreateDefault(int id, string name, Vector3 colour) => new()
     {

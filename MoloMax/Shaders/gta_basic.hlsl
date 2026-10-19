@@ -52,6 +52,8 @@ cbuffer MaterialVars : register(b2)
     float EmissiveMult;
     float4 detailSettings;
     float4 ViewportColour;
+    uint  IsTerrain;            // terrain_cb_w_4lyr: 4 layers blended by vertex colour 1 (b, g)
+    uint3 TerrainPad;
 };
 
 // Scene lights (realistic mode), sun shadow map and the final tone curve.
@@ -78,6 +80,14 @@ SamplerComparisonState ShadowSS : register(s1);
 Texture2D<float4> Bumpmap   : register(t2);
 Texture2D<float4> Specmap   : register(t3);
 Texture2D<float4> Detailmap : register(t4);
+Texture2D<float4> Layer0 : register(t6);
+Texture2D<float4> Layer1 : register(t7);
+Texture2D<float4> Layer2 : register(t8);
+Texture2D<float4> Layer3 : register(t9);
+Texture2D<float4> LayerBump0 : register(t10);
+Texture2D<float4> LayerBump1 : register(t11);
+Texture2D<float4> LayerBump2 : register(t12);
+Texture2D<float4> LayerBump3 : register(t13);
 SamplerState TextureSS : register(s0);
 
 struct VS_INPUT
@@ -87,6 +97,7 @@ struct VS_INPUT
     float4 Colour0  : COLOR0;
     float2 Texcoord : TEXCOORD0;
     float4 Tangent  : TANGENT;
+    float4 Colour1  : COLOR1;
 };
 
 struct VS_OUTPUT
@@ -98,6 +109,7 @@ struct VS_OUTPUT
     float4 Tangent   : TEXCOORD1;
     float4 Bitangent : TEXCOORD2;
     float3 WorldPos  : TEXCOORD3;
+    float4 Colour1   : COLOR1;
 };
 
 VS_OUTPUT VSMain(VS_INPUT input)
@@ -113,6 +125,7 @@ VS_OUTPUT VSMain(VS_INPUT input)
     o.Bitangent = float4(cross(t, n) * input.Tangent.w, 0);
     o.Texcoord = input.Texcoord;
     o.Colour0 = input.Colour0;
+    o.Colour1 = input.Colour1;
     return o;
 }
 
@@ -124,6 +137,7 @@ struct VS_INPUT_INST
     float4 Colour0  : COLOR0;
     float2 Texcoord : TEXCOORD0;
     float4 Tangent  : TANGENT;
+    float4 Colour1  : COLOR1;
     float4 R0 : TEXCOORD4;
     float4 R1 : TEXCOORD5;
     float4 R2 : TEXCOORD6;
@@ -145,6 +159,7 @@ VS_OUTPUT VSInstanced(VS_INPUT_INST input)
     o.Bitangent = float4(cross(t, n) * input.Tangent.w, 0);
     o.Texcoord = input.Texcoord;
     o.Colour0 = input.Colour0;
+    o.Colour1 = input.Colour1;
     return o;
 }
 
@@ -269,7 +284,7 @@ float4 PSMain(VS_OUTPUT input, bool front : SV_IsFrontFace) : SV_TARGET
         sc = lerp(sc, Highlight.rgb, Highlight.a);
         return float4(sc, 1);
     }
-    if (RenderMode == 2) return float4(input.Colour0.rgb, 1);
+    if (RenderMode == 2) return float4(IsTerrain > 0 ? input.Colour1.rgb : input.Colour0.rgb, 1);
     if (RenderMode == 3) return float4(nrm * 0.5 + 0.5, 1);
     if (RenderMode == 4)
     {
@@ -278,7 +293,17 @@ float4 PSMain(VS_OUTPUT input, bool front : SV_IsFrontFace) : SV_TARGET
     }
 
     float4 c = float4(ViewportColour.rgb, 1);
-    if (EnableTexture > 0)
+    // terrain: the 4 layers mixed like the game (blue mixes 0-1 and 2-3, green mixes the two pairs)
+    float tb = saturate(input.Colour1.b), tg = saturate(input.Colour1.g);
+    if (IsTerrain > 0)
+    {
+        float2 tc = input.Texcoord;
+        float4 t1 = lerp(Layer0.Sample(TextureSS, tc), Layer1.Sample(TextureSS, tc), tb);
+        float4 t2 = lerp(Layer2.Sample(TextureSS, tc), Layer3.Sample(TextureSS, tc), tb);
+        c = lerp(t1, t2, tg);
+        c.a = 1;
+    }
+    else if (EnableTexture > 0)
     {
         c = Colourmap.Sample(TextureSS, input.Texcoord);
         if (IsDecal == 0 && IsGlass == 0)
@@ -296,6 +321,12 @@ float4 PSMain(VS_OUTPUT input, bool front : SV_IsFrontFace) : SV_TARGET
     float3 norm = nrm;
     float3 spec = 0;
     float4 nv = Bumpmap.Sample(TextureSS, input.Texcoord);
+    if (IsTerrain > 0)
+    {
+        float2 tc = input.Texcoord;
+        nv = lerp(lerp(LayerBump0.Sample(TextureSS, tc), LayerBump1.Sample(TextureSS, tc), tb),
+                  lerp(LayerBump2.Sample(TextureSS, tc), LayerBump3.Sample(TextureSS, tc), tb), tg);
+    }
     float4 sv = Specmap.Sample(TextureSS, input.Texcoord);
     if (EnableNormalMap > 0)
     {

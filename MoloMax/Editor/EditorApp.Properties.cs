@@ -691,6 +691,7 @@ public sealed partial class EditorApp
             TexSlot("Normal", ref mat.BumpTexture, p.Bump);
             TexSlot("Specular", ref mat.SpecTexture, p.Spec);
             TexSlot("Detail", ref mat.DetailTexture, p.Detail);
+            if (mat.IsTerrain) TerrainLayerSlots(mat);
         }
         if (Ui.Header("Parameters", Open))
         {

@@ -21,6 +21,9 @@ public sealed class Face
     public Vector2[] UV;
     /// <summary>GTA vertex colour 0 per corner (0..1). R = natural ambient, G = artificial ambient, B = tint, A = alpha.</summary>
     public Vector4[] Col;
+    /// <summary>GTA vertex colour 1 per corner, or null. Terrain shaders (terrain_cb_w_4lyr) blend their 4 layers with it:
+    /// blue picks layer 0/1 (and 2/3), green picks the pair 0-1 / 2-3.</summary>
+    public Vector4[] Col1;
     /// <summary>Material id (GtaMaterial.Id) of this polygon.</summary>
     public int MatId;
     /// <summary>3ds Max smoothing groups bitmask (bit 0 = group 1). 0 = flat.</summary>
@@ -41,7 +44,7 @@ public sealed class Face
     Face() { }
 
     /// <summary>Copy of the corner arrays (3 allocations, no default fill: undo snapshots clone millions of faces).</summary>
-    public Face Clone() => new() { V = (int[])V.Clone(), UV = (Vector2[])UV.Clone(), Col = (Vector4[])Col.Clone(), MatId = MatId, Smooth = Smooth };
+    public Face Clone() => new() { V = (int[])V.Clone(), UV = (Vector2[])UV.Clone(), Col = (Vector4[])Col.Clone(), Col1 = (Vector4[])Col1?.Clone(), MatId = MatId, Smooth = Smooth };
 
     public int IndexOf(int vert) => Array.IndexOf(V, vert);
 
@@ -51,7 +54,11 @@ public sealed class Face
         Array.Reverse(V);
         Array.Reverse(UV);
         Array.Reverse(Col);
+        if (Col1 != null) Array.Reverse(Col1);
     }
+
+    /// <summary>Colour 1 of a corner (zero when the face has none: layer 0 of a terrain).</summary>
+    public Vector4 Col1At(int i) => Col1 != null && i < Col1.Length ? Col1[i] : Vector4.Zero;
 }
 
 /// <summary>The editable poly mesh: shared vertex positions plus polygons.</summary>
@@ -253,7 +260,7 @@ public sealed class PolyMesh
             {
                 if (lv.Count < 3) continue;
                 var nf = keep.Count > 0 && ReferenceEquals(keep[^1], f) ? f.Clone() : f;
-                nf.V = lv.ToArray(); nf.UV = luv.ToArray(); nf.Col = lcol.ToArray();
+                nf.V = lv.ToArray(); nf.UV = luv.ToArray(); nf.Col = lcol.ToArray(); nf.Col1 = null;
                 keep.Add(nf);
             }
         }
@@ -319,6 +326,7 @@ public sealed class PolyMesh
             var f = Faces[fi];
             if (f.V.Length < 3) throw new InvalidOperationException($"face {fi} has {f.V.Length} vertices");
             if (f.UV.Length != f.V.Length || f.Col.Length != f.V.Length) throw new InvalidOperationException($"face {fi} attribute count mismatch");
+            if (f.Col1 != null && f.Col1.Length != f.V.Length) f.Col1 = null; // an edit that did not carry colour 1: back to layer 0
             foreach (var v in f.V) if (v < 0 || v >= Verts.Count) throw new InvalidOperationException($"face {fi} references vertex {v}");
             if (f.V.Distinct().Count() != f.V.Length) throw new InvalidOperationException($"face {fi} repeats a vertex");
         }

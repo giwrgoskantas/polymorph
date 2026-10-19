@@ -96,14 +96,14 @@ public sealed class GtaModel
     }
 
     /// <summary>Vertex identity for welding (quantised so float noise does not split vertices).</summary>
-    readonly record struct VKey(int Px, int Py, int Pz, int Nx, int Ny, int Nz, int U, int V, uint C, int Tw)
+    readonly record struct VKey(int Px, int Py, int Pz, int Nx, int Ny, int Nz, int U, int V, uint C, int Tw, uint C1)
     {
         public VKey(RenderVertex v) : this(
             Q(v.Position.X, 1e4f), Q(v.Position.Y, 1e4f), Q(v.Position.Z, 1e4f),
             Q(v.Normal.X, 1e3f), Q(v.Normal.Y, 1e3f), Q(v.Normal.Z, 1e3f),
             Q(v.UV.X, 1e5f), Q(v.UV.Y, 1e5f),
             (uint)(B(v.Colour.X) | B(v.Colour.Y) << 8 | B(v.Colour.Z) << 16 | B(v.Colour.W) << 24),
-            v.Tangent.W < 0 ? -1 : 1) { }
+            v.Tangent.W < 0 ? -1 : 1, v.Colour1) { }
         static int Q(float f, float s) => (int)MathF.Round(f * s);
         static int B(float f) => (int)Math.Clamp(f * 255f + 0.5f, 0, 255);
     }

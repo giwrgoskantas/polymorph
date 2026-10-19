@@ -192,6 +192,7 @@ public sealed partial class EditorApp
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
         T("MAP terrain: 4-layer ground", MapTerrainTest);
+        T("TERRAIN: 4 layers painted with vertex colour", TerrainPaintTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
         T("PLANAR: level vertices", PlanarTest);
     }
@@ -1146,6 +1147,56 @@ public sealed partial class EditorApp
             yield return Shot("asset_browser");
         }
         assetsOpen = false;
+    }
+
+    IEnumerable<object> TerrainPaintTest()
+    {
+        Fresh();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        // 4 plain textures (red, green, blue, yellow) so the blend is easy to read
+        var dir = StPath("terrain_tex"); Directory.CreateDirectory(dir);
+        var cols = new[] { System.Drawing.Color.FromArgb(200, 60, 50), System.Drawing.Color.FromArgb(60, 170, 70), System.Drawing.Color.FromArgb(50, 90, 200), System.Drawing.Color.FromArgb(230, 200, 60) };
+        var files = new string[4];
+        for (int i = 0; i < 4; i++)
+        {
+            files[i] = Path.Combine(dir, $"layer{i}.png");
+            using var bmp = new System.Drawing.Bitmap(64, 64);
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) bmp.SetPixel(x, y, ((x / 8 + y / 8) % 2 == 0) ? cols[i] : System.Drawing.Color.FromArgb(cols[i].R * 3 / 4, cols[i].G * 3 / 4, cols[i].B * 3 / 4));
+            bmp.Save(files[i]);
+        }
+        var mat = Scene.AddMaterial("terrain_test", new Vector3(0.7f));
+        mat.Shader = "terrain_cb_w_4lyr"; mat.EnsureLayers();
+        for (int i = 0; i < 4; i++) mat.Layers[i] = files[i];
+        var pl = Prim(CreateKind.Plane, Vector3.Zero); pl.Name = "ground";
+        pl.Mesh = Core.Mesh.Primitives.Plane(20, 20, 40, 40);
+        foreach (var f in pl.Mesh.Faces) { f.MatId = mat.Id; for (int c = 0; c < f.V.Length; c++) f.UV[c] = new Vector2(pl.Mesh.Verts[f.V[c]].X, pl.Mesh.Verts[f.V[c]].Y) / 4f; }
+        pl.Touch();
+        VertexPaint.FillLayer(pl.Mesh, Enumerable.Range(0, pl.Mesh.Faces.Count), 0);
+        VertexPaint.StampLayer(pl.Mesh, new Vector3(-5, 0, 0), Vector3.UnitZ, 4, 1, 1, 0.5f);
+        VertexPaint.StampLayer(pl.Mesh, new Vector3(5, 0, 0), Vector3.UnitZ, 4, 2, 1, 0.5f);
+        VertexPaint.StampLayer(pl.Mesh, new Vector3(0, 6, 0), Vector3.UnitZ, 3, 3, 1, 0.2f);
+        pl.Touch();
+        vp.Camera.Frame(new Vector3(-10, -10, 0), new Vector3(10, 10, 2)); yield return Frames(20);
+        yield return Shot("terrain_painted");
+        // the corner nearest each brush centre carries that layer
+        Vector4 W(Vector3 p) { var best = Vector4.Zero; float bd = float.MaxValue; foreach (var f in pl.Mesh.Faces) for (int c = 0; c < f.V.Length; c++) { float d = Vector3.Distance(pl.Mesh.Verts[f.V[c]], p); if (d < bd) { bd = d; best = VertexPaint.LayerWeights(f.Col1At(c)); } } return best; }
+        var w1 = W(new Vector3(-5, 0, 0)); var w2 = W(new Vector3(5, 0, 0)); var w3 = W(new Vector3(0, 6, 0)); var w0 = W(new Vector3(-9, -9, 0));
+        Expect(w0.X > 0.99f && w1.Y > 0.99f && w2.Z > 0.99f && w3.W > 0.99f, $"layer weights: corner {w0}, brush 1 {w1}, brush 2 {w2}, brush 3 {w3}");
+        // save / open keeps the layers and the painted blend
+        var file = StPath("terrain.mmx");
+        File.WriteAllText(file, SceneIO.ToJson(Scene));
+        var back = SceneIO.Load(file);
+        var bm = back.Materials.First(m => m.Name == "terrain_test");
+        var bo = back.Objects.First(o => o.Name == "ground");
+        Expect(bm.IsTerrain && bm.Layer(3) == files[3] && bo.Mesh.Faces.Count(f => f.Col1 != null) == pl.Mesh.Faces.Count, "saved and opened: terrain shader, 4 layers, colour 1 on every face");
+        // export: the game shader with its 4 layer textures and colour 1
+        var ydr = StPath("terrain_ground.ydr");
+        string sum = null; string err = null;
+        try { sum = Core.Gta.Export.GtaExporter.ExportModelFile(Scene, new[] { pl }, ydr, LoadImageRgba, renderer.Textures.SearchFolders.ToList()); } catch (Exception e) { err = e.Message; }
+        Expect(err == null && File.Exists(ydr), $"exported as terrain_cb_w_4lyr: {sum ?? err}");
+        // painting with the brush in the view
+        SelectOnly(pl);
+        yield return Frames(3);
     }
 
     IEnumerable<object> MapTerrainTest()
