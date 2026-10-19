@@ -1129,6 +1129,7 @@ public sealed partial class EditorApp
         Expect(assetItems.Count == 1 && assetItems[0].Name == "two_crates", $"my assets: {assetItems.Count} item(s) in the folder");
         var tp = assetItems.Count > 0 ? ThumbPath(assetItems[0]) : null;
         if (tp != null && File.Exists(tp)) File.Delete(tp);
+        if (assetItems.Count > 0) thumbAsked.Remove(assetItems[0].Key);
         yield return Settle(() => tp != null && File.Exists(tp), 20);
         Expect(tp != null && File.Exists(tp) && new FileInfo(tp).Length > 2000, $"thumbnail rendered and saved ({(tp != null && File.Exists(tp) ? new FileInfo(tp).Length : 0)} bytes)");
         int before = Scene.Objects.Count;
@@ -1139,8 +1140,8 @@ public sealed partial class EditorApp
         yield return Until(() => game != null || gameError != null, 400);
         if (game != null)
         {
-            assetSource = 1; assetFamily = 0; assetKey = null; // chairs & seats
             yield return Until(() => gameClassified, 1200);
+            assetSource = 1; assetFamily = 0; assetKey = null; // chairs & seats
             yield return Frames(3);
             var first = assetItems.Take(6).ToList();
             foreach (var x in first) { var p = ThumbPath(x); if (File.Exists(p)) File.Delete(p); thumbAsked.Remove(x.Key); }

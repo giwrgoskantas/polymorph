@@ -133,7 +133,11 @@ public sealed partial class EditorApp
     SceneObject Obj(string name) => Scene.Objects.LastOrDefault(o => o.Name == name);
     void SelectOnly(params SceneObject[] objs) { Selected.Clear(); foreach (var o in objs) Selected.Add(o.Id); ActiveId = objs.Last().Id; SelectionChanged(); }
     SceneObject Prim(CreateKind k, Vector3 at) { Cursor3D = at; AddPrimitive(k); adjustOpen = false; var o = Scene.Find(lastAdd?.Item2 ?? -1) ?? Scene.Objects.Last(); return o; }
-    void Fresh() { Dirty = false; NewScene(); Cursor3D = Vector3.Zero; importReportOpen = false; }
+    void Fresh()
+    {
+        if (Current is { ModEdit: not null } me) EndModifierEdit(me);
+        Level = SubObject.Object; Dirty = false; NewScene(); Cursor3D = Vector3.Zero; importReportOpen = false;
+    }
 
     List<StTest> SelfTests()
     {
