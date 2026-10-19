@@ -236,6 +236,7 @@ public sealed partial class EditorApp
             if (paintTool == PaintTool.Fill) { PaintFillClick(o, ts, face); return true; }
             if (paintTool == PaintTool.VertexColour)
             {
+                if (o.Id != terrainLayerObj) { terrainLayerObj = o.Id; if (TerrainMaterialOf(o) == null) terrainPaintLayer = -1; }
                 Do("Vertex colour stroke", () => { });
                 VertexStamp(o, pl, nl, rLocal);
                 lastStamp = pl; painting = true; return true;

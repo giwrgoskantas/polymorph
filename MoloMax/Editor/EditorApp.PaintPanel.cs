@@ -310,8 +310,11 @@ public sealed partial class EditorApp
         SetStatus($"{o.Name}: terrain material (4 textures). Pick textures 2-4 in the Material panel, then paint.");
     }
 
+    int terrainLayerObj = -1;
     void VertexColourOptions(SceneObject o)
     {
+        // a Texture 1-4 choice belongs to the model it was made on: another model paints normal vertex colours again
+        if (o.Id != terrainLayerObj) { terrainLayerObj = o.Id; if (TerrainMaterialOf(o) == null) terrainPaintLayer = -1; }
         TerrainLayerOptions(o, TerrainMaterialOf(o));
         Ui.Label("GTA VERTEX COLOURS", Theme.TextDim);
         float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
