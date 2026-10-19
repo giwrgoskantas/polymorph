@@ -256,43 +256,78 @@ public sealed partial class EditorApp
         return null;
     }
 
+    /// <summary>The 4 terrain colours (as Sollumz / the game): texture 1 black, 2 blue, 3 green, 4 cyan, in vertex colour 1.</summary>
+    static readonly (string Name, Vector4 Swatch)[] TerrainSwatches =
+    {
+        ("Texture 1", new Vector4(0, 0, 0, 1)), ("Texture 2", new Vector4(0, 0, 1, 1)),
+        ("Texture 3", new Vector4(0, 1, 0, 1)), ("Texture 4", new Vector4(0, 1, 1, 1)),
+    };
+
     void TerrainLayerOptions(SceneObject o, Core.Gta.GtaMaterial tm)
     {
-        Ui.TextDisabled("Terrain layers (4 textures blended by vertex colour 1)");
+        Ui.Label("TERRAIN (4 TEXTURES)", Theme.TextDim);
         float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
         for (int i = 0; i < 4; i++)
         {
             if (i % 2 == 1) ImGui.SameLine(0, 4);
-            var tex = tm.Layer(i);
-            string label = $"{i + 1}  " + (tex != null ? Path.GetFileNameWithoutExtension(tex) : "(empty)");
-            if (Theme.Toggle(label + "##tl" + i, terrainPaintLayer == i, new Vector2(w2, 26))) terrainPaintLayer = terrainPaintLayer == i ? -1 : i;
-            Theme.Tip("Paint this layer with the brush (click again to paint vertex colours instead).");
+            var (name, c) = TerrainSwatches[i];
+            var tex = tm?.Layer(i);
+            bool sel = terrainPaintLayer == i;
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(c.X * 0.8f + 0.08f, c.Y * 0.8f + 0.08f, c.Z * 0.8f + 0.08f, 1));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(c.X * 0.9f + 0.15f, c.Y * 0.9f + 0.15f, c.Z * 0.9f + 0.15f, 1));
+            ImGui.PushStyleColor(ImGuiCol.Text, c.Y > 0.5f ? new Vector4(0, 0, 0, 1) : new Vector4(1));
+            if (sel) { ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 2.5f); ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(1, 0.75f, 0.2f, 1)); }
+            if (ImGui.Button((sel ? "> " : "") + name + "##tl" + i, new Vector2(w2, 30))) terrainPaintLayer = i;
+            if (sel) { ImGui.PopStyleColor(); ImGui.PopStyleVar(); }
+            ImGui.PopStyleColor(3);
+            Theme.Tip($"Paints {name.ToLower()} (vertex colour 1 = {(int)(c.X * 255)}, {(int)(c.Y * 255)}, {(int)(c.Z * 255)})" + (tex != null ? ": " + Path.GetFileNameWithoutExtension(tex) : ""));
         }
-        if (terrainPaintLayer >= 0 && ImGui.Button($"Fill the whole object with layer {terrainPaintLayer + 1}", new Vector2(-1, 0)))
+        if (tm == null)
+        {
+            Ui.TextWrapped("Its material is not a 4-layer terrain yet: the view will not show the blend.");
+            if (ImGui.Button("Make its material a terrain (4 textures)", new Vector2(-1, 26))) MakeTerrainMaterial(o);
+            Theme.Tip("Shader terrain_cb_w_4lyr. Its texture becomes texture 1; pick textures 2-4 in the Material panel.");
+        }
+        if (terrainPaintLayer >= 0 && ImGui.Button($"Fill the whole object with texture {terrainPaintLayer + 1}", new Vector2(-1, 0)))
             Do("Terrain layer fill", () => { VertexPaint.FillLayer(o.Mesh, Enumerable.Range(0, o.Mesh.Faces.Count), terrainPaintLayer); o.Touch(); });
-        Ui.TextDisabled(terrainPaintLayer >= 0 ? "The view shows the blend live. Ctrl+Z undoes a stroke." : "Pick a layer to paint it.");
         ImGui.Separator();
+    }
+
+    /// <summary>The object's materials become terrain_cb_w_4lyr (their diffuse / normal is texture 1).</summary>
+    void MakeTerrainMaterial(SceneObject o)
+    {
+        Undo.Record("Terrain material", Scene);
+        foreach (var id in o.Mesh.Faces.Select(f => f.MatId).Distinct().ToList())
+        {
+            if (Scene.Material(id) is not { } m || m.IsTerrain) continue;
+            m.EnsureLayers();
+            m.Layers[0] ??= m.DiffuseTexture; m.LayerBumps[0] ??= m.BumpTexture;
+            m.Shader = "terrain_cb_w_4lyr";
+        }
+        // start all on texture 1 (black) when the model has no colour 1 yet
+        if (o.Mesh.Faces.All(f => f.Col1 == null)) VertexPaint.FillLayer(o.Mesh, Enumerable.Range(0, o.Mesh.Faces.Count), 0);
+        o.Touch();
+        SetStatus($"{o.Name}: terrain material (4 textures). Pick textures 2-4 in the Material panel, then paint.");
     }
 
     void VertexColourOptions(SceneObject o)
     {
-        if (TerrainMaterialOf(o) is { } tm) TerrainLayerOptions(o, tm);
-        else terrainPaintLayer = -1;
-        Ui.TextDisabled("GTA vertex colours (the view shows them)");
+        TerrainLayerOptions(o, TerrainMaterialOf(o));
+        Ui.Label("GTA VERTEX COLOURS", Theme.TextDim);
         float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
         for (int i = 0; i < VertexPaint.Presets.Length; i++)
         {
             var (name, c, tip) = VertexPaint.Presets[i];
             if (i % 2 == 1) ImGui.SameLine(0, 4);
-            bool sel = vertexColour == c;
+            bool sel = vertexColour == c && terrainPaintLayer < 0;
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(c.X * 0.7f, c.Y * 0.7f, c.Z * 0.7f, 1));
             ImGui.PushStyleColor(ImGuiCol.Text, c.X + c.Y + c.Z > 1.5f ? new Vector4(0, 0, 0, 1) : new Vector4(1));
-            if (ImGui.Button((sel ? "> " : "") + name, new Vector2(w2, 26))) vertexColour = c;
+            if (ImGui.Button((sel ? "> " : "") + name, new Vector2(w2, 26))) { vertexColour = c; terrainPaintLayer = -1; }
             ImGui.PopStyleColor(2);
             Theme.Tip(tip);
         }
-        ImGui.ColorEdit4("Custom", ref vertexColour, ImGuiColorEditFlags.NoInputs);
-        if (ImGui.Button("Fill the whole object", new Vector2(-1, 0)))
+        if (ImGui.ColorEdit4("Custom", ref vertexColour, ImGuiColorEditFlags.NoInputs)) terrainPaintLayer = -1;
+        if (terrainPaintLayer < 0 && ImGui.Button("Fill the whole object", new Vector2(-1, 0)))
         {
             Do("Vertex colour fill", () => { VertexPaint.Fill(o.Mesh, Enumerable.Range(0, o.Mesh.Faces.Count), vertexColour); o.Touch(); });
         }

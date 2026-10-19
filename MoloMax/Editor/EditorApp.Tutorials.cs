@@ -1,3 +1,4 @@
+using MoloMax.Core.Gta;
 using MoloMax.Core.Gta.Game;
 using MoloMax.Core.Gta.Library;
 using System.Numerics;
@@ -1468,6 +1469,15 @@ public sealed partial class EditorApp
         var bm = back.Materials.First(m => m.Name == "terrain_test");
         var bo = back.Objects.First(o => o.Name == "ground");
         Expect(bm.IsTerrain && bm.Layer(3) == files[3] && bo.Mesh.Faces.Count(f => f.Col1 != null) == pl.Mesh.Faces.Count, "saved and opened: terrain shader, 4 layers, colour 1 on every face");
+        // a plain model (like a GTA ground): Texture 1-4 buttons, "make its material a terrain", then paint texture 2 = blue
+        var plain = Prim(CreateKind.Plane, new Vector3(30, 0, 0));
+        var pm = GtaMaterial.CreateDefault(Scene.Materials.Max(m => m.Id) + 1, "plain_ground", new Vector3(0.6f)); pm.DiffuseTexture = files[0]; Scene.Materials.Add(pm);
+        foreach (var f in plain.Mesh.Faces) f.MatId = pm.Id;
+        Expect(TerrainMaterialOf(plain) == null, "a plain ground: not terrain yet");
+        MakeTerrainMaterial(plain);
+        Expect(pm.IsTerrain && pm.Layer(0) == files[0] && plain.Mesh.Faces.All(f => f.Col1 != null && f.Col1.All(c => c == TerrainSwatches[0].Swatch)), "Make terrain: shader terrain_cb_w_4lyr, its texture is texture 1, everything starts black (texture 1)");
+        VertexPaint.FillLayer(plain.Mesh, Enumerable.Range(0, plain.Mesh.Faces.Count), 1);
+        Expect(plain.Mesh.Faces.All(f => f.Col1.All(c => c == TerrainSwatches[1].Swatch)), "Texture 2 paints blue (0, 0, 255) as Sollumz");
         // export: the game shader with its 4 layer textures and colour 1
         var ydr = StPath("terrain_ground.ydr");
         string sum = null; string err = null;

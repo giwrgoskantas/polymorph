@@ -195,16 +195,19 @@ public sealed partial class EditorApp
     {
         if (gameClassify != null || game == null) return;
         var overrides = new Dictionary<string, long>(Settings.FamilyOverrides);
-        gameClassify = System.Threading.Tasks.Task.Run(() =>
+        // its own thread: the map streaming fills the thread pool, a pooled task waited minutes behind it
+        gameClassify = System.Threading.Tasks.Task.Factory.StartNew(() =>
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             foreach (var m in game.Models)
             {
                 try { m.Categories = overrides.TryGetValue(FamilyKey(m), out var o) ? o : GameCategories.Classify(m.Name); }
                 catch { m.Categories = 0; }
             }
             gameClassified = true;
+            Console.WriteLine($"[families] {game.Models.Count} models sorted in {sw.ElapsedMilliseconds} ms");
             try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { }
-        });
+        }, System.Threading.CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.LongRunning, System.Threading.Tasks.TaskScheduler.Default);
     }
 
     /// <summary>Right-click menu of a game model: tick the families (Game Files and Asset Browser) it belongs to.</summary>
