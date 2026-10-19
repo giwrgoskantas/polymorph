@@ -739,7 +739,8 @@ public sealed partial class EditorApp
             try
             {
                 var bytes = d.Save(h => archSlots.TryGetValue(h, out var s) ? (s.Min, s.Max) : null);
-                var target = dirOverride == null && this.stream != null && this.stream.Contains(d.FilePath) ? d.FilePath : Path.Combine(stream, d.Name + ".ymap");
+                // a .ymap read from disk (Open file, stream folder) is saved back where it was, like CodeWalker
+                var target = dirOverride == null && d.FilePath != null && File.Exists(d.FilePath) ? d.FilePath : Path.Combine(stream, d.Name + ".ymap");
                 Directory.CreateDirectory(Path.GetDirectoryName(target));
                 File.WriteAllBytes(target, bytes);
                 d.FilePath = target;
@@ -1013,6 +1014,9 @@ public sealed partial class EditorApp
                 {
                     if (ImGui.MenuItem("New props go here")) { mapActive = d.Name; interiorActive = null; }
                     if (ImGui.MenuItem("Keep loaded", null, mapPinned.Contains(d.Name))) { if (!mapPinned.Remove(d.Name)) mapPinned.Add(d.Name); }
+                    if (ImGui.MenuItem("Save this .ymap", "Ctrl+S")) SaveMapDoc(d);
+                    if (ImGui.MenuItem("Save this .ymap as...")) SaveMapDoc(d, saveAs: true);
+                    ImGui.Separator();
                     if (ImGui.MenuItem("Select its entities")) { Selected.Clear(); foreach (var o in Scene.Objects) if (o.Folder == d.Name) Selected.Add(o.Id); SelectionChanged(); }
                     if (ImGui.MenuItem("Close (unsaved changes are lost)")) UnloadMapDoc(d);
                     ImGui.EndPopup();
@@ -1024,6 +1028,11 @@ public sealed partial class EditorApp
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.95f, 0.42f, 0.11f, 1)); ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 1, 1, 1));
             MapBuildPanel();
             ImGui.Separator();
+            if (SelectedMapDoc() is { } sd)
+            {
+                if (ImGui.Button($"Save {sd.Name}.ymap" + (sd.FilePath != null && File.Exists(sd.FilePath) ? "" : "..."), new Vector2(-1, 26))) SaveMapDoc(sd);
+                Theme.Tip(sd.FilePath != null && File.Exists(sd.FilePath) ? "Writes it where it was opened from: " + sd.FilePath : "A game map: pick where to write it (keep its name so FiveM uses yours).");
+            }
             if (ImGui.Button(stream != null ? "SAVE (INTO THE STREAM FOLDER)" : "SAVE MAP RESOURCE", new Vector2(-1, 30))) SaveMaps();
             ImGui.PopStyleColor(2);
             Theme.Tip("Writes the changed / new .ymap files (and edited interiors' .ytyp) into a FiveM resource: stream folder + fxmanifest (this_is_a_map). A game file keeps its name, so FiveM uses yours instead.");

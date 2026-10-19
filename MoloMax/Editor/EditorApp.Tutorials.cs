@@ -1402,6 +1402,21 @@ public sealed partial class EditorApp
             var lp = Vector3.Transform(intObj.Position - oi.Pos, Quaternion.Conjugate(oi.Rot));
             Expect(backI.Entities.Any(x => Vector3.Distance(x.Position, lp) < 0.01f), $"{Path.GetFileName(oi.FilePath)} read back: the moved interior object is at its new place");
         }
+        // one prop moved, only its .ymap saved (right-click > Save this .ymap / the panel button / Ctrl+S)
+        if (ent != null)
+        {
+            var de2 = entOf[ent.Id];
+            ent.Position += new Vector3(1, 0, 0); SelectOnly(ent);
+            Expect(SelectedMapDoc() == de2.Doc, $"the selection's .ymap is {SelectedMapDoc()?.Name}");
+            var t0 = File.GetLastWriteTimeUtc(de2.Doc.FilePath);
+            System.Threading.Thread.Sleep(20);
+            bool ok = SaveMapDoc(de2.Doc);
+            var back2 = MapDocument.Load(File.ReadAllBytes(de2.Doc.FilePath), Path.GetFileName(de2.Doc.FilePath));
+            Expect(ok && File.GetLastWriteTimeUtc(de2.Doc.FilePath) > t0 && back2.Entities.Any(x => Vector3.Distance(x.Position, ent.Position) < 0.01f), $"Save this .ymap: {Path.GetFileName(de2.Doc.FilePath)} written in place with the prop moved");
+            // Save as: a copy elsewhere, which becomes its file
+            var other = Path.Combine(StPath("stream_copy"), "saved_as", de2.Doc.Name + ".ymap");
+            Expect(SaveMapDoc(de2.Doc, path: other) && File.Exists(other) && de2.Doc.FilePath == other, "Save as: written there, and it is now its file");
+        }
         CloseStreamFolder();
         Expect(stream == null && !mapDocs.Values.Any(d => d.FilePath != null && d.FilePath.StartsWith(dir, StringComparison.OrdinalIgnoreCase)), "closed: its maps leave the scene");
     }

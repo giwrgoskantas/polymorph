@@ -351,6 +351,12 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Expand all")) { closedFolders.Clear(); closedObjs.Clear(); }
             if (ImGui.MenuItem("Collapse all")) { foreach (var o in Scene.Objects) closedObjs.Add(o.Id); }
             ImGui.Separator();
+            if (MapMode && mapDocs.TryGetValue(folder, out var fdoc))
+            {
+                if (ImGui.MenuItem("Save this .ymap", "Ctrl+S")) SaveMapDoc(fdoc);
+                if (ImGui.MenuItem("Save this .ymap as...")) SaveMapDoc(fdoc, saveAs: true);
+                ImGui.Separator();
+            }
             if (ImGui.MenuItem("New folder")) NewFolder(false);
             if (folder != "")
             {
@@ -442,6 +448,7 @@ public sealed partial class EditorApp
         if (ImGui.BeginPopupContextItem("##octx"))
         {
             if (!Selected.Contains(o.Id)) { Selected.Clear(); Selected.Add(o.Id); ActiveId = o.Id; SelectionChanged(); }
+            if (MapMode && SelectedMapDoc() is { } odoc) { if (ImGui.MenuItem($"Save its .ymap ({odoc.Name})")) SaveMapDoc(odoc); ImGui.Separator(); }
             if (ImGui.MenuItem("Rename")) { renameId = o.Id; renameBuf = o.Name; renameFocus = true; }
             if (ImGui.MenuItem("Create Drawable from selection")) CreateDrawable();
             if (ImGui.MenuItem("Collision from selection")) CollisionFromSelection();

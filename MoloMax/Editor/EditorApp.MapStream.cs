@@ -85,6 +85,49 @@ public sealed partial class EditorApp
         SetStatus("Stream folder closed.");
     }
 
+    /// <summary>The .ymap of the selected map object (else of the active map).</summary>
+    MapDocument SelectedMapDoc()
+    {
+        foreach (var id in Selected) if (entOf.TryGetValue(id, out var de)) return de.Doc;
+        foreach (var id in Selected) if (Scene.Find(id) is { } o && o.Folder != null && mapDocs.TryGetValue(o.Folder, out var d)) return d;
+        return null;
+    }
+
+    /// <summary>Writes one .ymap: where it was opened from, else (a game map, Save as) where you pick.</summary>
+    public bool SaveMapDoc(MapDocument d, bool saveAs = false, string path = null)
+    {
+        SyncMapDoc(d, apply: true);
+        path ??= !saveAs && d.FilePath != null && File.Exists(d.FilePath) ? d.FilePath : null;
+        if (path == null)
+        {
+            using var dlg = new System.Windows.Forms.SaveFileDialog
+            {
+                Filter = "GTA map (*.ymap)|*.ymap", Title = "Save " + d.Name + ".ymap", FileName = d.Name + ".ymap",
+                InitialDirectory = d.FilePath != null ? Path.GetDirectoryName(d.FilePath) : stream?.Folder ?? Path.Combine(MapOutputDir(), "stream"),
+            };
+            if (dlg.InitialDirectory != null) Directory.CreateDirectory(dlg.InitialDirectory);
+            var ok = ShowFileDialog(dlg) == System.Windows.Forms.DialogResult.OK;
+            Input.ReleaseAllKeys();
+            if (!ok) return false;
+            path = dlg.FileName;
+        }
+        try
+        {
+            var bytes = d.Save(h => archSlots.TryGetValue(h, out var s) ? (s.Min, s.Max) : null);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllBytes(path, bytes);
+            d.FilePath = path; d.Modified = false;
+            foreach (var id in mapDeleted.Where(id => !entOf.ContainsKey(id)).ToList()) mapDeleted.Remove(id);
+            mapChanged.Remove(d.Name);
+            SetStatus($"{Path.GetFileName(path)} saved ({d.Entities.Count} entities) in {Path.GetDirectoryName(path)}");
+            return true;
+        }
+        catch (Exception e) { SetStatus($"Could not save {d.Name}.ymap: {e.Message}"); return false; }
+    }
+
+    /// <summary>MAP Ctrl+S: the changed .ymap files (and interiors) go back where they came from, the others into the resource.</summary>
+    void MapQuickSave() => SaveMaps();
+
     /// <summary>Map panel part: open / save / close a stream folder.</summary>
     void StreamFolderPanel(float w2)
     {
