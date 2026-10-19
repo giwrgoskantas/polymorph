@@ -159,9 +159,12 @@ public sealed partial class EditorApp
             }
             ResolveFarLinks();
         }
+        // hiding / showing map models changes which far models must step aside
+        int hidSig = 0; foreach (var o in MapLive()) if (o.Hidden) hidSig = hidSig * 31 + o.Id;
+        if (hidSig != lastHiddenSig) { lastHiddenSig = hidSig; backdropHiddenDirty = true; backdropHiddenTime = -10; }
         if (backdropMaps > 0 && backdropIn.IsEmpty && backdropHiddenDirty && ImGui.GetTime() - backdropHiddenTime > 1) { backdropHiddenTime = ImGui.GetTime(); UpdateBackdropHidden(); }
     }
-    bool backdropHiddenDirty = true; double backdropHiddenTime = -10;
+    bool backdropHiddenDirty = true; double backdropHiddenTime = -10; int lastHiddenSig;
 
     /// <summary>Far models inside a loaded editable map step aside (no double geometry).</summary>
     void UpdateBackdropHidden()
@@ -177,8 +180,18 @@ public sealed partial class EditorApp
         var dists = ready.SelectMany(d => d.Entities).Where(e => e.IsHd).Select(e => MathF.Max(e.LodDist, 30) * 1.15f).OrderBy(x => x).ToList();
         float r = dists.Count > 0 ? dists[(int)(dists.Count * 0.2f)] : 120; // low: a far model stays where most loaded models would already be culled (no holes)
         backdropHdRange2 = r * r;
+        // models the user hid: the far models drawn over them step aside too (else the far copy shows where the model was)
+        var hiddenFeet = new List<(Vector3, Vector3)>();
+        foreach (var o in Scene.Objects)
+            if (o.Hidden && o.Id >= 0 && entOf.TryGetValue(o.Id, out var he) && he.Ent.IsHd && MapLevelOn[he.Ent.LodLevel]) hiddenFeet.Add(o.FastWorldBounds());
         foreach (var o in backdrop)
         {
+            if (hiddenFeet.Count > 0)
+            {
+                var (hmn, hmx) = o.FastWorldBounds(); var hc = (hmn + hmx) * 0.5f;
+                bool overHidden = hiddenFeet.Any(f => hmn.X <= f.Item2.X && hmx.X >= f.Item1.X && hmn.Y <= f.Item2.Y && hmx.Y >= f.Item1.Y);
+                if (overHidden && boxes.Any(bx => hc.X >= bx.Item1.X - 60 && hc.X <= bx.Item2.X + 60 && hc.Y >= bx.Item1.Y - 60 && hc.Y <= bx.Item2.Y + 60)) { backdropHidden.Add(o.Id); continue; }
+            }
             // finest far models whose middle is in the loaded area; coarser ones only when they lie inside it (big SLODs
             // reaching past it stay, else holes around)
             var (mn, mx) = o.FastWorldBounds(); var c = (mn + mx) * 0.5f;

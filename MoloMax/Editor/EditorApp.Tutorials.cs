@@ -195,6 +195,7 @@ public sealed partial class EditorApp
         T("TERRAIN: 4 layers painted with vertex colour", TerrainPaintTest);
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("MAP hide + send to MODEL", MapHideSendTest);
+        T("UX tour: panels a 3D artist uses", UxTour);
         T("ASSETS: browser thumbnails + placing", AssetTest);
         T("PLANAR: level vertices", PlanarTest);
     }
@@ -1151,6 +1152,42 @@ public sealed partial class EditorApp
         assetsOpen = false;
     }
 
+    IEnumerable<object> UxTour()
+    {
+        Fresh();
+        if (MapMode) SetMapMode(false);
+        Maximized = false; ShowPanel = true;
+        var vp = Viewports[ActiveViewport]; vp.Shading = ShadingMode.Realistic;
+        var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "crate";
+        var drawable = Prim(CreateKind.Box, new Vector3(4, 0, 0)); drawable.Name = "shop_counter";
+        foreach (var v in Viewports) v.Camera.Frame(new Vector3(-2, -2, -1), new Vector3(6, 2, 3));
+        SelectOnly(box); yield return Frames(10);
+        yield return Shot("ux_01_object");
+        // edit mode, vertex level: Edit Geometry with Make Planar / Preserve UVs
+        SetLevel(SubObject.Vertex); SubSel(box).Verts.Add(0); SubSel(box).Verts.Add(1);
+        foreach (var t in new[] { PropTab.Modifiers, PropTab.Object, PropTab.Tool })
+        { propTab = t; yield return Frames(6); yield return Shot("ux_02_vertex_" + t); }
+        SetLevel(SubObject.Polygon); SubSel(box).Faces.Add(0); yield return Frames(4);
+        propTab = PropTab.Material; yield return Frames(6); yield return Shot("ux_03_polygon_material");
+        // terrain material + paint panel
+        var mat = Scene.AddMaterial("ground_terrain", new Vector3(0.6f)); mat.Shader = "terrain_cb_w_4lyr"; mat.EnsureLayers();
+        foreach (var f in box.Mesh.Faces) f.MatId = mat.Id; box.Touch();
+        SetLevel(SubObject.Object); SelectOnly(box);
+        propTab = PropTab.Material; yield return Frames(6); yield return Shot("ux_04_terrain_material");
+        propTab = PropTab.Paint; paintMode = true; paintTool = PaintTool.VertexColour; yield return Frames(8); yield return Shot("ux_05_paint_vertex_terrain");
+        paintMode = false; paintTool = PaintTool.Brush;
+        // export page
+        SelectOnly(box, drawable); OpenHub(1); exportSelectedOnly = true; yield return Frames(8); yield return Shot("ux_06_export_selected");
+        exportSelectedOnly = false; yield return Frames(4); yield return Shot("ux_07_export_resource");
+        HubOpen = false;
+        // asset browser
+        OpenAssetBrowser(); yield return Frames(10); yield return Shot("ux_08_assets"); assetsOpen = false;
+        // right-click menu in the view
+        quadCenter = new Vector2(vp.X + vp.W / 2, vp.Y + vp.H / 2); OpenPopup("context"); yield return Frames(6); yield return Shot("ux_09_context_menu");
+        ImGui.CloseCurrentPopup();
+        yield return Frames(3);
+    }
+
     IEnumerable<object> MapHideSendTest()
     {
         var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
@@ -1177,14 +1214,14 @@ public sealed partial class EditorApp
         // hide it like the eye button does
         foreach (var t in RowTargets(pick)) t.Hidden = true;
         Selected.Clear(); SelectionChanged();
-        yield return Frames(10);
+        yield return Frames(150); // the far models step aside on the next refresh (once a second)
         MapGatherDraws(vp, vp.Camera.View * vp.Camera.Projection(vp.Aspect));
         var (mn, mx) = pick.FastWorldBounds(); var c = (mn + mx) * 0.5f;
         bool drawnSingle = mapSingles.Contains(pick);
         bool drawnInst = pick.InstanceKey != null && instGroups.TryGetValue(pick.InstanceKey, out var gi) && Enumerable.Range(0, gi.Count).Any(k => Vector3.Distance(gi.Worlds[k].Translation, pick.Position) < 0.01f);
         var same = Scene.Objects.Where(o => o != pick && !o.Hidden && o.Gta.MapArchetype == pick.Gta.MapArchetype && Vector3.Distance(o.Position, pick.Position) < 0.05f).Select(o => o.Name + "@" + o.Folder).ToList();
         var lodsOver = backdrop.Where(o => !o.Hidden && o.Mesh != null && !FarSteppedAside(o, vp.Camera.Eye) && FarLodVisible(o, vp.Camera.Eye)).Where(o => { var (a, b) = o.FastWorldBounds(); return c.X >= a.X && c.X <= b.X && c.Y >= a.Y && c.Y <= b.Y; }).Select(o => o.Name).Take(6).ToList();
-        Expect(!drawnSingle && !drawnInst && same.Count == 0, $"hidden: drawn alone {drawnSingle}, drawn instanced {drawnInst}, same model same place {same.Count} ({string.Join(", ", same.Take(4))}); far models over it: {string.Join(", ", lodsOver)}");
+        Expect(!drawnSingle && !drawnInst && same.Count == 0 && lodsOver.Count == 0, $"hidden: drawn alone {drawnSingle}, drawn instanced {drawnInst}, same model same place {same.Count} ({string.Join(", ", same.Take(4))}); far models over it: {string.Join(", ", lodsOver)}");
         yield return Shot("map_after_hide");
         foreach (var t in RowTargets(pick)) t.Hidden = false;
         // send to MODEL
