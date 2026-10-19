@@ -32,8 +32,8 @@ public sealed partial class EditorApp
     bool BlenderKeymap => Settings.Keymap == Keymap.Blender;
     bool MaxKeymap => Settings.Keymap == Keymap.Max;
 
-    /// <summary>Classic mode (look, keymap, quad menu): on, chosen from the Welcome popup; Standard stays the default.</summary>
-    public const bool MaxModeEnabled = true;
+    /// <summary>The Classic keymap and the Welcome chooser stay in the code but are off: Classic is only a look (Edit > Look).</summary>
+    public const bool MaxModeEnabled = false;
     static readonly string[] KeymapNames = MaxModeEnabled ? new[] { "Standard", "Industry Compatible", "Classic" } : new[] { "Standard", "Industry Compatible" };
 
     public void SetKeymap(Keymap k)
@@ -48,17 +48,13 @@ public sealed partial class EditorApp
         });
     }
 
-    /// <summary>Blender mode or 3ds Max mode: look, keymap and viewport layout together.</summary>
+    /// <summary>Standard or Classic look: colours and viewport layout only, the keys do not change.</summary>
     public void SetMode(UiMode mode)
     {
-        Settings.Mode = mode; Settings.ModeChosen = true;
+        Settings.Mode = mode; Settings.ModeChosen = true; Settings.Save();
         Theme.Apply(mode);
-        if (mode == UiMode.Max) TimelineOpen = true; // reuse existing animation timeline
         Maximized = mode == UiMode.Blender;
-        SetKeymap(mode == UiMode.Blender ? Keymap.Blender : Keymap.Max);
-        SetStatus(mode == UiMode.Blender
-            ? "Standard mode: standard look and keys (G R S, Tab, Shift+A, MMB orbit). Ctrl+Alt+Q shows 4 views."
-            : "Classic mode: classic look and keys (Q W E R, 1-5, Alt+MMB orbit, right-click quad menu).");
+        SetStatus(mode == UiMode.Blender ? "Standard look: one big view." : "Classic look: classic colours and 4 views. Your keys stay the same.");
     }
 
     // ---------------------------------------------------------------- shortcuts
@@ -835,7 +831,7 @@ public sealed partial class EditorApp
         if (ImGui.BeginPopupModal("Welcome to Polymorph", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
         {
             Ui.Text("Pick the layout you prefer: its look, its shortcuts and its viewports.");
-            Ui.TextDisabled("You can switch at any time: Edit > Mode, or the Mode box in the toolbar.");
+            Ui.TextDisabled("You can switch at any time: Edit > Look.");
             ImGui.Spacing();
             var bw = new Vector2(330, 40);
             ImGui.BeginGroup();

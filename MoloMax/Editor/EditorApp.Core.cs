@@ -66,24 +66,11 @@ public sealed partial class EditorApp : IDisposable
         renderer = new SceneRenderer(gpu.Device);
         outline = new OutlineRenderer(gpu.Device);
         lines = new LineBatch(gpu.Device);
-        // 3ds Max mode is set aside for now: MoloMax runs in Blender mode (Blender or Industry Compatible keymap)
-        if (!MaxModeEnabled)
-        {
-            Settings.Mode = UiMode.Blender; Settings.ModeChosen = true;
-            if (Settings.Keymap == Keymap.Max) Settings.Keymap = Keymap.Blender;
-            Settings.KeymapChosen = true;
-        }
-        // Do not persist an implicit first-run decision. Until the Welcome dialog
-        // is answered, run the editor with the safe Standard layout/keymap.
-        // Settings defaults remain unchanged; the user's explicit choice is saved by SetMode.
-        if (!Settings.ModeChosen)
-        {
-            Settings.Mode = UiMode.Blender;
-            Settings.Keymap = Keymap.Blender;
-        }
+        // Classic is only a look (colours + 4 views): the keys stay Standard or Industry Compatible
+        if (Settings.Keymap == Keymap.Max) Settings.Keymap = Keymap.Blender;
+        Settings.KeymapChosen = true; Settings.ModeChosen = true;
         Theme.Apply(Settings.Mode);
         Maximized = Settings.Mode == UiMode.Blender;
-        if (Settings.ModeChosen && Settings.Mode == UiMode.Max) TimelineOpen = true;
         Viewports[3].Camera.Frame(new Vector3(-4, -4, 0), new Vector3(4, 4, 3));
         foreach (var v in Viewports.Take(3)) v.Camera.OrthoHeight = 16;
         UpdateTitle();

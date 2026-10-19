@@ -58,6 +58,13 @@ public sealed partial class EditorApp
         }
         if (ImGui.BeginMenu("Edit"))
         {
+            if (ImGui.BeginMenu("Look"))
+            {
+                if (ImGui.MenuItem("Standard", null, Settings.Mode == UiMode.Blender)) SetMode(UiMode.Blender);
+                if (ImGui.MenuItem("Classic (4 views)", null, Settings.Mode == UiMode.Max)) SetMode(UiMode.Max);
+                ImGui.EndMenu();
+            }
+            ImGui.Separator();
             if (ImGui.MenuItem(Undo.CanUndo ? $"Undo {Undo.UndoName}" : "Undo", "Ctrl+Z", false, Undo.CanUndo)) DoUndo();
             if (ImGui.MenuItem(Undo.CanRedo ? $"Redo {Undo.RedoName}" : "Redo", K("Ctrl+Shift+Z", "Ctrl+Shift+Z", "Ctrl+Y"), false, Undo.CanRedo)) DoRedo();
             ImGui.Separator();

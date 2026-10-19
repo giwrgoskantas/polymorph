@@ -201,7 +201,7 @@ public sealed partial class EditorApp
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("MAP hide + send to MODEL", MapHideSendTest);
         T("MAP MLO hide: hiding an interior hides what is inside, and it stays hidden", MapMloHideTest);
-        T("CLASSIC: first launch works, choosing Classic gives 4 views + timeline, keys work, back to Standard", ClassicModeTest);
+        T("CLASSIC: Classic is only a look (4 views, colours), keys and timeline unchanged, back to Standard", ClassicModeTest);
         T("UNDO: move then Ctrl+Z, in MODEL and on a MAP ground", UndoMoveTest);
         T("ANIM: timeline, I key, auto key, play, UV keys, camera, .ycd out and in, your .ycd files", AnimTest);
         T("DIAG cables: what the cable models hold", CableDiag);
@@ -1698,27 +1698,18 @@ public sealed partial class EditorApp
     {
         Fresh();
         UI.ImGuiBackend.SyntheticInput = true;
-        Note($"start: mode {Settings.Mode}, keymap {Settings.Keymap}, chosen {Settings.ModeChosen}");
-        // first launch (nothing chosen): Ctrl+Z works
-        var b = Prim(CreateKind.Box, Vector3.Zero); SelectOnly(b); yield return Frames(3);
-        Undo.Record("Move", Scene); Scene.Find(b.Id).Position = new Vector3(2, 0, 0);
-        KeyDownT(Keys.ControlKey); KeyDownT(Keys.Z); yield return Frames(4); KeyUpT(Keys.Z); KeyUpT(Keys.ControlKey); yield return Frames(4);
-        Expect(Scene.Find(b.Id)?.Position.X < 0.01f, $"before any choice (chosen {Settings.ModeChosen}): Ctrl+Z works ({status})");
-        // choose Classic
+        var keys0 = Settings.Keymap; bool tl0 = TimelineOpen;
+        // Classic is only a look: 4 views and its colours, nothing else changes
         SetMode(UiMode.Max); yield return Frames(10);
-        bool quad = !Maximized, tl = TimelineOpen;
-        yield return Shot("classic_mode");
-        b = Scene.Find(b.Id); SelectOnly(b); SetFrame(0); yield return Frames(2);
-        KeyDownT(Keys.K); yield return Frames(3); KeyUpT(Keys.K); yield return Frames(3);
-        var tr = Scene.Anim.Track(b.Id);
+        bool quad = !Maximized;
+        yield return Shot("classic_look");
+        var b = Prim(CreateKind.Box, Vector3.Zero); SelectOnly(b); yield return Frames(3);
         Undo.Record("Move", Scene); Scene.Find(b.Id).Position = new Vector3(3, 0, 0);
         KeyDownT(Keys.ControlKey); KeyDownT(Keys.Z); yield return Frames(4); KeyUpT(Keys.Z); KeyUpT(Keys.ControlKey); yield return Frames(4);
-        Expect(quad && tl && Settings.Keymap == Keymap.Max && tr != null && Scene.Find(b.Id)?.Position.X < 0.01f,
-            $"Classic: 4 views {quad}, timeline {tl}, keymap {Settings.Keymap}, K keyed {tr != null}, Ctrl+Z {Scene.Find(b.Id)?.Position.X:0.00}");
-        // visible texts: no product names in the Classic UI (search entries, tips are checked by the review)
+        Expect(quad && Settings.Keymap == keys0 && TimelineOpen == tl0 && Scene.Find(b.Id)?.Position.X < 0.01f,
+            $"Classic look: 4 views {quad}, keys unchanged {Settings.Keymap == keys0}, timeline untouched {TimelineOpen == tl0}, Ctrl+Z {Scene.Find(b.Id)?.Position.X:0.00}");
         SetMode(UiMode.Blender); yield return Frames(6);
-        Expect(Maximized && Settings.Keymap == Keymap.Blender, $"back to Standard: 1 view {Maximized}, keymap {Settings.Keymap}");
-        if (TimelineOpen) ToggleTimeline();
+        Expect(Maximized && Settings.Keymap == keys0, $"back to Standard: 1 view {Maximized}, keys {Settings.Keymap}");
         UI.ImGuiBackend.SyntheticInput = false;
     }
 
