@@ -1,3 +1,4 @@
+using MoloMax.Core.Gta.Map;
 using MoloMax.Core.Gta;
 using MoloMax.Core.Gta.Game;
 using MoloMax.Core.Gta.Library;
@@ -198,6 +199,7 @@ public sealed partial class EditorApp
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("MAP hide + send to MODEL", MapHideSendTest);
         T("MAP MLO hide: hiding an interior hides what is inside, and it stays hidden", MapMloHideTest);
+        T("MAP STREAM: open a stream folder (ymap, ytyp, ydr), edit, save in place", MapStreamTest);
         T("UX tour: panels a 3D artist uses", UxTour);
         T("CHECKLIST: the points without their own test", ChecklistTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
@@ -1343,6 +1345,65 @@ public sealed partial class EditorApp
         if (got != null) { SelectOnly(got); FrameSelection(vp); }
         yield return Frames(20);
         yield return Shot("sent_to_model");
+    }
+
+    IEnumerable<object> MapStreamTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        var src = @"C:\Users\molo3\Desktop\base_para_testes\resources\[map]\molo_bolingbrokeprison\stream";
+        if (!Directory.Exists(src)) { Note("Bolingbroke stream folder not found: not checked"); yield break; }
+        // a copy: saving writes in place
+        var dir = Path.Combine(StPath("stream_copy"), "stream");
+        if (Directory.Exists(StPath("stream_copy"))) Directory.Delete(StPath("stream_copy"), true);
+        foreach (var f in Directory.EnumerateFiles(src, "*.*", SearchOption.AllDirectories))
+        {
+            var t = Path.Combine(dir, Path.GetRelativePath(src, f)); Directory.CreateDirectory(Path.GetDirectoryName(t)); File.Copy(f, t);
+        }
+        Fresh();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        SetMapMode(true); ClearMapBuild();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        OpenStreamFolder(dir);
+        Expect(stream != null && stream.Ymaps.Count > 0, $"opened: {status}");
+        var docs = mapDocs.Values.Where(d => stream.Contains(d.FilePath)).ToList();
+        Expect(docs.Count == stream.Ymaps.Count, $"every .ymap of the folder loaded ({docs.Count}/{stream?.Ymaps.Count}): {string.Join(", ", docs.Select(d => d.Name).Take(6))}");
+        var localInts = interiors.Values.Where(i => i.FilePath != null).ToList();
+        Expect(stream.Interiors.Count == 0 || localInts.Count > 0, $"its interiors open from its .ytyp: {string.Join(", ", localInts.Select(i => i.Doc.ArchetypeName + " (" + i.ObjOf.Count + " objects)"))}");
+        yield return Settle(() => archLoading == 0, 120);
+        yield return Frames(20);
+        var nearKeys = MapLive().Where(o => o.InstanceKey != null && Vector3.Distance(o.Position, vp.Camera.Target) < 150).Select(o => o.InstanceKey).ToHashSet();
+        var localSlots = archSlots.Values.Where(sl => stream.ModelFile(sl.Hash) != null && nearKeys.Contains("map:" + sl.Hash.ToString("X8"))).ToList();
+        int ready = localSlots.Count(sl => sl.State == 2);
+        Expect(localSlots.Count > 0 && ready >= localSlots.Count * 0.8, $"its own models drawn: {ready}/{localSlots.Count}" + string.Join(" | ", localSlots.Where(sl => sl.State == 3).Take(3).Select(sl => sl.Name + ": " + sl.Error)));
+        var camT = vp.Camera.Target;
+        Expect(MathF.Abs(camT.X) < 10000 && MathF.Abs(camT.Y) < 10000, $"the camera goes to the folder's maps: {camT}");
+        yield return Shot("stream_folder");
+        // move one object of each kind, save: the same files change in place, nothing else appears
+        var before = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ent = Scene.Objects.FirstOrDefault(o => entOf.TryGetValue(o.Id, out var de) && stream.Contains(de.Doc.FilePath) && !de.Ent.IsMlo);
+        var intObj = localInts.SelectMany(i => i.ObjOf.Values).Select(Scene.Find).FirstOrDefault(o => o != null);
+        if (ent != null) ent.Position += new Vector3(0, 0, 0.5f);
+        if (intObj != null) intObj.Position += new Vector3(0.25f, 0, 0);
+        int n = SaveMaps();
+        var after = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var added = after.Except(before).Select(Path.GetFileName).ToList();
+        Expect(n >= (ent != null ? 1 : 0) + (intObj != null ? 1 : 0) && added.Count == 0, $"saved {n} file(s) in place, new files: {added.Count} ({string.Join(", ", added.Take(4))})");
+        if (ent != null)
+        {
+            var de = entOf[ent.Id];
+            var back = MapDocument.Load(File.ReadAllBytes(de.Doc.FilePath), Path.GetFileName(de.Doc.FilePath));
+            Expect(back.Entities.Any(x => Vector3.Distance(x.Position, ent.Position) < 0.01f), $"{Path.GetFileName(de.Doc.FilePath)} read back: the moved entity is at its new place");
+        }
+        if (intObj != null)
+        {
+            var oi = intEntOf[intObj.Id].In;
+            var backI = MloDocument.Load(File.ReadAllBytes(oi.FilePath), Path.GetFileName(oi.FilePath), oi.Doc.ArchetypeHash);
+            var lp = Vector3.Transform(intObj.Position - oi.Pos, Quaternion.Conjugate(oi.Rot));
+            Expect(backI.Entities.Any(x => Vector3.Distance(x.Position, lp) < 0.01f), $"{Path.GetFileName(oi.FilePath)} read back: the moved interior object is at its new place");
+        }
+        CloseStreamFolder();
+        Expect(stream == null && !mapDocs.Values.Any(d => d.FilePath != null && d.FilePath.StartsWith(dir, StringComparison.OrdinalIgnoreCase)), "closed: its maps leave the scene");
     }
 
     IEnumerable<object> MapMloHideTest()

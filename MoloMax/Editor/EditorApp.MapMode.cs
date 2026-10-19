@@ -467,7 +467,7 @@ public sealed partial class EditorApp
 
     void PumpArchetypes()
     {
-        if (game == null) return;
+        if (game == null && stream == null) return;
         // textures of newly loaded models: look up the missing names again, at most twice a second
 
         // finished loads: taken in batches 4 times a second (finding the objects of each model walks the whole streamed scene)
@@ -537,10 +537,12 @@ public sealed partial class EditorApp
         {
             var s = archQueue[archQueuePos++];
             if (s.State != 0) continue;
-            if (s.Asset == null) s.Asset = game.FindModel(s.Hash); // else from the cache or a drawable dictionary (background)
+            var local = stream?.ModelFile(s.Hash); // a model of the open stream folder wins over the game's
+            if (s.Asset == null && local == null) s.Asset = game?.FindModel(s.Hash); // else from the cache or a drawable dictionary (background)
+            if (local == null && game == null) { s.State = 3; s.Error = "not in the stream folder (load the game for its models)"; continue; }
             s.State = 1; archLoading++; running++; archInFlight.Add(s);
-            var g = game; var a = s.Asset; uint hash = s.Hash;
-            s.Task = System.Threading.Tasks.Task.Run(() => LoadArchetype(g, hash, a));
+            var g = game; var a = local == null ? s.Asset : null; uint hash = s.Hash;
+            s.Task = System.Threading.Tasks.Task.Run(() => LoadArchetype(g, hash, a, local));
         }
     }
 
@@ -552,8 +554,20 @@ public sealed partial class EditorApp
     /// One archetype's model, in the background: from the cache when read before, else its .ydr / .yft, else the drawable
     /// dictionary (.ydd) holding it — read once, every model inside goes to the cache (far LOD models come in big dictionaries).
     /// </summary>
-    static ArchLoad LoadArchetype(GameFiles g, uint hash, GameAsset a)
+    static ArchLoad LoadArchetype(GameFiles g, uint hash, GameAsset a, string local = null)
     {
+        if (local != null)
+        {
+            // a file of the open stream folder: read as it is now (no cache: it changes while you work on it)
+            var lo = new MoloMax.Core.IO.ImportOptions { Scale = 1, AutoSmoothAngle = 0 };
+            var lr = MoloMax.Core.IO.ModelImporter.Import(local, lo);
+            bool dict = local.EndsWith(".ydd", StringComparison.OrdinalIgnoreCase);
+            var lp = lr.Meshes.Where(m => m.GtaType != GtaObjectType.Collision && (!dict || m.DrawableHash == hash)).ToList();
+            var lld = Merge(lr, lp);
+            if (lld.Mesh.Faces.Count > 0) { (lld.Min, lld.Max) = lld.Mesh.Bounds(); lld.Groups = MoloMax.Core.Mesh.RenderMeshBuilder.Build(lld.Mesh); }
+            else lld.Why = "no geometry in " + Path.GetFileName(local);
+            return lld;
+        }
         var ld = FromCache(hash) ?? new ArchLoad();
         if (ld.Mesh == null)
         {
@@ -713,8 +727,9 @@ public sealed partial class EditorApp
     /// <summary>Writes every changed / new .ymap into a FiveM map resource (stream folder + fxmanifest).</summary>
     public int SaveMaps(string dirOverride = null)
     {
-        var dir = dirOverride ?? MapOutputDir();
-        var stream = Path.Combine(dir, "stream");
+        var dir = dirOverride ?? (this.stream != null ? StreamResourceDir() : MapOutputDir());
+        // a stream folder is open (like a CodeWalker project): its files are saved where they are, new ones go into it
+        var stream = dirOverride == null && this.stream != null ? this.stream.Folder : Path.Combine(dir, "stream");
         int n = 0; var errors = new List<string>();
         foreach (var d in mapDocs.Values.ToList())
         {
@@ -724,16 +739,17 @@ public sealed partial class EditorApp
             try
             {
                 var bytes = d.Save(h => archSlots.TryGetValue(h, out var s) ? (s.Min, s.Max) : null);
-                Directory.CreateDirectory(stream);
-                File.WriteAllBytes(Path.Combine(stream, d.Name + ".ymap"), bytes);
-                d.FilePath = Path.Combine(stream, d.Name + ".ymap");
+                var target = dirOverride == null && this.stream != null && this.stream.Contains(d.FilePath) ? d.FilePath : Path.Combine(stream, d.Name + ".ymap");
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.WriteAllBytes(target, bytes);
+                d.FilePath = target;
                 n++;
             }
             catch (Exception e) { errors.Add($"{d.Name}: {e.Message}"); }
         }
-        n += SaveInteriors(stream, errors); // edited game interiors: their .ytyp under the same name
+        n += SaveInteriors(stream, errors, inPlace: dirOverride == null && this.stream != null); // edited interiors: their .ytyp under the same name
         n += SaveMapBuild(dir, errors);     // what was modeled on the map: new models, MLO, their entities
-        if (n > 0)
+        if (n > 0 && !File.Exists(Path.Combine(dir, "fxmanifest.lua")) && !File.Exists(Path.Combine(dir, "__resource.lua")))
         {
             File.WriteAllText(Path.Combine(dir, "fxmanifest.lua"),
                 "fx_version 'cerulean'\ngame 'gta5'\nthis_is_a_map 'yes'\n\nauthor 'Molo Modding'\ndescription 'Map made with Polymorph'\n");
@@ -747,7 +763,7 @@ public sealed partial class EditorApp
     {
         try
         {
-            var d = MapDocument.Load(File.ReadAllBytes(path), Path.GetFileName(path), h => game?.FindModel(h)?.Name);
+            var d = MapDocument.Load(File.ReadAllBytes(path), Path.GetFileName(path), StreamName);
             d.FilePath = path;
             mapPinned.Add(d.Name);
             AddMapDoc(d);
@@ -954,6 +970,7 @@ public sealed partial class EditorApp
         // ---- maps
         if (Ui.Header("Maps (.ymap)", Open))
         {
+            StreamFolderPanel(w2);
             if (ImGui.Button("New map", new Vector2(w2, 0))) { var d = MapDocument.New(MapSafeName(NextMapName())); mapDocs[d.Name] = d; mapPinned.Add(d.Name); Scene.Folders.Add(d.Name); mapActive = d.Name; }
             ImGui.SameLine(0, 4);
             if (ImGui.Button("Open file...", new Vector2(w2, 0)))
@@ -1007,10 +1024,10 @@ public sealed partial class EditorApp
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.95f, 0.42f, 0.11f, 1)); ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 1, 1, 1));
             MapBuildPanel();
             ImGui.Separator();
-            if (ImGui.Button("SAVE MAP RESOURCE", new Vector2(-1, 30))) SaveMaps();
+            if (ImGui.Button(stream != null ? "SAVE (INTO THE STREAM FOLDER)" : "SAVE MAP RESOURCE", new Vector2(-1, 30))) SaveMaps();
             ImGui.PopStyleColor(2);
             Theme.Tip("Writes the changed / new .ymap files (and edited interiors' .ytyp) into a FiveM resource: stream folder + fxmanifest (this_is_a_map). A game file keeps its name, so FiveM uses yours instead.");
-            Ui.TextDisabled(MapOutputDir());
+            Ui.TextDisabled(stream != null ? stream.Folder : MapOutputDir());
         }
         // ---- place
         if (Ui.Header("Place props", Open))

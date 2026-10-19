@@ -21,6 +21,8 @@ public sealed partial class EditorApp
         public bool Auto;
         /// <summary>The instance's Hidden state last passed on to the room objects.</summary>
         public bool Hidden;
+        /// <summary>The .ytyp it was read from in the open stream folder (saved back there), null for a game interior.</summary>
+        public string FilePath;
     }
 
     /// <summary>Hiding an interior (its MLO instance) hides what is inside it too, and showing it brings it back.</summary>
@@ -91,19 +93,28 @@ public sealed partial class EditorApp
     public bool EditInterior(SceneObject inst)
     {
         if (inst == null || !entOf.TryGetValue(inst.Id, out var de) || !de.Ent.IsMlo) { SetStatus("Select an interior (MLO) of a loaded map first."); return false; }
-        if (game == null) { SetStatus("Load the game files first (the interior is read from them)."); return false; }
         var open = interiors.Values.FirstOrDefault(i => i.InstanceId == inst.Id);
         if (open != null) { interiorActive = open.Folder; return true; }
-        byte[] bytes; string yname;
-        try { bytes = game.InteriorTypeFile(de.Ent.ArchetypeHash, out yname); }
-        catch (Exception e) { SetStatus("Interior not readable: " + e.Message); return false; }
+        byte[] bytes; string yname; string localYtyp = null;
+        if (stream != null && stream.Interiors.TryGetValue(de.Ent.ArchetypeHash, out localYtyp))
+        {
+            // an interior of the open stream folder: read from its own .ytyp, saved back into it
+            try { bytes = File.ReadAllBytes(localYtyp); yname = Path.GetFileNameWithoutExtension(localYtyp); }
+            catch (Exception e) { SetStatus("Interior not readable: " + e.Message); return false; }
+        }
+        else
+        {
+            if (game == null) { SetStatus("Load the game files first (the interior is read from them)."); return false; }
+            try { bytes = game.InteriorTypeFile(de.Ent.ArchetypeHash, out yname); }
+            catch (Exception e) { SetStatus("Interior not readable: " + e.Message); return false; }
+        }
         if (bytes == null) { SetStatus($"The interior {de.Ent.DisplayName} is not in the game files (.ytyp not found)."); return false; }
         MloDocument doc;
-        try { doc = MloDocument.Load(bytes, yname + ".ytyp", de.Ent.ArchetypeHash, h => game.FindModel(h)?.Name); }
+        try { doc = MloDocument.Load(bytes, yname + ".ytyp", de.Ent.ArchetypeHash, StreamName); }
         catch (Exception e) { SetStatus("Interior not readable: " + e.Message); return false; }
         if (string.IsNullOrEmpty(doc.ArchetypeName)) doc.ArchetypeName = de.Ent.Archetype ?? yname;
         var folder = "interior " + doc.ArchetypeName;
-        var oi = new OpenInterior { Doc = doc, InstanceId = inst.Id, Pos = de.Ent.Position, Rot = Quaternion.Normalize(de.Ent.Rotation), Folder = folder, Hidden = inst.Hidden };
+        var oi = new OpenInterior { Doc = doc, InstanceId = inst.Id, Pos = de.Ent.Position, Rot = Quaternion.Normalize(de.Ent.Rotation), Folder = folder, Hidden = inst.Hidden, FilePath = localYtyp };
         interiors[folder] = oi;
         if (!Scene.Folders.Contains(folder)) Scene.Folders.Add(folder);
         foreach (var e in doc.Entities) SpawnInteriorEntity(oi, e);
@@ -180,7 +191,7 @@ public sealed partial class EditorApp
     }
 
     /// <summary>Writes the changed interiors' .ytyp into the stream folder; returns how many.</summary>
-    int SaveInteriors(string stream, List<string> errors)
+    int SaveInteriors(string stream, List<string> errors, bool inPlace = false)
     {
         int n = 0;
         foreach (var oi in interiors.Values)
@@ -190,8 +201,9 @@ public sealed partial class EditorApp
             try
             {
                 var bytes = oi.Doc.Save();
-                Directory.CreateDirectory(stream);
-                File.WriteAllBytes(Path.Combine(stream, oi.Doc.Name + ".ytyp"), bytes);
+                var target = inPlace && oi.FilePath != null ? oi.FilePath : Path.Combine(stream, oi.Doc.Name + ".ytyp");
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.WriteAllBytes(target, bytes);
                 n++;
             }
             catch (Exception e) { errors.Add($"{oi.Doc.Name}.ytyp: {e.Message}"); }

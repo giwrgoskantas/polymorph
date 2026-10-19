@@ -115,6 +115,7 @@ public sealed partial class EditorApp
             new("Game files browser (GTA V models, native buildings)", "GTA", OpenGameBrowser),
             new("Asset Browser (thumbnails of my models and game props)", "GTA", OpenAssetBrowser),
             new("Import MLO from .ytyp (rooms, portals, entities)", "GTA", ImportMloDialog),
+            new("Open a stream folder in MAP (ymap, ytyp, ydr... like CodeWalker)", "MAP", OpenStreamFolderDialog),
             new("MLO Room Builder (draw the floor plan)", "GTA", OpenRoomBuilder),
             new("Send to my FiveM server (export + restart)", "GTA", SendToServer),
             new("Install the FiveM bridge resource", "GTA", InstallBridge),
