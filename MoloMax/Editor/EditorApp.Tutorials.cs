@@ -1715,5 +1715,27 @@ public sealed partial class EditorApp
         Expect(mapRef != null && Vector2.Distance(uvNow, expectUv) < 1e-3f && Vector2.Distance(uvNow, uv0) > 1e-3f, $"Preserve UVs: moved corner UV {uv0} -> {uvNow} (expected {expectUv})");
         Settings.PreserveUVs = false;
         SetLevel(SubObject.Object);
+        // vertex level, Y constraint + vertex snap: the vertex goes to the target's Y only (same level, not onto it)
+        UI.ImGuiBackend.SyntheticInput = true;
+        var va = Prim(CreateKind.Box, new Vector3(0, 14, 0)); va.Name = "snapv_a";
+        var vb = Prim(CreateKind.Box, new Vector3(2.5f, 15.3f, 0.6f)); vb.Name = "snapv_b";
+        Maximized = true; ActiveViewport = 3; var vp3 = Viewports[3];
+        vp3.Camera.Frame(new Vector3(-2, 12, -1), new Vector3(5, 18, 3)); yield return Frames(3);
+        Vector3 WV(SceneObject o, int i) => Vector3.Transform(o.Mesh.Verts[i], o.World);
+        int iv = Enumerable.Range(0, va.Mesh.Verts.Count).OrderByDescending(i => WV(va, i).X + WV(va, i).Z).First();
+        int it = Enumerable.Range(0, vb.Mesh.Verts.Count).OrderBy(i => WV(vb, i).X - WV(vb, i).Z).First();
+        var startV = WV(va, iv); var tgt = WV(vb, it);
+        Snap = true; SnapGrid = false; SnapVertexT = true; SnapEdge = SnapFace = SnapNearest = false; SnapAxisConstraint = true;
+        SelectOnly(va); SetLevel(SubObject.Vertex); SubSel(va).Clear(); SubSel(va).Verts.Add(iv); yield return Frames(2);
+        PostMouse(0x200, ScreenOf(vp3, startV), 0); yield return Frames(3);
+        BeginModal(ModalKind.Translate); modal.Axis = 1; modal.Plane = false;
+        for (int i = 1; i <= 10; i++) { PostMouse(0x200, Vector2.Lerp(ScreenOf(vp3, startV), ScreenOf(vp3, tgt), i / 10f), 0); yield return Frames(1); }
+        yield return Frames(2);
+        yield return Shot("snap_vertex_level_y");
+        ConfirmModal();
+        var endV = WV(va, iv);
+        Expect(MathF.Abs(endV.Y - tgt.Y) < 1e-3f && MathF.Abs(endV.X - startV.X) < 1e-4f && MathF.Abs(endV.Z - startV.Z) < 1e-4f, $"vertex level, Y + vertex snap: Y {startV.Y:0.000} -> {endV.Y:0.000} (target {tgt.Y:0.000}), X/Z kept ({endV.X - startV.X:0.0000}, {endV.Z - startV.Z:0.0000})");
+        SetLevel(SubObject.Object); Snap = false; SnapGrid = true; SnapEdge = SnapFace = true;
+        UI.ImGuiBackend.SyntheticInput = false; Maximized = false;
     }
 }
