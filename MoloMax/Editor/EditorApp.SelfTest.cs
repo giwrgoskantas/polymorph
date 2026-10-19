@@ -137,6 +137,7 @@ public sealed partial class EditorApp
     {
         if (Current is { ModEdit: not null } me) EndModifierEdit(me);
         if (MapMode) SetMapMode(false); // a MAP test before leaves MODEL mode to the next one
+        AnimPlaying = false; AutoKey = false; keySel.Clear(); animFrame = 0; ycdWindow = false; ShowPanel = true;
         Level = SubObject.Object; Dirty = false; NewScene(); Cursor3D = Vector3.Zero; importReportOpen = false;
     }
 

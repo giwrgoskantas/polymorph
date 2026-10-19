@@ -192,6 +192,7 @@ public sealed partial class EditorApp
         T("TUTO 11 weapon forge", TutWeaponForge);
         T("TUTO 12 vehicle forge", TutVehicleForge);
         T("TUTO 13 demo: sculpt and paint", TutSculptPaintDemo);
+        T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
@@ -938,6 +939,91 @@ public sealed partial class EditorApp
     }
 
     /// <summary>Films: a sofa modeled and painted like in a texturing app: a GTA V fabric, worn edges, stitched seams, seat wear, dust.</summary>
+    /// <summary>Demo film: animating like Blender, simply (Key, another frame, move, Key, Play), texture slide, camera, .ycd.</summary>
+    IEnumerable<object> TutAnimation()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = false; if (TimelineOpen) ToggleTimeline();
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; vp.Shading = ShadingMode.Realistic;
+        var door = Prim(CreateKind.Box, Vector3.Zero); door.Name = "molo_crate";
+        var wood = LibPick(("All", "yacht_wood_2"), ("Wood", ""));
+        if (wood.M != null) LibOnFaces(door, Enumerable.Range(0, door.Mesh.Faces.Count), wood.M, 1f);
+        cam.Frame(new Vector3(-2, -3, -0.5f), new Vector3(6, 3, 2.5f)); cam.Pitch = 0.3f;
+        SelectOnly(door); Tool = Tool.Move; AutoKey = false;
+        yield return Frames(10);
+        foreach (var x in StartFilm("14_animation", 7)) yield return x;
+        foreach (var x in Say("Animation in Polymorph", "As simple as Blender: Key, another frame, move, Key, Play", 70)) yield return x;
+        // timeline
+        foreach (var x in Say("1. Click Timeline", "The timeline opens under the view", 20)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tb_timeline"), false, 30)) yield return x;
+        yield return Frames(25);
+        // key at 0
+        foreach (var x in Say("2. Select the object, click Key (or I)", "Frame 0: its place is saved", 20)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl_key"), false, 30)) yield return x;
+        yield return Frames(25);
+        // frame 60, move, key
+        foreach (var x in Say("3. Click frame 60, move the object, Key", "A diamond = a key", 20)) yield return x;
+        foreach (var x in ClickAt(RulerAt(60), false, 30)) yield return x;
+        yield return Frames(10);
+        door = Scene.Find(door.Id);
+        var gx = GizmoGrip(vp, GizmoHandle.X);
+        SelectionPivot(out var pv, out _); var dir = Vector2.Normalize(ScreenOf(vp, pv + Vector3.UnitX) - ScreenOf(vp, pv));
+        foreach (var x in DragTo(gx, gx + dir * 220, 45)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl_key"), false, 30)) yield return x;
+        yield return Frames(20);
+        // auto key
+        foreach (var x in Say("4. Auto key ON: every move is saved", "Frame 120, move it again: no need to click Key", 20)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl_auto"), false, 30)) yield return x;
+        foreach (var x in ClickAt(RulerAt(120), false, 30)) yield return x;
+        yield return Frames(10);
+        var gy = GizmoGrip(vp, GizmoHandle.Y);
+        SelectionPivot(out pv, out _); var dy = Vector2.Normalize(ScreenOf(vp, pv + Vector3.UnitY) - ScreenOf(vp, pv));
+        foreach (var x in DragTo(gy, gy + dy * 180, 45)) yield return x;
+        yield return Frames(15);
+        foreach (var x in ClickAt(TutCentre("tl_auto"), false, 20)) yield return x; // off
+        // play
+        foreach (var x in Say("5. Play", "Space plays and stops", 15)) yield return x;
+        foreach (var x in ClickAt(RulerAt(0), false, 25)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl_play"), false, 25)) yield return x;
+        for (int i = 0; i < 150; i++) { AnimPlaying = true; yield return Frames(1); }
+        foreach (var x in ClickAt(TutCentre("tl_play"), false, 20)) yield return x;
+        AnimPlaying = false;
+        // texture slide: a screen with a GTA texture
+        Undo.Record("screen", Scene);
+        var screen = Prim(CreateKind.Plane, new Vector3(-2.5f, 3, 1.4f)); screen.Name = "molo_screen";
+        screen.Scale = new Vector3(2.4f, 1.4f, 1); screen.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2); screen.Touch();
+        cam.Target = new Vector3(0.5f, 1.5f, 1); cam.Distance = 11;
+        var tex = LibPick(("All", "poster"), ("All", "sign"), ("All", "tile"), ("All", ""));
+        if (tex.M != null) LibOnFaces(screen, Enumerable.Range(0, screen.Mesh.Faces.Count), tex.M, 1f);
+        SelectOnly(screen); yield return Frames(10);
+        foreach (var x in Say("6. Texture animation (neons, screens, water)", "Slide the texture and key it: it scrolls in the game too", 30)) yield return x;
+        SetFrame(0); uvEditV = 0;
+        var st = Scene.Anim.Track(screen.Id, true);
+        st.Curve(Core.Anim.Ch.UvV, true).SetKey(0, 0, Core.Anim.KeyInterp.Linear);
+        SetFrame(120); st.Curve(Core.Anim.Ch.UvV).SetKey(120, 2, Core.Anim.KeyInterp.Linear);
+        animShownFrame = float.NaN; yield return Frames(30);
+        SetFrame(0); AnimPlaying = true;
+        for (int i = 0; i < 130; i++) { AnimPlaying = true; yield return Frames(1); }
+        AnimPlaying = false;
+        // camera
+        foreach (var x in Say("7. Key camera: a fly-through", "Key the view, turn it, key again, Play", 30)) yield return x;
+        SetFrame(0); cam.Yaw = -2.2f; cam.Distance = 14; KeyCamera(); yield return Frames(10);
+        SetFrame(120); cam.Yaw = -0.6f; cam.Distance = 9; KeyCamera(); yield return Frames(10);
+        SetFrame(0); AnimPlaying = true;
+        for (int i = 0; i < 130; i++) { AnimPlaying = true; yield return Frames(1); }
+        AnimPlaying = false;
+        // ycd
+        foreach (var x in Say("GTA .ycd: import or export", "Your .ycd open as keys; the export plays in FiveM (30 fps)", 20)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl_ycd"), false, 30)) yield return x;
+        yield return Frames(60);
+        PostKey(Keys.Escape, true); yield return Frames(2); PostKey(Keys.Escape, false); yield return Frames(4);
+        var outp = StPath("molo_demo_anims.ycd");
+        ExportYcd(outp);
+        foreach (var x in Say("Exported: molo_demo_anims.ycd", status, 70)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
+        Expect(File.Exists(outp), "the film's .ycd is written");
+    }
+
     /// <summary>A brush stroke with the real mouse between two points on a mesh (held buttons: 1 left, +4 Shift, +8 Ctrl).</summary>
     IEnumerable<object> Stroke(Vector2 a, Vector2 b, int frames = 30, int buttons = 1)
     {
@@ -1530,7 +1616,7 @@ public sealed partial class EditorApp
         foreach (var x in DragTo(gx, gx + dir * 160)) yield return x;
         box = Scene.Find(box.Id); t = Scene.Anim.Track(box.Id);
         float x60 = box.Position.X;
-        Expect(x60 > 0.5f && t.Curve(Core.Anim.Ch.LocX).Keys.Count == 2, $"auto key: moved to x {x60:0.00} at frame 60, X location keys {t.Curve(Core.Anim.Ch.LocX).Keys.Count}");
+        Expect(x60 > 0.5f && t.Curve(Core.Anim.Ch.LocX).Keys.Count == 2, $"auto key: moved to x {x60:0.00} at frame 60, X location keys {t.Curve(Core.Anim.Ch.LocX).Keys.Count}  (grip {gx}, status '{status}', panel {ShowPanel}, hover {gizmo.Hover})");
         AutoKey = false;
         // 3. scrub to 30: half way (smooth)
         SetFrame(30); yield return Frames(3);

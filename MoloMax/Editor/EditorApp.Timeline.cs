@@ -119,6 +119,9 @@ public sealed partial class EditorApp
     // ---------------------------------------------------------------- the panel
 
     (float X0, float Y0, float W) timelineRect;
+    /// <summary>Where the frame ruler is on screen (tutorials click a frame there).</summary>
+    (float X0, float X1, float Y) dopeRuler;
+    Vector2 RulerAt(float frame) => new(dopeRuler.X0 + (frame - Anim.Start) / MathF.Max(1, Anim.End - Anim.Start) * (dopeRuler.X1 - dopeRuler.X0), dopeRuler.Y);
 
     void DrawTimeline()
     {
@@ -130,39 +133,48 @@ public sealed partial class EditorApp
         ImGui.SetNextWindowSize(new Vector2(x1 - x0, TimelineH));
         ImGui.Begin("##timeline", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoBringToFrontOnFocus);
 
-        // ---- transport row
-        if (ImGui.Button("|<")) SetFrame(a.Start); Theme.Tip("First frame (Shift+Left)");
-        ImGui.SameLine(); if (ImGui.Button("<<")) JumpKey(-1); Theme.Tip("Previous key (Up / Down in Blender)");
-        ImGui.SameLine(); if (Theme.Toggle(AnimPlaying ? "Pause" : "Play", AnimPlaying, new Vector2(56, 0))) AnimPlaying = !AnimPlaying;
+        // ---- one simple row: play, frame, Key, Auto key, then a menu for the rest
+        if (ImGui.Button("|<")) SetFrame(a.Start); Theme.Tip("First frame");
+        ImGui.SameLine(); if (Theme.Toggle(AnimPlaying ? "Pause" : "Play", AnimPlaying, new Vector2(64, 0))) AnimPlaying = !AnimPlaying;
+        TutRect("tl_play");
         Theme.Tip(Settings.Keymap == Keymap.Max ? "Play / pause ( / )" : "Play / pause (Space)");
-        ImGui.SameLine(); if (ImGui.Button(">>")) JumpKey(1); Theme.Tip("Next key");
-        ImGui.SameLine(); if (ImGui.Button(">|")) SetFrame(a.End); Theme.Tip("Last frame (Shift+Right)");
-        ImGui.SameLine(); ImGui.SetNextItemWidth(70);
+        ImGui.SameLine(); if (ImGui.Button(">|")) SetFrame(a.End); Theme.Tip("Last frame");
+        ImGui.SameLine(); Ui.TextDisabled("Frame"); ImGui.SameLine(); ImGui.SetNextItemWidth(64);
         int cf = CurrentFrame;
         if (ImGui.InputInt("##frame", ref cf, 0)) { AnimPlaying = false; SetFrame(cf); }
-        Theme.Tip("Current frame");
-        ImGui.SameLine(); Ui.TextDisabled("Start"); ImGui.SameLine(); ImGui.SetNextItemWidth(56);
-        int st = a.Start; if (ImGui.InputInt("##start", ref st, 0)) { a.Start = Math.Min(st, a.End - 1); Dirty = true; }
-        ImGui.SameLine(); Ui.TextDisabled("End"); ImGui.SameLine(); ImGui.SetNextItemWidth(56);
-        int en = a.End; if (ImGui.InputInt("##end", ref en, 0)) { a.End = Math.Max(en, a.Start + 1); Dirty = true; }
-        ImGui.SameLine(); Ui.TextDisabled("fps"); ImGui.SameLine(); ImGui.SetNextItemWidth(46);
-        int fps = (int)a.Fps; if (ImGui.InputInt("##fps", ref fps, 0)) { a.Fps = Math.Clamp(fps, 1, 120); Dirty = true; }
-        Theme.Tip("GTA animations play at 30 frames per second");
+        Theme.Tip("Current frame (or click in the bar below). Left / Right arrows: one frame");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.85f, 0.62f, 0.12f, 1)); ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0, 0, 0, 1));
+        if (ImGui.Button(Settings.Keymap == Keymap.Max ? "  Key (K)  " : "  Key (I)  ")) InsertKeyframe();
+        ImGui.PopStyleColor(2); TutRect("tl_key");
+        Theme.Tip("Saves where the selected objects are (position, rotation, size) at this frame");
+        ImGui.SameLine();
         ImGui.PushStyleColor(ImGuiCol.Button, AutoKey ? new Vector4(0.8f, 0.15f, 0.15f, 1) : ImGui.GetStyle().Colors[(int)ImGuiCol.Button]);
-        if (ImGui.Button("Auto key")) AutoKey = !AutoKey;
-        ImGui.PopStyleColor();
-        Theme.Tip("Auto key: every move / rotate / scale of an object is keyed at the current frame");
-        ImGui.SameLine(); if (ImGui.Button(Settings.Keymap == Keymap.Max ? "Key (K)" : "Key (I)")) InsertKeyframe();
-        Theme.Tip("Location, rotation and scale of the selected objects at this frame");
+        if (ImGui.Button(AutoKey ? "Auto key ON" : "Auto key")) AutoKey = !AutoKey;
+        ImGui.PopStyleColor(); TutRect("tl_auto");
+        Theme.Tip("On: every move / rotate / scale is saved as a key by itself");
         ImGui.SameLine(); if (ImGui.Button("Key camera")) KeyCamera();
-        Theme.Tip("Keys the view's camera (target, angle, distance): play it back for a fly-through");
-        ImGui.SameLine(); ImGui.Checkbox("Camera follows", ref AnimCameraFollows);
-        ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
-        if (ImGui.Button("Import .ycd")) ImportYcdDialog();
-        Theme.Tip("Opens a GTA clip dictionary: object, bone and UV animations come in as keys");
-        ImGui.SameLine(); if (ImGui.Button("Export .ycd")) ExportYcdDialog();
-        Theme.Tip("Writes the keyed animation as a GTA clip dictionary (.ycd), 30 fps");
+        Theme.Tip("Saves the view (for a camera fly-through when you play)");
+        ImGui.SameLine(); if (ImGui.Button("GTA .ycd")) ImGui.OpenPopup("##ycdmenu");
+        TutRect("tl_ycd");
+        Theme.Tip("Import or export a GTA animation file");
+        if (ImGui.BeginPopup("##ycdmenu"))
+        {
+            if (ImGui.MenuItem("Import a .ycd...")) ImportYcdDialog();
+            if (ImGui.MenuItem("Export the animation as .ycd...")) ExportYcdDialog();
+            ImGui.EndPopup();
+        }
+        ImGui.SameLine(); if (ImGui.Button("Settings")) ImGui.OpenPopup("##tlset");
+        if (ImGui.BeginPopup("##tlset"))
+        {
+            ImGui.SetNextItemWidth(80); int st = a.Start; if (ImGui.InputInt("Start", ref st, 0)) { a.Start = Math.Min(st, a.End - 1); Dirty = true; }
+            ImGui.SetNextItemWidth(80); int en = a.End; if (ImGui.InputInt("End", ref en, 0)) { a.End = Math.Max(en, a.Start + 1); Dirty = true; }
+            ImGui.SetNextItemWidth(80); int fps = (int)a.Fps; if (ImGui.InputInt("Frames per second", ref fps, 0)) { a.Fps = Math.Clamp(fps, 1, 120); Dirty = true; }
+            Ui.TextDisabled("GTA plays animations at 30 fps.");
+            ImGui.Checkbox("The view follows the camera keys", ref AnimCameraFollows);
+            ImGui.EndPopup();
+        }
+        ImGui.SameLine(); Ui.TextDisabled($"{a.End - a.Start} frames = {(a.End - a.Start) / MathF.Max(1, a.Fps):0.0} s");
 
         // ---- left: UV keys of the selected object ; right: dope sheet
         float leftW = 250;
@@ -179,11 +191,11 @@ public sealed partial class EditorApp
     void UvKeyPanel()
     {
         var o = Current;
-        if (o == null || o.Id < 0) { Ui.TextDisabled("UV animation: select an object."); return; }
+        if (o == null || o.Id < 0) { Ui.TextDisabled("Select an object to animate it."); return; }
         var t = Anim.Track(o.Id);
         float V(string ch, float d) { var c = t?.Curve(ch); return c != null && c.Keys.Count > 0 ? c.Evaluate(CurrentFrame) : d; }
         if (!ImGui.IsAnyItemActive()) { uvEditU = V(Ch.UvU, 0); uvEditV = V(Ch.UvV, 0); uvEditSU = V(Ch.UvSU, 1); uvEditSV = V(Ch.UvSV, 1); uvEditRot = V(Ch.UvRot, 0); }
-        Ui.TextDisabled("UV animation (neons, screens, water)");
+        Ui.TextDisabled("Texture animation (neons, screens, water)");
         void Row(string label, string ch, ref float v, float speed)
         {
             ImGui.PushID(ch);
@@ -207,8 +219,8 @@ public sealed partial class EditorApp
             ImGui.SameLine(); Ui.Text(label);
             ImGui.PopID();
         }
-        Row("Offset U", Ch.UvU, ref uvEditU, 0.01f);
-        Row("Offset V", Ch.UvV, ref uvEditV, 0.01f);
+        Row("Slide U", Ch.UvU, ref uvEditU, 0.01f);
+        Row("Slide V", Ch.UvV, ref uvEditV, 0.01f);
         Row("Scale U", Ch.UvSU, ref uvEditSU, 0.01f);
         Row("Scale V", Ch.UvSV, ref uvEditSV, 0.01f);
         Row("Rotation", Ch.UvRot, ref uvEditRot, 0.5f);
@@ -233,6 +245,7 @@ public sealed partial class EditorApp
         float fx0 = p0.X + nameW, fx1 = p0.X + size.X - 10;
         float span = MathF.Max(1, a.End - a.Start);
         float X(float f) => fx0 + (f - a.Start) / span * (fx1 - fx0);
+        dopeRuler = (fx0, fx1, p0.Y + rulerH / 2);
         float F(float x) => a.Start + (x - fx0) / MathF.Max(1, fx1 - fx0) * span;
         // ruler
         dl.AddRectFilled(new Vector2(fx0, p0.Y), new Vector2(fx1, p0.Y + rulerH), 0xFF2A2A2E);
@@ -264,7 +277,7 @@ public sealed partial class EditorApp
                 dl.AddQuad(new Vector2(x, cy - 6), new Vector2(x + 6, cy), new Vector2(x, cy + 6), new Vector2(x - 6, cy), 0xFF000000);
             }
         }
-        if (rows.Count == 0) dl.AddText(new Vector2(p0.X + 4, p0.Y + rulerH + 6), 0xFF808080, "Select an object, then I (Key) at a frame, move it, another frame, I again.");
+        if (rows.Count == 0) dl.AddText(new Vector2(p0.X + 4, p0.Y + rulerH + 6), 0xFF808080, "1. Select an object   2. Key   3. click another frame   4. move the object   5. Key   6. Play");
         // current frame line
         float cx = X(AnimPlaying ? animFrame : CurrentFrame);
         dl.AddLine(new Vector2(cx, p0.Y), new Vector2(cx, p0.Y + size.Y), 0xFF30A0FF, 2);
