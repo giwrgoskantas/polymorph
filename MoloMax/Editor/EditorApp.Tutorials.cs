@@ -193,6 +193,7 @@ public sealed partial class EditorApp
         T("TUTO 12 vehicle forge", TutVehicleForge);
         T("TUTO 13 demo: sculpt and paint", TutSculptPaintDemo);
         T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
+        T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
@@ -942,6 +943,154 @@ public sealed partial class EditorApp
 
     /// <summary>Films: a sofa modeled and painted like in a texturing app: a GTA V fabric, worn edges, stitched seams, seat wear, dust.</summary>
     /// <summary>Demo film: animating like Blender, simply (Key, another frame, move, Key, Play), texture slide, camera, .ycd.</summary>
+    /// <summary>Every modifier of the catalogue on a cube, one after the other, with what it changes.</summary>
+    IEnumerable<object> TutModifiers()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true; propTab = PropTab.Modifiers; if (TimelineOpen) ToggleTimeline();
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        SceneObject cube = null;
+        string Count(SceneObject o) { var m = o.Evaluated(); return $"{m.Verts.Count} verts, {m.Faces.Count} faces"; }
+        void NewCube(Vector3 frameMin, Vector3 frameMax)
+        {
+            if (cube != null) { var id = cube.Id; Scene.RemoveObjects(o => o.Id == id); }
+            cube = Prim(CreateKind.Box, Vector3.Zero); cube.Name = "cube";
+            SelectOnly(cube); propTab = PropTab.Modifiers;
+            cam.Frame(frameMin, frameMax); cam.Pitch = 0.45f;
+        }
+        T Add<T>(T mod) where T : MoloMax.Core.Modifiers.Modifier
+        {
+            var o = cube;
+            Do("Add " + mod.Name, () => { mod.Name = MoloMax.Core.Modifiers.ModifierStack.UniqueName(o.Modifiers, mod.Name); o.Modifiers.Add(mod); o.Touch(); });
+            activeModifier[o.Id] = o.Modifiers.Count - 1;
+            return mod;
+        }
+        void Report(string name, string before, bool changed, string why = null)
+        {
+            string after = Count(cube);
+            Note($"{name}: {before} -> {after}{(why != null ? "  (" + why + ")" : "")}");
+            Expect(changed, $"{name} changes the cube ({before} -> {after})");
+        }
+        var small = (new Vector3(-2.2f, -2.2f, -0.5f), new Vector3(2.2f, 2.2f, 2f));
+        NewCube(small.Item1, small.Item2);
+        yield return Frames(10);
+        foreach (var x in StartFilm("15_modifiers", 14)) yield return x;
+        foreach (var x in Say("All the modifiers, on a cube", "Properties > Modifiers > Add Modifier. The cube is never touched until you Apply.", 80)) yield return x;
+
+        // 1 Edit Poly
+        string b = Count(cube);
+        foreach (var x in Say("1. Edit Poly", "Edit inside the stack: here the top face is pulled up (extrude)", 30)) yield return x;
+        Add(new MoloMax.Core.Modifiers.EditPolyModifier()); yield return Frames(20);
+        EditModifier(cube, 0, SubObject.Polygon); yield return Frames(10);
+        int top = FaceToward(cube, Vector3.UnitZ); SubSel(cube).Clear(); SubSel(cube).Faces.Add(top); yield return Frames(20);
+        ExtrudeFaces(0.7f, false); yield return Frames(30);
+        EndModifierEdit(cube); yield return Frames(40);
+        Report("Edit Poly", b, cube.Evaluated().Faces.Count > 6);
+
+        // 2 Unwrap UVW
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        foreach (var x in Say("2. Unwrap UVW", "Auto unwrap: the cube is cut and laid flat for the texture", 30)) yield return x;
+        var uw = Add(new MoloMax.Core.Modifiers.UnwrapUvwModifier()); yield return Frames(15);
+        int charts = 0;
+        UnwrapOp(cube, 0, uw, "Auto Unwrap", (m, faces, mod) => { var (n, seams) = UvUnfold.AutoUnwrap(m, mod.AngleLimit, faces); charts = n; mod.SetSeams(seams); UvTools.SetDensity(m, faces, mod.Density, mod.TextureSize); UvTools.Pack(m, faces); });
+        uvOpen = true; uvChecker = true; yield return Frames(80);
+        uvOpen = false; uvChecker = false;
+        Note($"Unwrap UVW: {charts} UV island(s)");
+        Expect(charts > 0 && uw.UV != null, $"Unwrap UVW makes UV islands ({charts})");
+
+        // 3 Weld
+        NewCube(new Vector3(-2f, -3f, -0.5f), new Vector3(5f, 3f, 2.5f)); b = Count(cube);
+        foreach (var x in Say("3. Weld", "Two cubes stuck together (Array) have double points where they touch...", 30)) yield return x;
+        var wa = Add(new MoloMax.Core.Modifiers.ArrayModifier()); wa.RelativeOffset = new Vector3(1, 0, 0); cube.Touch(); yield return Frames(40);
+        string weldBefore = Count(cube);
+        foreach (var x in Say("3. Weld", "...Weld joins them into one: 16 points become 12", 20)) yield return x;
+        Add(new MoloMax.Core.Modifiers.WeldModifier()); yield return Frames(50);
+        Note($"Weld: {weldBefore} -> {Count(cube)}");
+        Expect(cube.Evaluated().Verts.Count == 12, $"Weld joins the double points ({weldBefore} -> {Count(cube)})");
+
+        // 4 Array
+        NewCube(new Vector3(-2f, -4f, -0.5f), new Vector3(10f, 4f, 2.5f)); b = Count(cube);
+        foreach (var x in Say("4. Array", "Copies in a row: 4 cubes, spaced 1.3 x their size", 30)) yield return x;
+        var ar = Add(new MoloMax.Core.Modifiers.ArrayModifier()); yield return Frames(25);
+        ar.Count = 4; ar.RelativeOffset = new Vector3(1.3f, 0, 0); cube.Touch(); yield return Frames(50);
+        Report("Array", b, cube.Evaluated().Verts.Count == 32);
+
+        // 5 Mirror
+        NewCube(new Vector3(-3.5f, -3f, -0.5f), new Vector3(3.5f, 3f, 2f));
+        for (int i = 0; i < cube.Mesh.Verts.Count; i++) cube.Mesh.Verts[i] += new Vector3(1.2f, 0, 0); cube.Touch(); b = Count(cube);
+        foreach (var x in Say("5. Mirror", "A copy on the other side of the object's centre (X)", 30)) yield return x;
+        Add(new MoloMax.Core.Modifiers.MirrorModifier()); yield return Frames(50);
+        Report("Mirror", b, cube.Evaluated().Verts.Count == 16);
+
+        // 6 Symmetry
+        NewCube(new Vector3(-3f, -3f, -0.5f), new Vector3(3f, 3f, 2f));
+        for (int i = 0; i < cube.Mesh.Verts.Count; i++) cube.Mesh.Verts[i] += new Vector3(0.6f, 0, 0); cube.Touch(); b = Count(cube);
+        foreach (var x in Say("6. Symmetry", "Cuts at the centre and copies one half over the other", 30)) yield return x;
+        var sy = Add(new MoloMax.Core.Modifiers.SymmetryModifier()); yield return Frames(30);
+        sy.Flip = true; cube.Touch(); yield return Frames(30);
+        Report("Symmetry", b, Count(cube) != b);
+
+        // 7 Solidify
+        NewCube(small.Item1, small.Item2);
+        top = FaceToward(cube, Vector3.UnitZ); cube.Mesh.Faces.RemoveAt(top); cube.Touch(); b = Count(cube);
+        cam.Pitch = 0.9f;
+        foreach (var x in Say("7. Solidify", "Gives walls a thickness (here the cube is open on top)", 30)) yield return x;
+        var so = Add(new MoloMax.Core.Modifiers.SolidifyModifier()); yield return Frames(20);
+        so.Thickness = 0.15f; cube.Touch(); yield return Frames(50);
+        Report("Solidify", b, cube.Evaluated().Faces.Count > 5);
+
+        // 8 Subdivision Surface
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        foreach (var x in Say("8. Subdivision Surface", "Smooths the shape by cutting every face (level 2)", 30)) yield return x;
+        var sd = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); yield return Frames(30);
+        sd.LevelsViewport = 2; cube.Touch(); yield return Frames(50);
+        Report("Subdivision Surface", b, cube.Evaluated().Faces.Count == 96);
+
+        // 9 Triangulate
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        foreach (var x in Say("9. Triangulate", "Every square becomes 2 triangles (what the game uses)", 30)) yield return x;
+        Add(new MoloMax.Core.Modifiers.TriangulateModifier()); yield return Frames(50);
+        Report("Triangulate", b, cube.Evaluated().Faces.Count == 12);
+
+        // 10 Cast
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        foreach (var x in Say("10. Cast", "Pushes the points toward a sphere (cube cut first so it can round)", 30)) yield return x;
+        var cs0 = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); cs0.CatmullClark = false; cs0.LevelsViewport = 3; cube.Touch(); yield return Frames(25);
+        var ca = Add(new MoloMax.Core.Modifiers.CastModifier()); yield return Frames(25);
+        ca.Factor = 1f; cube.Touch(); yield return Frames(50);
+        Report("Cast", b, Count(cube) != b);
+
+        // 11 Displace
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        foreach (var x in Say("11. Displace", "Bumps the surface with noise (rocks, ground)", 30)) yield return x;
+        var ds0 = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); ds0.CatmullClark = false; ds0.LevelsViewport = 3; cube.Touch(); yield return Frames(20);
+        var dp = Add(new MoloMax.Core.Modifiers.DisplaceNoiseModifier()); yield return Frames(20);
+        dp.Strength = 0.35f; dp.Size = 0.5f; cube.Touch(); yield return Frames(50);
+        Report("Displace", b, Count(cube) != b);
+
+        // 12 Smooth
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        foreach (var x in Say("12. Smooth", "Softens the shape by averaging the points", 30)) yield return x;
+        var sm0 = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); sm0.CatmullClark = false; sm0.LevelsViewport = 2; cube.Touch(); yield return Frames(20);
+        var sm = Add(new MoloMax.Core.Modifiers.SmoothModifier()); yield return Frames(20);
+        sm.Factor = 1f; sm.Repeat = 6; cube.Touch(); yield return Frames(50);
+        var ev = cube.Evaluated(); float maxR = ev.Verts.Max(v => v.Length()), minR = ev.Verts.Min(v => v.Length());
+        Report("Smooth", b, Count(cube) != b);
+
+        // 13 Smooth by Angle
+        NewCube(small.Item1, small.Item2); b = Count(cube);
+        vp.EdgedFaces = false;
+        foreach (var x in Say("13. Smooth by Angle", "Shading only: soft between faces under 30 degrees, hard edges stay hard", 30)) yield return x;
+        var sa0 = Add(new MoloMax.Core.Modifiers.SubdivisionModifier()); sa0.LevelsViewport = 2; cube.Touch(); yield return Frames(30);
+        Add(new MoloMax.Core.Modifiers.SmoothByAngleModifier()); yield return Frames(50);
+        Note($"Smooth by Angle: {b} -> {Count(cube)} (shading only, same points)");
+        Expect(cube.Modifiers.Count == 2, "Smooth by Angle added (it changes the shading, not the points)");
+        vp.EdgedFaces = true;
+
+        foreach (var x in Say("13 modifiers, all on the cube", "Stack them, switch them off with the eye, Apply when happy", 70)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
+    }
+
     IEnumerable<object> TutAnimation()
     {
         Fresh(); if (MapMode) SetMapMode(false);
