@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Numerics;
 using ImGuiNET;
 using MoloMax.Core.Gta;
@@ -29,6 +30,8 @@ public sealed partial class EditorApp
     bool painting;
     Vector3 lastStamp, lazyPos; Vector2 lastStampScreen; bool lastStampValid;
     readonly List<(SceneObject O, TextureSet Set, int Layer, PaintLayer Snap)> paintUndo = new();
+    /// <summary>When each paint stroke was made, on the scene undo's clock (Ctrl+Z undoes whichever came last).</summary>
+    readonly System.Runtime.CompilerServices.ConditionalWeakTable<PaintLayer, StrongBox<long>> paintUndoStamp = new();
     (Vector3 P, Vector3 N, float R, bool Hit) paintHover;
     readonly Dictionary<int, int> paintMeshVersion = new();
     int aoRays = 48;
@@ -314,6 +317,7 @@ public sealed partial class EditorApp
             AddLayer(ts, new PaintLayer { Name = "Paint " + ts.Layers.Count, Kind = LayerKind.Paint, Folder = layer.Folder });
         }
         paintUndo.Add((o, ts, ts.SelectedLayer, ts.Snapshot(ts.SelectedLayer)));
+        paintUndoStamp.AddOrUpdate(paintUndo[^1].Snap, new StrongBox<long>(Undo.Tick()));
         if (paintUndo.Count > 30) paintUndo.RemoveAt(0);
         return true;
     }
@@ -397,7 +401,9 @@ public sealed partial class EditorApp
         bool P(ImGuiKey k) => ImGui.IsKeyPressed(k, false);
         if (P(ImGuiKey.LeftBracket)) { brush.Radius = MathF.Max(0.002f, brush.Radius / 1.15f); return true; }
         if (P(ImGuiKey.RightBracket)) { brush.Radius = MathF.Min(20f, brush.Radius * 1.15f); return true; }
-        if (ctrl && P(ImGuiKey.Z) && !ImGui.GetIO().KeyShift && paintTool != PaintTool.VertexColour && PaintUndo()) return true; // vertex colours use the scene undo
+        // Ctrl+Z undoes what was done last: a paint stroke, or a scene edit made in between (a move, a vertex colour stroke...)
+        if (ctrl && P(ImGuiKey.Z) && !ImGui.GetIO().KeyShift && paintUndo.Count > 0
+            && (paintUndoStamp.TryGetValue(paintUndo[^1].Snap, out var st) ? st.Value : 0) > Undo.LastStamp && PaintUndo()) return true;
         if (!ctrl)
         {
             if (P(ImGuiKey.B)) { SetPaintTool(PaintTool.Brush); return true; }

@@ -199,6 +199,7 @@ public sealed partial class EditorApp
         T("TRIPO diag: textures of the downloaded models", TripoDiag);
         T("MAP hide + send to MODEL", MapHideSendTest);
         T("MAP MLO hide: hiding an interior hides what is inside, and it stays hidden", MapMloHideTest);
+        T("UNDO: move then Ctrl+Z, in MODEL and on a MAP ground", UndoMoveTest);
         T("MAP STREAM: open a stream folder (ymap, ytyp, ydr), edit, save in place", MapStreamTest);
         T("UX tour: panels a 3D artist uses", UxTour);
         T("CHECKLIST: the points without their own test", ChecklistTest);
@@ -1419,6 +1420,70 @@ public sealed partial class EditorApp
         }
         CloseStreamFolder();
         Expect(stream == null && !mapDocs.Values.Any(d => d.FilePath != null && d.FilePath.StartsWith(dir, StringComparison.OrdinalIgnoreCase)), "closed: its maps leave the scene");
+    }
+
+    IEnumerable<object> UndoMoveTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        UI.ImGuiBackend.SyntheticInput = true; // buttons / Ctrl from the posted messages
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false;
+        var box = Prim(CreateKind.Box, Vector3.Zero);
+        vp.Camera.Frame(new Vector3(-4, -4, -1), new Vector3(4, 4, 3));
+        SelectOnly(box); Tool = Tool.Move; yield return Frames(5);
+        var p0 = box.Position; var c = GizmoGrip(vp, GizmoHandle.X);
+        SelectionPivot(out var bpv, out _); var bdir = Vector2.Normalize(ScreenOf(vp, bpv + Vector3.UnitX) - ScreenOf(vp, bpv));
+        foreach (var x in DragTo(c, c + bdir * 140)) yield return x;
+        var moved = box.Position;
+        KeyDownT(System.Windows.Forms.Keys.ControlKey); KeyDownT(System.Windows.Forms.Keys.Z); yield return Frames(4);
+        KeyUpT(System.Windows.Forms.Keys.Z); KeyUpT(System.Windows.Forms.Keys.ControlKey); yield return Frames(4);
+        var back = Scene.Find(box.Id)?.Position ?? new Vector3(999);
+        Expect(Vector3.Distance(moved, p0) > 0.1f && Vector3.Distance(back, p0) < 0.001f, $"MODEL: moved {p0} -> {moved}, Ctrl+Z -> {back} (undo: {status})");
+        // paint mode on (a stroke made before), then a move: Ctrl+Z undoes the move first, then the stroke
+        box = Scene.Find(box.Id); SelectOnly(box);
+        StartPaint(box); paintMode = true; paintTool = PaintTool.Brush; yield return Frames(3);
+        var pts = box.Paint.Cur; int strokesBefore = paintUndo.Count;
+        PrepareStroke(box, pts); yield return Frames(2);
+        // a move after the stroke (gizmo, typed value, snap... any scene edit)
+        var pm0 = box.Position;
+        Undo.Record("Move", Scene); box.Position += new Vector3(3, 0, 0); box.Touch();
+        var pm1 = box.Position;
+        KeyDownT(System.Windows.Forms.Keys.ControlKey); KeyDownT(System.Windows.Forms.Keys.Z); yield return Frames(4);
+        KeyUpT(System.Windows.Forms.Keys.Z); KeyUpT(System.Windows.Forms.Keys.ControlKey); yield return Frames(4);
+        var pm2 = Scene.Find(box.Id).Position; int strokesAfter1 = paintUndo.Count;
+        KeyDownT(System.Windows.Forms.Keys.ControlKey); KeyDownT(System.Windows.Forms.Keys.Z); yield return Frames(4);
+        KeyUpT(System.Windows.Forms.Keys.Z); KeyUpT(System.Windows.Forms.Keys.ControlKey); yield return Frames(4);
+        Expect(Vector3.Distance(pm1, pm0) > 0.1f && Vector3.Distance(pm2, pm0) < 0.001f && strokesAfter1 == strokesBefore + 1 && paintUndo.Count == strokesBefore,
+            $"in paint mode: move {pm0} -> {pm1}, 1st Ctrl+Z -> {pm2} (strokes {strokesBefore + 1} -> {strokesAfter1}), 2nd Ctrl+Z undoes the stroke ({paintUndo.Count})");
+        paintMode = false;
+        // MAP: a streamed ground
+        SetMapMode(true); ClearMapBuild();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        yield return Until(() => world != null, 600);
+        MapStream = true; vp = Viewports[ActiveViewport];
+        var spot = new Vector3(230, -790, 30);
+        GoTo(spot); vp.Camera.Distance = 45; vp.Camera.Pitch = 0.6f;
+        yield return Settle(() => mapStreamQueue.Count == 0 && mapLoadTask == null, 90);
+        yield return Settle(() => archLoading == 0, 60);
+        yield return Frames(20);
+        var ground = MapLive().Where(o => o.Id >= 0 && !o.Hidden && o.Mesh != null && o.Mesh.Faces.Count > 0 && entOf.ContainsKey(o.Id) && Vector3.Distance(o.Position, spot) < 80)
+            .OrderByDescending(o => { var (a, b) = o.FastWorldBounds(); return (b.X - a.X) * (b.Y - a.Y); }).FirstOrDefault();
+        Expect(ground != null, $"ground picked: {ground?.Name}");
+        if (ground == null) { UI.ImGuiBackend.SyntheticInput = false; yield break; }
+        SelectOnly(ground); PinPickedMaps(); Tool = Tool.Move; yield return Frames(5);
+        SelectionPivot(out var gpiv, out _); vp.Camera.Target = gpiv; vp.Camera.Distance = 40; yield return Frames(10);
+        var gp0 = ground.Position; var gc = GizmoGrip(vp, GizmoHandle.X);
+        SelectionPivot(out var gpv, out _); var gdir = Vector2.Normalize(ScreenOf(vp, gpv + Vector3.UnitX) - ScreenOf(vp, gpv));
+        foreach (var x in DragTo(gc, gc + gdir * 140)) yield return x;
+        var gm = Scene.Find(ground.Id)?.Position ?? gp0;
+        yield return Frames(30); // the streaming goes on meanwhile
+        KeyDownT(System.Windows.Forms.Keys.ControlKey); KeyDownT(System.Windows.Forms.Keys.Z); yield return Frames(4);
+        KeyUpT(System.Windows.Forms.Keys.Z); KeyUpT(System.Windows.Forms.Keys.ControlKey); yield return Frames(6);
+        var gb = Scene.Find(ground.Id)?.Position ?? new Vector3(999);
+        Expect(Vector3.Distance(gm, gp0) > 0.1f && Vector3.Distance(gb, gp0) < 0.001f, $"MAP ground {ground.Name}: moved {gp0} -> {gm}, Ctrl+Z -> {gb} (status: {status}, undo name now {Undo.UndoName})");
+        yield return Shot("map_undo");
+        UI.ImGuiBackend.SyntheticInput = false;
     }
 
     IEnumerable<object> MapMloHideTest()

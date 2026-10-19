@@ -9,6 +9,13 @@ namespace MoloMax.Core.Scenes;
 public sealed class UndoStack
 {
     readonly LinkedList<(string Name, Scene State)> undo = new();
+    /// <summary>When each undo step was recorded (a shared clock: other undo lists, the paint strokes, compare with it).</summary>
+    readonly LinkedList<long> undoStamp = new();
+    long clock;
+    /// <summary>A new time stamp on the same clock as the recorded steps.</summary>
+    public long Tick() => ++clock;
+    /// <summary>Stamp of the step Ctrl+Z would undo now (0: none).</summary>
+    public long LastStamp => undoStamp.Last?.Value ?? 0;
     readonly Stack<(string Name, Scene State)> redo = new();
     public int Capacity = 60;
     /// <summary>
@@ -126,8 +133,8 @@ public sealed class UndoStack
 
     public void Record(string name, Scene current)
     {
-        undo.AddLast((name, Snapshot(current)));
-        while (undo.Count > Capacity) undo.RemoveFirst();
+        undo.AddLast((name, Snapshot(current))); undoStamp.AddLast(Tick());
+        while (undo.Count > Capacity) { undo.RemoveFirst(); undoStamp.RemoveFirst(); }
         redoBackup = redo.Reverse().ToArray();
         redo.Clear();
     }
@@ -136,7 +143,7 @@ public sealed class UndoStack
     public Scene Undo(Scene current)
     {
         if (undo.Count == 0) return null;
-        var (name, state) = undo.Last.Value; undo.RemoveLast();
+        var (name, state) = undo.Last.Value; undo.RemoveLast(); undoStamp.RemoveLast();
         redo.Push((name, Snapshot(current)));
         return Live(state, current);
     }
@@ -145,14 +152,14 @@ public sealed class UndoStack
     {
         if (redo.Count == 0) return null;
         var (name, state) = redo.Pop();
-        undo.AddLast((name, Snapshot(current)));
+        undo.AddLast((name, Snapshot(current))); undoStamp.AddLast(Tick());
         return Live(state, current);
     }
 
     /// <summary>Forgets the last recorded state without restoring it (a cancelled modal tool restores by itself).</summary>
     public void DropLast()
     {
-        if (undo.Count > 0) undo.RemoveLast();
+        if (undo.Count > 0) { undo.RemoveLast(); undoStamp.RemoveLast(); }
         if (redoBackup != null) { redo.Clear(); foreach (var r in redoBackup) redo.Push(r); redoBackup = null; }
     }
 
@@ -160,9 +167,9 @@ public sealed class UndoStack
     public Scene PopLast(Scene current = null)
     {
         if (undo.Count == 0) return null;
-        var s = undo.Last.Value.State; undo.RemoveLast();
+        var s = undo.Last.Value.State; undo.RemoveLast(); undoStamp.RemoveLast();
         return Live(s, current);
     }
 
-    public void Clear() { try { prefreeze?.Wait(); } catch { } prefreeze = null; undo.Clear(); redo.Clear(); frozen.Clear(); }
+    public void Clear() { try { prefreeze?.Wait(); } catch { } prefreeze = null; undo.Clear(); undoStamp.Clear(); redo.Clear(); frozen.Clear(); }
 }
