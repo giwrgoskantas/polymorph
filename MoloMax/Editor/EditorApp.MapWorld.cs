@@ -297,6 +297,9 @@ public sealed partial class EditorApp
             Theme.Tip("The HD loads when the camera is closer than this to its target");
             if (mapStreamQueue.Count > 0) Ui.TextDisabled($"loading HD: {mapStreamQueue.Count} map(s) to go");
         }
+        ImGui.Checkbox("Show the interiors (MLO)", ref MapShowInteriors);
+        Theme.Tip("The inside of the game interiors near the camera shows by itself (view only). Pick something inside to edit that interior.");
+        if (MapShowInteriors) { ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Interiors within", ref MapInteriorRadius, 20, 300, "%.0f m"); }
         if (mapDocs.Count > 0 && ImGui.Button("Unload the unchanged maps", new Vector2(-1, 0)))
             { var ch = ChangedMapDocs(); UnloadMapDocs(mapDocs.Values.Where(d => d.FromGame && !d.Modified && !ch.Contains(d.Name) && d.Name != mapActive).ToList()); }
     }

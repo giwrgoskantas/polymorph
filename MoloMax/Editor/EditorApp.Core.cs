@@ -345,7 +345,7 @@ public sealed partial class EditorApp : IDisposable
         if (MapMode && !wireOnly(vp)) MapDraw(false);
         else foreach (var o in Scene.Objects)
         {
-            if (o.Hidden || wireOnly(vp)) continue;
+            if (o.Hidden || wireOnly(vp) || IsVolumeOnly(o)) continue;
             var hl = o.Frozen ? new Vector4(0.55f, 0.55f, 0.6f, 0.6f) : Vector4.Zero;
             renderer.DrawObject(Scene, o, false, hl, BackfaceCull);
         }
@@ -354,7 +354,7 @@ public sealed partial class EditorApp : IDisposable
         if (MapMode && !wireOnly(vp)) MapDraw(true);
         else foreach (var o in Scene.Objects)
         {
-            if (o.Hidden || wireOnly(vp)) continue;
+            if (o.Hidden || wireOnly(vp) || IsVolumeOnly(o)) continue;
             renderer.DrawObject(Scene, o, true, Vector4.Zero, BackfaceCull);
         }
 
@@ -380,9 +380,9 @@ public sealed partial class EditorApp : IDisposable
                 var obj = o;
                 outlineItems.Add(new OutlineRenderer.Item(o.Id, o.Version, o.World, () => obj.Evaluated(), selCol));
             }
-            if (wireOnly(vp) || vp.EdgedFaces || editing)
+            if (wireOnly(vp) || vp.EdgedFaces || editing || IsVolumeOnly(o))
             {
-                Vector4 col = editing ? new Vector4(0.8f, 0.8f, 0.8f, 1) : sel ? selCol : wireOnly(vp) ? V4(o.WireColour) : V4(o.WireColour * 0.55f);
+                Vector4 col = editing ? new Vector4(0.8f, 0.8f, 0.8f, 1) : sel ? selCol : wireOnly(vp) || IsVolumeOnly(o) ? V4(o.WireColour) : V4(o.WireColour * 0.55f);
                 // wire buffer cached on the GPU per mesh version, drawn with the object's matrix
                 var obj = o; bool ed = editing;
                 var (vb, count) = wires.Get(lines.Device, o.Id, ed, o.Version, () => ed ? (obj.Mesh.Verts, obj.Mesh.DrawEdges()) : (obj.Evaluated().Verts, obj.Evaluated().DrawEdges()));
@@ -408,6 +408,8 @@ public sealed partial class EditorApp : IDisposable
     }
 
     static bool wireOnly(Viewport vp) => vp.WireframeOnly;
+    /// <summary>An MLO room volume read from a .ytyp: a wire box only (unless it is being edited).</summary>
+    bool IsVolumeOnly(SceneObject o) => o.Gta is { BoundsOnly: true } && !(Level != SubObject.Object && o == Current);
     readonly List<OutlineRenderer.Item> outlineItems = new();
     /// <summary>Width of the object-mode selection outline, in pixels.</summary>
     public float SelectionOutlinePx = 2f;

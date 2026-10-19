@@ -117,7 +117,7 @@ public static class Picking
     public static PickHit? PickObject(Scene s, in Ray worldRay)
     {
         // plain meshes: the fast local-space test; objects with modifiers: their evaluated mesh
-        var best = PickNearest(s.Objects, worldRay, o => o.Frozen || o.Modifiers is { Count: > 0 });
+        var best = PickNearest(s.Objects, worldRay, o => o.Frozen || o.Modifiers is { Count: > 0 } || o.Gta is { BoundsOnly: true });
         foreach (var o in s.Objects)
         {
             if (o.Hidden || o.Frozen || o.Modifiers is not { Count: > 0 }) continue;

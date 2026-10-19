@@ -90,6 +90,7 @@ public sealed partial class EditorApp
         // ---- plan canvas (X right, Y up like the top view)
         var c0 = ImGui.GetCursorScreenPos(); var size = ImGui.GetContentRegionAvail();
         planCanvasC0 = c0; planCanvasSize = size;
+        if (planCenterNext && size.X > 10) { planCenterNext = false; planPan = new Vector2(size.X * 0.5f, size.Y * 0.5f); }
         ImGui.InvisibleButton("##plancanvas", size, ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle | ImGuiButtonFlags.MouseButtonRight);
         bool hov = ImGui.IsItemHovered(), act = ImGui.IsItemActive();
         var dl = ImGui.GetWindowDrawList(); var io = ImGui.GetIO();
@@ -112,6 +113,8 @@ public sealed partial class EditorApp
             var a = ToS(new Vector2(plan.PhotoX, plan.PhotoY + ph)); var b = ToS(new Vector2(plan.PhotoX + pw, plan.PhotoY));
             dl.AddImage(imgui.IdOf(photoSrv), a, b, Vector2.Zero, Vector2.One, ImGui.ColorConvertFloat4ToU32(new Vector4(1, 1, 1, plan.PhotoOpacity)));
         }
+        // on the map: the buildings and props around, seen from above, to draw the rooms where they belong
+        if (MapMode) DrawPlanMapUnderlay(plan, dl, ToS, hov ? ToW(io.MousePos) : (Vector2?)null);
         // grid: 1 m lines, 5 m darker
         var wmn = ToW(c0 + new Vector2(0, size.Y)); var wmx = ToW(c0 + new Vector2(size.X, 0));
         for (int x = (int)MathF.Floor(wmn.X); x <= wmx.X; x++) dl.AddLine(ToS(new Vector2(x, wmn.Y)), ToS(new Vector2(x, wmx.Y)), x == 0 ? 0xFF606060u : x % 5 == 0 ? 0xFF404040u : 0xFF303030u);
@@ -405,6 +408,53 @@ public sealed partial class EditorApp
         }
         if (plan.Props.Count > 0 && ImGui.Button("Remove all references", new Vector2(-1, 0))) { plan.Props.Clear(); planSelProp = -1; }
         ImGui.Separator();
+    }
+
+    // ---- MAP mode: footprints of the map around the plan (light: four corners per model, refreshed now and then)
+    readonly Dictionary<PolyMesh, (Vector3 Min, Vector3 Max)> planMeshBounds = new();
+    bool planCenterNext;
+    List<(Vector2 A, Vector2 B, Vector2 C, Vector2 D, float Top, string Name)> planFoot;
+    Vector2 planFootOrigin; double planFootTime;
+
+    void DrawPlanMapUnderlay(RoomPlanData plan, ImDrawListPtr dl, Func<Vector2, Vector2> toS, Vector2? mouse)
+    {
+        var org = new Vector2(plan.OriginX, plan.OriginY);
+        if (planFoot == null || Vector2.Distance(org, planFootOrigin) > 1 || ImGui.GetTime() - planFootTime > 3)
+        {
+            planFootOrigin = org; planFootTime = ImGui.GetTime();
+            planFoot = new();
+            const float R = 140;
+            foreach (var o in Scene.Objects)
+            {
+                if (o.Hidden || o.Mesh == null || o.Mesh.Faces.Count == 0 || o.Gta.MapArchetype == null || MapEditable(o)) continue;
+                if (MathF.Abs(o.Position.X - org.X) > R + 60 || MathF.Abs(o.Position.Y - org.Y) > R + 60) continue;
+                if (!planMeshBounds.TryGetValue(o.Mesh, out var lb)) planMeshBounds[o.Mesh] = lb = o.Mesh.Bounds();
+                var sz = lb.Max - lb.Min;
+                if (MathF.Max(sz.X, sz.Y) < 1.2f || MathF.Max(sz.X, sz.Y) > 160 || sz.Z < 0.6f) continue; // decals, kerbs, terrain
+                var w = o.World;
+                Vector2 P(float x, float y) { var v = Vector3.Transform(new Vector3(x, y, lb.Min.Z), w); return new Vector2(v.X, v.Y) - org; }
+                float top = Vector3.Transform(lb.Max, w).Z - plan.OriginZ;
+                planFoot.Add((P(lb.Min.X, lb.Min.Y), P(lb.Max.X, lb.Min.Y), P(lb.Max.X, lb.Max.Y), P(lb.Min.X, lb.Max.Y), top, o.Gta.MapArchetype));
+            }
+            planFoot.Sort((a, b) => a.Top.CompareTo(b.Top)); // tall last, on top
+        }
+        string hoverName = null;
+        foreach (var f in planFoot)
+        {
+            // low things light, buildings darker and outlined
+            bool tall = f.Top > 3;
+            uint fill = tall ? 0xD8907A68u : 0x90685E56u, line = tall ? 0xFFE0D2C4u : 0xA0908070u;
+            dl.AddQuadFilled(toS(f.A), toS(f.B), toS(f.C), toS(f.D), fill);
+            dl.AddQuad(toS(f.A), toS(f.B), toS(f.C), toS(f.D), line, tall ? 1.5f : 1f);
+            if (mouse is Vector2 m && tall && Inside(m, f.A, f.B, f.C, f.D)) hoverName = $"{f.Name}  ({f.Top:0.#} m high)";
+        }
+        if (hoverName != null) ImGui.SetTooltip(hoverName);
+        static bool Inside(Vector2 p, Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+        {
+            float S(Vector2 u, Vector2 v) => (v.X - u.X) * (p.Y - u.Y) - (v.Y - u.Y) * (p.X - u.X);
+            float s1 = S(a, b), s2 = S(b, c), s3 = S(c, d), s4 = S(d, a);
+            return s1 >= 0 && s2 >= 0 && s3 >= 0 && s4 >= 0 || s1 <= 0 && s2 <= 0 && s3 <= 0 && s4 <= 0;
+        }
     }
 
     void PlanPhotoPanel(RoomPlanData plan)

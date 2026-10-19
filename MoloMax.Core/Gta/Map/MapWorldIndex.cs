@@ -52,7 +52,9 @@ public sealed class MapWorldIndex
         }
         // later archives (patches, DLC updates) win over earlier ones with the same name
         var latest = new Dictionary<string, Cw.RpfFileEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var e in entries) latest[System.IO.Path.GetFileNameWithoutExtension(e.NameLower)] = e;
+        var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in entries) { var n = System.IO.Path.GetFileNameWithoutExtension(e.NameLower); latest[n] = e; order[n] = order.Count; }
+        var replaced = ReplacedMaps(latest.Keys, order);
 
         Dictionary<string, YmapInfo> cached = null;
         string stamp = $"v2|{g.Folder}|{latest.Count}|{(g.Folder != null && File.Exists(System.IO.Path.Combine(g.Folder, g.Gen9 ? "GTA5_Enhanced.exe" : "GTA5.exe")) ? File.GetLastWriteTimeUtc(System.IO.Path.Combine(g.Folder, g.Gen9 ? "GTA5_Enhanced.exe" : "GTA5.exe")).Ticks : 0)}";
@@ -94,7 +96,7 @@ public sealed class MapWorldIndex
                 catch { }
             }
             info.Entry = fe;
-            idx.Ymaps.Add(info);
+            if (!replaced.Contains(name)) idx.Ymaps.Add(info); // a DLC copy of it is the one the game uses
             idx.byName[name] = info;
             if (++done % 250 == 0) progress?.Invoke($"Maps {done:N0} / {latest.Count:N0}", done / (float)latest.Count);
         }
@@ -109,6 +111,32 @@ public sealed class MapWorldIndex
         }
         progress?.Invoke($"{idx.Ymaps.Count:N0} maps indexed", 1);
         return idx;
+    }
+
+    /// <summary>
+    /// DLC maps that stand in for a base map: "hei_dt1_19_strm_0" (heists) or "lr_sc1_00d_strm_0" (lowriders) hold the same
+    /// entities as "dt1_19_strm_0", updated. Only the newest of such a family is kept, else every object shows twice.
+    /// </summary>
+    public static HashSet<string> ReplacedMaps(IEnumerable<string> names, IReadOnlyDictionary<string, int> order)
+    {
+        var all = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+        var families = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in all)
+        {
+            int u = n.IndexOf('_');
+            if (u < 2 || u > 6) continue;
+            var rest = n[(u + 1)..];
+            if (!all.Contains(rest)) continue;
+            if (!families.TryGetValue(rest, out var f)) families[rest] = f = new List<string> { rest };
+            f.Add(n);
+        }
+        var res = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in families.Values)
+        {
+            var keep = f.OrderByDescending(n => n.Length > f[0].Length ? 1 : 0).ThenByDescending(n => order.TryGetValue(n, out var o) ? o : 0).First();
+            foreach (var n in f) if (!string.Equals(n, keep, StringComparison.OrdinalIgnoreCase)) res.Add(n);
+        }
+        return res;
     }
 
     sealed class CacheFile { public string Stamp { get; set; } public List<YmapInfo> Ymaps { get; set; } }

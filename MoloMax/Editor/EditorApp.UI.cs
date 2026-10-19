@@ -45,6 +45,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("New", "Ctrl+N")) NewScene();
             if (ImGui.MenuItem("Open...", "Ctrl+O")) OpenDialog();
             RecentMenu();
+            BookmarksMenu();
             if (ImGui.MenuItem("Save", "Ctrl+S")) Save(false);
             if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S")) Save(true);
             ImGui.Separator();

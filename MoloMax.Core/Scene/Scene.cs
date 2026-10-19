@@ -167,6 +167,8 @@ public sealed class GtaInfo
     public uint PortalFlags;
     /// <summary>Left out of the automatic collision (decor, glass, things players walk through).</summary>
     public bool NoAutoCollision;
+    /// <summary>MLO room read from a .ytyp: only its bounds (a volume, not a model): drawn as a wire box, not picked in the view.</summary>
+    public bool BoundsOnly;
     public GtaAnim Anim = new();
     /// <summary>Export this prop as a fragment (.yft): a physical object that can be pushed and knocked over.</summary>
     public bool Fragment;

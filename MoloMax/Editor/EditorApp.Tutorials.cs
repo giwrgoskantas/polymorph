@@ -190,6 +190,7 @@ public sealed partial class EditorApp
         T("TUTO 12 vehicle forge", TutVehicleForge);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
+        T("MAP diag: duplicates", MapDiag);
     }
 
     IEnumerable<object> TutModeling()
@@ -1100,6 +1101,54 @@ public sealed partial class EditorApp
             cam.Yaw += 1.2f; yield return Frames(10);
             yield return Shot("tower_on_map2");
         }
+        SetMapMode(false);
+    }
+
+    IEnumerable<object> MapDiag()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        SetMapMode(true); ClearMapBuild();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        yield return Until(() => world != null, 600);
+        var cam = vp.Camera; MapStream = true;
+        var spot = new Vector3(445, -1000, 30);
+        GoTo(spot); cam.Distance = 35; cam.Pitch = 0.5f;
+        yield return Settle(() => backdropIn.IsEmpty && backdropMaps >= backdropTotal, 120);
+        yield return Settle(() => mapStreamQueue.Count == 0 && mapLoadTask == null, 60);
+        yield return Settle(() => archLoading == 0, 60);
+        yield return Frames(30);
+        var eye = cam.Eye;
+        var vis = Scene.Objects.Where(o => !o.Hidden && o.Gta.MapArchetype != null && Vector3.Distance(o.Position, spot) < 120).ToList();
+        var groups = vis.GroupBy(o => (o.InstanceKey, (int)MathF.Round(o.Position.X * 20), (int)MathF.Round(o.Position.Y * 20), (int)MathF.Round(o.Position.Z * 20))).Where(g => g.Count() > 1).ToList();
+        Expect(true, $"{vis.Count} map objects near, {groups.Count} duplicated places; e.g. " + string.Join(" | ", groups.Take(6).Select(g => string.Join(",", g.Select(o => o.Name + "@" + o.Folder)))));
+        var docsNear = mapDocs.Keys.Where(k => vis.Any(o => o.Folder == k)).OrderBy(k => k).ToList();
+        Expect(true, $"docs near: {string.Join(", ", docsNear)}");
+        var far = backdrop.Where(o => !o.Hidden && Vector3.Distance(o.Position, spot) < 150 && !FarSteppedAside(o, eye) && FarLodVisible(o, eye)).ToList();
+        Expect(true, $"far models still drawn near the camera: {far.Count}: " + string.Join(", ", far.Take(12).Select(o => o.Name)));
+        // same entity from two docs with the same archetype and place
+        var byPlace = entOf.Values.GroupBy(v => (v.Ent.ArchetypeHash, (int)MathF.Round(v.Ent.Position.X * 10), (int)MathF.Round(v.Ent.Position.Y * 10))).Where(g => g.Count() > 1).ToList();
+        Expect(true, $"entities in two loaded maps: {byPlace.Count}; e.g. " + string.Join(" | ", byPlace.Take(6).Select(g => string.Join(",", g.Select(v => v.Doc.Name + ":" + v.Ent.DisplayName + ":L" + v.Ent.LodLevel)))));
+        yield return Shot("diag_all");
+        // interiors near the camera open by themselves, view only; streamed maps stay out of the explorer
+        yield return Settle(() => interiors.Count > 0, 20);
+        yield return Frames(30);
+        Expect(interiors.Values.Any(i => i.Auto), $"interiors shown by themselves: {interiors.Count} ({string.Join(", ", interiors.Values.Select(i => i.Doc.ArchetypeName + ":" + i.Doc.Entities.Count))})");
+        Expect(outStreamedHidden > 0 && orows.Count < 400, $"Scene Explorer: {orows.Count} rows, {outStreamedHidden} streamed map(s)/interior(s) kept out");
+        yield return Shot("diag_interiors");
+        // a scene put on the map
+        var src = new Scene();
+        var bx = new SceneObject { Id = src.NextObjectId++, Name = "my_shed", Mesh = Core.Mesh.Primitives.Box(3, 2, 2.5f) };
+        src.Objects.Add(bx);
+        var put = ImportSceneOnMap(src, "test scene");
+        Expect(put.Count == 1 && MapEditable(put[0]) && put[0].Folder == MapBuildFolder && Vector3.Distance(put[0].WorldBounds().Min, MapGround()) < 4, $"a scene imported onto the map: {put.Count} object(s) in '{put.FirstOrDefault()?.Folder}'");
+        // the room plan shows the buildings around
+        OpenPlanOnMap(); yield return Frames(6);
+        Expect(planFoot != null && planFoot.Count > 20, $"MLO plan on the map: {planFoot?.Count} footprints of the buildings around");
+        yield return Shot("diag_plan");
+        planOpen = false;
         SetMapMode(false);
     }
 

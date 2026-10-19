@@ -1972,6 +1972,13 @@ Console.WriteLine("\n== map editing: .ymap write / read / edit");
     var b1 = back.Entities.First(e => e != b0);
     Check("ymap: scale XY / Z kept", () => MathF.Abs(b1.Scale.X - 1.5f) < 1e-4f && MathF.Abs(b1.Scale.Z - 2f) < 1e-4f);
     Check("ymap: extents cover the entities", () => back.EntitiesMin.X <= 194 && back.EntitiesMax.X >= 201 && back.StreamingMin.X < 50);
+    Check("map index: DLC copies replace the base map (hei_ / lr_), unrelated names stay", () =>
+    {
+        var names = new[] { "dt1_19_strm_0", "hei_dt1_19_strm_0", "sc1_00d_strm_0", "hei_sc1_00d_strm_0", "lr_sc1_00d_strm_0", "ba_case1_dixon", "dt1_20_strm_0" };
+        var order = names.Select((n, i) => (n, i)).ToDictionary(x => x.n, x => x.i);
+        var r = MoloMax.Core.Gta.Map.MapWorldIndex.ReplacedMaps(names, order);
+        return r.SetEquals(new[] { "dt1_19_strm_0", "sc1_00d_strm_0", "hei_sc1_00d_strm_0" });
+    });
     Check("GTA scale: kinds from names (chair, stool, door, bar counter, coffee table; not barrel / stable)", () =>
         MoloMax.Core.Tools.GtaScale.Guess("prop_chair_01")?.Id == "chair" && MoloMax.Core.Tools.GtaScale.Guess("Tabouret_Bar")?.Id == "stool"
         && MoloMax.Core.Tools.GtaScale.Guess("v_door_02")?.Id == "door" && MoloMax.Core.Tools.GtaScale.Guess("bar_counter_long")?.Id == "bar_counter"

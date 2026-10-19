@@ -70,7 +70,7 @@ public sealed partial class EditorApp
     void RunScriptDialog()
     {
         using var d = new System.Windows.Forms.OpenFileDialog { Filter = "Python script (*.py)|*.py", Title = "Run a Python script in Polymorph", InitialDirectory = Path.Combine(PythonFolder, "examples") };
-        if (d.ShowDialog(form) != System.Windows.Forms.DialogResult.OK) { Input.ReleaseAllKeys(); return; }
+        if (ShowFileDialog(d) != System.Windows.Forms.DialogResult.OK) { Input.ReleaseAllKeys(); return; }
         Input.ReleaseAllKeys();
         RunScript(d.FileName);
     }

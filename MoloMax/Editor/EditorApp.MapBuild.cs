@@ -158,8 +158,78 @@ public sealed partial class EditorApp
             TutRect("map_edit");
             Theme.Tip("Makes your own copy of the selected game model, right where it is, and opens it in edit mode.");
         }
+        if (ImGui.Button("Import a 3D scene here...", new Vector2(w2, 0))) ImportSceneOnMapDialog();
+        TutRect("map_import");
+        Theme.Tip("A Polymorph scene (.mmx), a .glb / .obj or a GTA model, put on the ground at the middle of the view. It is saved with the map.");
+        ImGui.SameLine(0, 4);
+        var ms = otherMode?.Scene;
+        ImGui.BeginDisabled(ms == null || ms.Objects.Count == 0);
+        if (ImGui.Button("My MODEL scene here", new Vector2(w2, 0)) && ms != null) ImportSceneOnMap(ms, "MODEL scene");
+        ImGui.EndDisabled();
+        Theme.Tip("A copy of what you modeled in MODEL mode, on the ground at the middle of the view.");
         var n = MapBuildObjects().Count;
         Ui.TextDisabled(n == 0 ? "Nothing modeled yet." : $"{n} object(s) modeled here, written to stream/build on save.");
+    }
+
+    void ImportSceneOnMapDialog()
+    {
+        using var d = new System.Windows.Forms.OpenFileDialog
+        {
+            Filter = "Scenes and models|*.mmx;*.glb;*.gltf;*.obj;*.ydr;*.yft;*.ydd|Polymorph scene (*.mmx)|*.mmx|glTF (*.glb, *.gltf)|*.glb;*.gltf|Wavefront OBJ (*.obj)|*.obj|GTA V (*.ydr, *.yft, *.ydd)|*.ydr;*.yft;*.ydd",
+            Title = "Import a 3D scene onto the map",
+        };
+        if (ShowFileDialog(d) != System.Windows.Forms.DialogResult.OK) return;
+        var path = d.FileName;
+        if (path.EndsWith(".mmx", StringComparison.OrdinalIgnoreCase))
+        {
+            Scene src;
+            try { src = MoloMax.Core.Scenes.SceneIO.Load(path); } catch (Exception e) { SetStatus("Could not open the scene: " + e.Message); return; }
+            ImportSceneOnMap(src, Path.GetFileNameWithoutExtension(path));
+            return;
+        }
+        var g = MapGround();
+        var objs = ImportFile(path, g);
+        importReportOpen = false;
+        foreach (var o in objs.Concat(objs.Select(Scene.Parent).Where(x => x != null)).Distinct()) { o.Folder = ""; MapAdopt(o); }
+        Selected.Clear(); foreach (var o in objs) Selected.Add(o.Id); SelectionChanged();
+        SetStatus($"{Path.GetFileName(path)}: {objs.Count} object(s) on the map, saved with it.");
+    }
+
+    /// <summary>Copies a whole scene onto the map, its lowest point on the ground at the middle of the view.</summary>
+    public List<SceneObject> ImportSceneOnMap(Scene src, string label)
+    {
+        var res = new List<SceneObject>();
+        var items = src.Objects.Where(o => o.Mesh != null && !(o.Gta.Role == GtaRole.Ignore && o.Name.StartsWith("ped_scale"))).ToList();
+        if (items.Count == 0) { SetStatus("That scene is empty."); return res; }
+        var mn = items.Where(o => o.Mesh.Faces.Count > 0).Select(o => o.WorldBounds().Min).DefaultIfEmpty(Vector3.Zero).Aggregate(Vector3.Min);
+        var mx = items.Where(o => o.Mesh.Faces.Count > 0).Select(o => o.WorldBounds().Max).DefaultIfEmpty(Vector3.Zero).Aggregate(Vector3.Max);
+        var shift = MapGround() - new Vector3((mn.X + mx.X) / 2, (mn.Y + mx.Y) / 2, mn.Z);
+        Do("Import " + label + " on the map", () =>
+        {
+            // materials: same name and shader = the same material, else a copy with a new id
+            var matMap = new Dictionary<int, int>();
+            foreach (var m in src.Materials)
+            {
+                var same = Scene.Materials.FirstOrDefault(x => x.Name == m.Name && x.Shader == m.Shader);
+                if (same != null) { matMap[m.Id] = same.Id; continue; }
+                var c = m.Clone(); c.Id = Scene.NextMaterialId++; Scene.Materials.Add(c); matMap[m.Id] = c.Id;
+            }
+            var idMap = new Dictionary<int, int>();
+            foreach (var o in items)
+            {
+                var c = o.Clone(); c.Id = Scene.NextObjectId++; idMap[o.Id] = c.Id;
+                foreach (var f in c.Mesh.Faces) if (matMap.TryGetValue(f.MatId, out var nm)) f.MatId = nm;
+                if (o.ParentId < 0) c.Position += shift;
+                c.Folder = ""; c.Gta.MapArchetype = null;
+                Scene.Objects.Add(c); MapAdopt(c); res.Add(c);
+            }
+            foreach (var c in res) c.ParentId = c.ParentId >= 0 && idMap.TryGetValue(c.ParentId, out var np) ? np : -1;
+            foreach (var c in res) c.Touch();
+            Selected.Clear(); foreach (var c in res.Where(c => c.ParentId < 0)) Selected.Add(c.Id); SelectionChanged();
+        });
+        renderer.Collect(Scene);
+        SetStatus($"{label}: {res.Count} object(s) on the map at {shift.X:0}, {shift.Y:0}. Saved with the map.");
+        return res;
     }
 
     /// <summary>Room Builder on the map: the plan's origin goes to the ground at the middle of the view (when the plan is new).</summary>
@@ -170,6 +240,7 @@ public sealed partial class EditorApp
         {
             var g = MapGround();
             Scene.Plan.OriginX = MathF.Round(g.X); Scene.Plan.OriginY = MathF.Round(g.Y); Scene.Plan.OriginZ = MathF.Round(g.Z * 10) / 10;
+            planZoom = 7; planCenterNext = true; planFoot = null; // the buildings around, seen from above, 1 m = 7 px
         }
         planOpen = true;
     }

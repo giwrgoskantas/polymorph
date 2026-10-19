@@ -297,7 +297,7 @@ public sealed partial class EditorApp : IAddonHost
         if (ImGui.Button("Install from file...", new Vector2(w3, 0)))
         {
             using var d = new System.Windows.Forms.OpenFileDialog { Filter = "Polymorph add-on (*.dll)|*.dll", Multiselect = true, Title = "Install add-on" };
-            if (d.ShowDialog(form) == System.Windows.Forms.DialogResult.OK)
+            if (ShowFileDialog(d) == System.Windows.Forms.DialogResult.OK)
             {
                 Directory.CreateDirectory(AddonFolder);
                 foreach (var f in d.FileNames) File.Copy(f, Path.Combine(AddonFolder, Path.GetFileName(f)), true);

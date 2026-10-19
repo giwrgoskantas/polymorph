@@ -118,7 +118,7 @@ public sealed partial class EditorApp
         var baseName = TextureBank.SafeName(objs[0].Name);
         var filter = ext switch { ".ydr" => "GTA drawable (*.ydr)|*.ydr", ".yft" => "GTA fragment (*.yft)|*.yft", _ => "glTF binary (*.glb)|*.glb" };
         using var d = new SaveFileDialog { Filter = filter, FileName = (all ? "scene" : baseName) + ext, Title = "Export " + ext };
-        bool ok = d.ShowDialog(form) == DialogResult.OK;
+        bool ok = ShowFileDialog(d) == DialogResult.OK;
         Input.ReleaseAllKeys();
         if (!ok) return;
         if (ext != ".glb") BakeAllPaint();

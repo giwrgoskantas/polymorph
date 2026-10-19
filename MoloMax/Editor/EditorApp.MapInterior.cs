@@ -17,7 +17,54 @@ public sealed partial class EditorApp
     {
         public MloDocument Doc; public int InstanceId; public Vector3 Pos; public Quaternion Rot = Quaternion.Identity; public string Folder;
         public readonly Dictionary<MloEntity, int> ObjOf = new();
+        /// <summary>Opened by itself because the camera came near (view only until edited).</summary>
+        public bool Auto;
     }
+    /// <summary>MAP: show the inside of the interiors (MLO) near the camera.</summary>
+    public bool MapShowInteriors = true;
+    public float MapInteriorRadius = 90f;
+    double interiorAutoTime;
+    readonly HashSet<uint> interiorFailed = new();
+
+    /// <summary>Opens the interiors whose instance is near the camera (and closes the far, unchanged ones).</summary>
+    void AutoInteriors()
+    {
+        if (ImGui.GetTime() - interiorAutoTime < 1.0 || game == null) return;
+        interiorAutoTime = ImGui.GetTime();
+        var p = MapFocus();
+        // close: far, instance gone, or switched off, and nothing changed inside
+        foreach (var oi in interiors.Values.Where(i => i.Auto).ToList())
+        {
+            var inst = Scene.Find(oi.InstanceId);
+            bool far = inst == null || !MapShowInteriors || Vector2.Distance(new Vector2(oi.Pos.X, oi.Pos.Y), new Vector2(p.X, p.Y)) > MapInteriorRadius * 1.5f;
+            if (far && !oi.Doc.Modified && !SyncInterior(oi, apply: false)) CloseInterior(oi);
+        }
+        if (!MapShowInteriors || !HdStreamingNow) return;
+        int opened = 0;
+        var mlos = entOf.Where(kv => kv.Value.Ent.IsMlo && Vector2.Distance(new Vector2(kv.Value.Ent.Position.X, kv.Value.Ent.Position.Y), new Vector2(p.X, p.Y)) <= MapInteriorRadius).ToList();
+        // the base game and a DLC can place two versions of one interior at the same spot: the game shows the DLC one
+        static int Newer(string map) => (map.Contains("dlc", StringComparison.OrdinalIgnoreCase) ? 2 : 0) + (map.Length > 4 && map[3] == '_' || map.Length > 3 && map[2] == '_' ? 1 : 0);
+        foreach (var (id, (doc, e)) in mlos)
+        {
+            if (interiorFailed.Contains(e.ArchetypeHash)) continue;
+            if (mlos.Any(o => o.Key != id && Vector3.Distance(o.Value.Ent.Position, e.Position) < 4 && Newer(o.Value.Doc.Name) > Newer(doc.Name))) continue;
+            if (interiors.Values.Any(i => i.InstanceId == id)) continue;
+            var inst = Scene.Find(id); if (inst == null) continue;
+            var keepActive = interiorActive; var keepStatus = status;
+            if (EditInterior(inst))
+            {
+                var oi = interiors.Values.First(i => i.InstanceId == id); oi.Auto = true;
+                interiorActive = keepActive;
+            }
+            else interiorFailed.Add(e.ArchetypeHash);
+            status = keepStatus;
+            if (++opened >= 2) break; // a couple per second: no hitch
+        }
+    }
+
+    /// <summary>An interior opened by itself stays out of the Scene Explorer until something in it is picked or changed.</summary>
+    bool IsViewOnlyInterior(string folder) =>
+        interiors.TryGetValue(folder ?? "", out var oi) && oi.Auto && !oi.Doc.Modified && interiorActive != folder && !Selected.Any(id => intEntOf.TryGetValue(id, out var x) && x.In == oi);
     readonly Dictionary<string, OpenInterior> interiors = new();
     readonly Dictionary<int, (OpenInterior In, MloEntity Ent)> intEntOf = new();
     /// <summary>Interior folder new props go into (else the active .ymap).</summary>

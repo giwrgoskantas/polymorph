@@ -13,7 +13,7 @@ public sealed partial class EditorApp
     public void ImportMloDialog()
     {
         using var d = new OpenFileDialog { Filter = "MLO archetypes (*.ytyp)|*.ytyp", Title = "Import an MLO (.ytyp with its .ydr / .ybn next to it)" };
-        bool ok = d.ShowDialog(form) == DialogResult.OK;
+        bool ok = ShowFileDialog(d) == DialogResult.OK;
         Input.ReleaseAllKeys();
         if (ok) ImportMlo(d.FileName);
     }
@@ -36,7 +36,8 @@ public sealed partial class EditorApp
                 var r = m.Rooms[i];
                 var size = r.Max - r.Min;
                 var room = Scene.Add(r.Name, Primitives.Room(size.X, size.Y, size.Z), new Vector3((r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2, r.Min.Z), GtaObjectType.MloRoom);
-                room.Name = r.Name; room.Folder = folder; room.Gta.RoomFlags = r.Flags;
+                room.Name = r.Name; room.Folder = folder; room.Gta.RoomFlags = r.Flags; room.Gta.BoundsOnly = true;
+                room.WireColour = new Vector3(0.75f, 0.45f, 1f);
                 room.Gta.RoomTimecycle = tcByHash.TryGetValue(r.TimecycleHash, out var tc) ? tc : "";
                 made.Add(room);
             }

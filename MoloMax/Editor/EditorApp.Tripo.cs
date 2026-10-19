@@ -202,7 +202,7 @@ public sealed partial class EditorApp
         if (ImGui.Button("Browse##" + label, new Vector2(-1, 0)))
         {
             using var d = new System.Windows.Forms.OpenFileDialog { Filter = filter + "|All files|*.*" };
-            if (d.ShowDialog(form) == System.Windows.Forms.DialogResult.OK) path = d.FileName;
+            if (ShowFileDialog(d) == System.Windows.Forms.DialogResult.OK) path = d.FileName;
         }
     }
 

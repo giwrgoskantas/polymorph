@@ -25,7 +25,7 @@ public sealed partial class EditorApp
         if (!ConfirmDiscard()) return;
         Scene = new Scene(); Undo.Clear(); lastAdd = null; ActiveId = -1; Selected.Clear(); subSel.Clear(); Level = SubObject.Object;
         CurrentFile = null; Dirty = false; renderer.Invalidate(); edgeCache.Clear();
-        ResetForge(); cubeProj = null; decalPlace = null;
+        ResetForge(); cubeProj = null; decalPlace = null; showMode = 0; showModeHidden = null;
         SetStatus("New scene");
     }
 
@@ -33,7 +33,7 @@ public sealed partial class EditorApp
     {
         if (!ConfirmDiscard()) return;
         using var d = new OpenFileDialog { Filter = SceneFilter, Title = "Open scene" };
-        if (d.ShowDialog(form) == DialogResult.OK) OpenFile(d.FileName);
+        if (ShowFileDialog(d) == DialogResult.OK) OpenFile(d.FileName);
         Input.ReleaseAllKeys();
     }
 
@@ -45,7 +45,10 @@ public sealed partial class EditorApp
             lastAdd = null; ActiveId = -1;
             Undo.Clear(); Selected.Clear(); subSel.Clear(); Level = SubObject.Object;
             CurrentFile = path; Dirty = false; renderer.Invalidate(); edgeCache.Clear();
-            ResetForge(); cubeProj = null; decalPlace = null;
+            ResetForge(); cubeProj = null; decalPlace = null; showMode = 0; showModeHidden = null;
+            // MLO rooms imported before: plain 8-corner volumes are bounds, not models
+            foreach (var o in Scene.Objects)
+                if (o.GtaType == GtaObjectType.MloRoom && o.Folder != PlanFolder && o.Mesh.Verts.Count == 8 && o.Mesh.Faces.Count == 6) o.Gta.BoundsOnly = true;
             renderer.Textures.SearchFolders.Clear();
             renderer.Textures.SearchFolders.Add(Path.GetDirectoryName(Path.GetFullPath(path)));
             renderer.Textures.ClearResolveCache();
@@ -64,7 +67,7 @@ public sealed partial class EditorApp
         if (saveAs || path == null)
         {
             using var d = new SaveFileDialog { Filter = SceneFilter, Title = "Save scene", FileName = path != null ? Path.GetFileName(path) : "scene.mmx" };
-            if (d.ShowDialog(form) != DialogResult.OK) { Input.ReleaseAllKeys(); return false; }
+            if (ShowFileDialog(d) != DialogResult.OK) { Input.ReleaseAllKeys(); return false; }
             path = d.FileName;
             Input.ReleaseAllKeys();
         }
@@ -85,7 +88,7 @@ public sealed partial class EditorApp
     public void ExportObj(bool selectedOnly)
     {
         using var d = new SaveFileDialog { Filter = "Wavefront OBJ (*.obj)|*.obj", Title = "Export OBJ for Sollumz", FileName = "polymorph_export.obj" };
-        if (d.ShowDialog(form) != DialogResult.OK) { Input.ReleaseAllKeys(); return; }
+        if (ShowFileDialog(d) != DialogResult.OK) { Input.ReleaseAllKeys(); return; }
         Input.ReleaseAllKeys();
         try
         {
@@ -98,7 +101,7 @@ public sealed partial class EditorApp
     public string PickTexture()
     {
         using var d = new OpenFileDialog { Filter = "Textures (*.dds;*.png;*.jpg;*.bmp)|*.dds;*.png;*.jpg;*.jpeg;*.bmp|All files (*.*)|*.*", Title = "Choose a texture" };
-        var r = d.ShowDialog(form) == DialogResult.OK ? d.FileName : null;
+        var r = ShowFileDialog(d) == DialogResult.OK ? d.FileName : null;
         Input.ReleaseAllKeys();
         return r;
     }
@@ -139,7 +142,7 @@ public sealed partial class EditorApp
             Multiselect = true,
             InitialDirectory = Settings.LastFolder != null && Directory.Exists(Settings.LastFolder) ? Settings.LastFolder : "",
         };
-        var ok = d.ShowDialog(form) == DialogResult.OK;
+        var ok = ShowFileDialog(d) == DialogResult.OK;
         Input.ReleaseAllKeys();
         if (!ok) return;
         Settings.LastFolder = Path.GetDirectoryName(d.FileNames[0]); Settings.Save();

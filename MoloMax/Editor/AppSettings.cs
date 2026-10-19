@@ -46,6 +46,10 @@ public sealed class AppSettings
     public float PanelWidth { get; set; }
     public int ApiPort { get; set; } = 7820;
     public List<string> RecentFiles { get; set; } = new();
+    /// <summary>Folders pinned in every open / save / import window.</summary>
+    public List<string> Bookmarks { get; set; } = new();
+    /// <summary>Last folder of each kind of window (by its title).</summary>
+    public Dictionary<string, string> LastFolders { get; set; } = new();
     /// <summary>GTA V install folder (for the game files browser).</summary>
     public string GtaFolder { get; set; }
     /// <summary>Game archive key found the first time (saves the slow search in the exe).</summary>

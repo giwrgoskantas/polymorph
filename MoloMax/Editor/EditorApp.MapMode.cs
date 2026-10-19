@@ -174,8 +174,25 @@ public sealed partial class EditorApp
         PumpBackdrop(); Prof("map far");
         PumpArchetypes(); Prof("map models");
         if (MapStream && world != null && ImGui.GetTime() - mapLastStream > 0.5) { mapLastStream = ImGui.GetTime(); StreamWorld(HdStreamingNow); }
+        PinPickedMaps();
+        AutoInteriors();
         Prof("map stream");
         if (++mapCullTick % 15 == 0) UpdateMapCull();
+    }
+
+    /// <summary>A streamed map is view only (not in the Scene Explorer) until it is opened by hand, edited, or one of its models picked.</summary>
+    bool IsViewOnlyMap(string folder) =>
+        folder != null && mapDocs.TryGetValue(folder, out var d) && !mapPinned.Contains(folder) && folder != mapActive && !d.Modified && d.FromGame;
+
+    /// <summary>Picking a model of a view-only map makes that map editable (it is listed and kept loaded).</summary>
+    void PinPickedMaps()
+    {
+        if (Selected.Count == 0 || Selected.Count > 200) return;
+        foreach (var id in Selected)
+        {
+            if (entOf.TryGetValue(id, out var de) && !mapPinned.Contains(de.Doc.Name)) { mapPinned.Add(de.Doc.Name); SetStatus($"{de.Doc.Name} opened for editing ({de.Doc.Entities.Count} objects)."); }
+            if (intEntOf.TryGetValue(id, out var ie) && ie.In.Auto) { ie.In.Auto = false; SetStatus($"Interior {ie.In.Doc.ArchetypeName} opened for editing."); }
+        }
     }
 
     Vector3 MapFocus()
@@ -942,7 +959,7 @@ public sealed partial class EditorApp
             if (ImGui.Button("Open file...", new Vector2(w2, 0)))
             {
                 using var dlg = new System.Windows.Forms.OpenFileDialog { Filter = "GTA map (*.ymap)|*.ymap", Title = "Open a .ymap" };
-                if (dlg.ShowDialog(form) == System.Windows.Forms.DialogResult.OK) OpenYmapFile(dlg.FileName);
+                if (ShowFileDialog(dlg) == System.Windows.Forms.DialogResult.OK) OpenYmapFile(dlg.FileName);
                 Input.ReleaseAllKeys();
             }
             if (world != null)

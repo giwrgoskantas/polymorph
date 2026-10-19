@@ -75,6 +75,21 @@ public sealed partial class EditorApp
         ImGui.SameLine(0, 4);
         if (ImGui.Button("Collision", new Vector2(-1, 0))) CollisionFromSelection();
         Theme.Tip("Copy the selected meshes as Collision, into the Drawable's collision group");
+        // what the view and the list show: everything, only the drawables, only the collisions
+        float b4 = (fw - 12 - 52) / 3;
+        string[] modes = { "All", "Drawables", "Collisions" };
+        for (int i = 0; i < 3; i++)
+        {
+            if (i > 0) ImGui.SameLine(0, 4);
+            if (Theme.Toggle(modes[i] + "##sm", showMode == i, new Vector2(b4, 0))) SetShowMode(i);
+        }
+        Theme.Tip("Show only the drawables or only the collisions, in the view and in this list. All brings everything back.");
+        ImGui.SameLine(0, 4);
+        if (ImGui.Button("\u2212##coll", new Vector2(24, 0))) CollapseAll();
+        Theme.Tip("Collapse all");
+        ImGui.SameLine(0, 4);
+        if (ImGui.Button("+##expa", new Vector2(24, 0))) ExpandAll();
+        Theme.Tip("Expand all");
 
         bool filtering = explorerFilter.Length > 0 || outFilter != OutFilter.None;
         // the row list is rebuilt only when the scene's structure changes (thousands of map entities: no work, no garbage per frame)
@@ -91,9 +106,15 @@ public sealed partial class EditorApp
         foreach (var f in closedFolders) sig += f.GetHashCode();
         foreach (var id in closedObjs) sig += id * 92821L;
         sig = sig * 31 + (folderRename?.GetHashCode() ?? 0);
+        if (MapMode) sig = sig * 31 + mapPinned.Count * 7919L + (mapActive?.GetHashCode() ?? 0) + interiors.Count * 104729L + (interiorActive?.GetHashCode() ?? 0) + Selected.Count * 13L;
         }
         if (filtering || sig != outlinerSig) { outlinerSig = sig; BuildOutlinerRows(filtering); }
 
+        if (MapMode && outStreamedHidden > 0)
+        {
+            Ui.TextDisabled($"{outStreamedHidden} map(s) / interior(s) around the camera: view only");
+            Theme.Tip("The HD around the camera is shown, not listed. Click a model in the view to edit it: its map comes here.");
+        }
         ImGui.BeginChild("##objs", Vector2.Zero, ImGuiChildFlags.Borders);
         outBandRows.Clear();
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 2));
@@ -117,12 +138,55 @@ public sealed partial class EditorApp
         ImGui.InvisibleButton("##empty", new Vector2(-1, MathF.Max(20, ImGui.GetContentRegionAvail().Y)));
         if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.GetIO().KeyCtrl) { Selected.Clear(); SelectionChanged(); }
         if (ImGui.IsItemActive() && outBandStart == null && ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4)) BeginOutlinerBand();
-        if (ImGui.BeginPopupContextItem("##emptyctx")) { if (ImGui.MenuItem("New folder")) NewFolder(false); ImGui.EndPopup(); }
+        if (ImGui.BeginPopupContextItem("##emptyctx"))
+        {
+            if (ImGui.MenuItem("New folder")) NewFolder(false);
+            ImGui.Separator();
+            if (ImGui.MenuItem("Collapse all")) CollapseAll();
+            if (ImGui.MenuItem("Expand all")) ExpandAll();
+            ImGui.EndPopup();
+        }
         UpdateOutlinerBand();
         ImGui.EndChild();
     }
 
+    int showMode; Dictionary<int, bool> showModeHidden;
+
+    static bool IsCollisionObj(SceneObject o) => o.GtaType is GtaObjectType.Collision or GtaObjectType.CollisionGroup;
+
+    /// <summary>All / Drawables / Collisions: hides the other kind (their own hidden state comes back with All).</summary>
+    void SetShowMode(int mode)
+    {
+        if (mode == showMode) return;
+        if (showModeHidden != null) foreach (var o in Scene.Objects) if (showModeHidden.TryGetValue(o.Id, out var h)) o.Hidden = h;
+        showModeHidden = null; showMode = mode;
+        outFilter &= ~(OutFilter.Meshes | OutFilter.Drawables | OutFilter.Collisions);
+        if (mode == 0) { SetStatus("Showing everything."); return; }
+        showModeHidden = Scene.Objects.ToDictionary(o => o.Id, o => o.Hidden);
+        int shown = 0;
+        foreach (var o in Scene.Objects)
+        {
+            bool col = IsCollisionObj(o) || Scene.Parent(o) is { } p && IsCollisionObj(p);
+            bool keep = mode == 2 ? col : !col;
+            // a Drawable node holding both stays visible so its kids can show
+            if (!keep && o.GtaType == GtaObjectType.Model && mode == 2) keep = true;
+            o.Hidden = !keep || showModeHidden[o.Id];
+            if (keep && o.Mesh.Faces.Count > 0) shown++;
+        }
+        outFilter |= mode == 2 ? OutFilter.Collisions : OutFilter.Meshes | OutFilter.Drawables;
+        SetStatus(mode == 2 ? $"Collisions only ({shown} shown). All shows everything again." : $"Drawables only ({shown} shown). All shows everything again.");
+    }
+
+    void CollapseAll()
+    {
+        foreach (var f in AllFolders().Append("")) closedFolders.Add(f);
+        foreach (var o in Scene.Objects) if (o.ParentId >= 0) closedObjs.Add(o.ParentId);
+    }
+
+    void ExpandAll() { closedFolders.Clear(); closedObjs.Clear(); }
+
     long outlinerSig = long.MinValue; double outlinerSigTime = -10;
+    int outStreamedHidden;
     void BuildOutlinerRows(bool filtering)
     {
         outlinerOrder.Clear();
@@ -156,8 +220,12 @@ public sealed partial class EditorApp
             orows.Add(new ORow { Obj = o, Depth = depth, Kids = kids });
             if (kids.Count > 0 && !closedObjs.Contains(o.Id)) foreach (var c in kids) AddObj(c, depth + 1);
         }
+        outStreamedHidden = 0;
         foreach (var f in names)
         {
+            // MAP: the maps streamed around the camera stay out of the list until one of their models is picked
+            if (MapMode && !filtering && IsViewOnlyMap(f)) { outStreamedHidden++; continue; }
+            if (MapMode && !filtering && IsViewOnlyInterior(f)) { outStreamedHidden++; continue; }
             var objs = byFolder.TryGetValue(f, out var l) ? l : NoKids;
             if (f == "" && objs.Count == 0 && names.Count > 1) continue;
             orows.Add(new ORow { Folder = f, FolderObjs = objs });
@@ -242,6 +310,8 @@ public sealed partial class EditorApp
         if (ImGui.BeginPopupContextItem("##fctx"))
         {
             if (ImGui.MenuItem("Select objects")) SelectObjects(objs, false);
+            if (ImGui.MenuItem("Collapse all")) CollapseAll();
+            if (ImGui.MenuItem("Expand all")) ExpandAll();
             if (ImGui.MenuItem("Move selection here", null, false, Selected.Count > 0)) MoveToFolder(SelObjects().ToList(), folder, unlink: true);
             ImGui.Separator();
             if (ImGui.MenuItem("Expand all")) { closedFolders.Clear(); closedObjs.Clear(); }
@@ -355,6 +425,9 @@ public sealed partial class EditorApp
             }
             ImGui.Separator();
             if (ImGui.MenuItem("Isolate Selection")) IsolateSelection(forceOn: true);
+            ImGui.Separator();
+            if (ImGui.MenuItem("Collapse all")) CollapseAll();
+            if (ImGui.MenuItem("Expand all")) ExpandAll();
             if (isolated && ImGui.MenuItem("End Isolate")) EndIsolate();
             ImGui.Separator();
             if (ImGui.MenuItem("Delete", "X")) DeleteSelection();
