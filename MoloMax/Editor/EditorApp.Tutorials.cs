@@ -203,6 +203,7 @@ public sealed partial class EditorApp
         T("MAP MLO hide: hiding an interior hides what is inside, and it stays hidden", MapMloHideTest);
         T("UNDO: move then Ctrl+Z, in MODEL and on a MAP ground", UndoMoveTest);
         T("ANIM: timeline, I key, auto key, play, UV keys, camera, .ycd out and in, your .ycd files", AnimTest);
+        T("DIAG cables: what the cable models hold", CableDiag);
         T("MAP STREAM: open a stream folder (ymap, ytyp, ydr), edit, save in place", MapStreamTest);
         T("UX tour: panels a 3D artist uses", UxTour);
         T("CHECKLIST: the points without their own test", ChecklistTest);
@@ -1517,6 +1518,30 @@ public sealed partial class EditorApp
         if (got != null) { SelectOnly(got); FrameSelection(vp); }
         yield return Frames(20);
         yield return Shot("sent_to_model");
+    }
+
+    IEnumerable<object> CableDiag()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        if (game == null) yield break;
+        foreach (var name in new[] { "cs5_rd_props_prsncbls06", "cs5_rd_props_cbl85" })
+        {
+            uint h = Core.Gta.Map.MapDocument.Hash(name);
+            var a = game.FindModel(h); var dd = a == null ? game.FindDictionaryOf(h) : null;
+            Note($"{name}: model {a?.Path ?? "-"}  dictionary {dd?.Path ?? "-"}  why {game.WhyNoModel(h)}");
+            var src = a ?? dd; if (src == null) continue;
+            var dir = StPath("cable_diag"); var file = game.Extract(src, dir, h);
+            var r = Core.IO.ModelImporter.Import(file, new Core.IO.ImportOptions { Scale = 1, AutoSmoothAngle = 0 });
+            foreach (var m in r.Meshes.Take(12)) Note($"   mesh {m.Name} type {m.GtaType} hash {m.DrawableHash:X8} verts {m.Mesh.Verts.Count} faces {m.Mesh.Faces.Count}");
+            foreach (var mt in r.Materials.Take(6)) Note($"   material {mt.Name} shader {mt.Shader}");
+            foreach (var w in r.Warnings.Take(6)) Note("   warning " + w);
+            // raw geometry
+            try { foreach (var l in Core.Gta.Import.GtaInspect.Geometries(file, a == null ? h : 0)) Note("   raw: " + l); }
+            catch (Exception e) { Note("   raw read: " + e.Message); }
+        }
+        Expect(true, "diag done");
     }
 
     IEnumerable<object> MapStreamTest()

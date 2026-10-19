@@ -269,6 +269,13 @@ public static class GtaImporter
                 // terrain_cb_w_4lyr: the layer weights come from colour 1 (blue: layer 0/1 and 2/3, green: pair 0-1 / 2-3), like the game
                 bool terrain = c.Res.Materials[mat].Layers != null && Has(Cw.VertexSemantics.Colour1);
                 var col1 = terrain ? new Vector4[vd.VertexCount] : null;
+                // GTA cables: each point is there twice on the line, the game's shader opens them into a strip facing the
+                // camera (normal = cable direction, texcoord.x = half width). Here: two crossed strips, seen from every side.
+                if (string.Equals(c.Res.Materials[mat].Shader, "cable", StringComparison.OrdinalIgnoreCase) && Has(Cw.VertexSemantics.Normal) && Has(Cw.VertexSemantics.TexCoord0))
+                {
+                    AddCable(mesh, vd, idx, mat, place);
+                    continue;
+                }
                 for (int i = 0; i < vd.VertexCount; i++)
                 {
                     mesh.AddVertex(Vector3.Transform(V(vd.GetVector3(i, (int)Cw.VertexSemantics.Position)), place));
@@ -293,6 +300,44 @@ public static class GtaImporter
         mesh.CleanFaces();
         MeshOps.AutoSmooth(mesh, null, 40f);
         c.Res.Meshes.Add(new ImportedMesh { Name = name, Mesh = mesh, GtaType = GtaObjectType.Drawable });
+    }
+
+    static void AddCable(PolyMesh mesh, Cw.VertexData vd, ushort[] idx, int mat, Matrix4x4 place)
+    {
+        int n = vd.VertexCount;
+        var pos = new Vector3[n]; var dir = new Vector3[n]; var tc = new Vector2[n]; var col = new Vector4[n];
+        for (int i = 0; i < n; i++)
+        {
+            pos[i] = Vector3.Transform(V(vd.GetVector3(i, (int)Cw.VertexSemantics.Position)), place);
+            dir[i] = Vector3.TransformNormal(V(vd.GetVector3(i, (int)Cw.VertexSemantics.Normal)), place);
+            tc[i] = ReadUv(vd, i, (int)Cw.VertexSemantics.TexCoord0);
+            col[i] = PolyMesh.DefaultColour;
+        }
+        for (int pass = 0; pass < 2; pass++)
+        {
+            int baseV = mesh.Verts.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var d = dir[i].LengthSquared() > 1e-8f ? Vector3.Normalize(dir[i]) : Vector3.UnitX;
+                var flat = Vector3.Cross(d, Vector3.UnitZ);
+                flat = flat.LengthSquared() > 1e-6f ? Vector3.Normalize(flat) : Vector3.UnitX;
+                var side = pass == 0 ? flat : Vector3.Normalize(Vector3.Cross(flat, d));
+                float half = MathF.Max(MathF.Abs(tc[i].X), 0.01f) * MathF.Sign(tc[i].X == 0 ? 1 : tc[i].X);
+                mesh.AddVertex(pos[i] + side * half);
+            }
+            for (int t = 0; t + 2 < idx.Length; t += 3)
+            {
+                int a = idx[t], b = idx[t + 1], cI = idx[t + 2];
+                if (a >= n || b >= n || cI >= n || a == b || b == cI || a == cI) continue;
+                // both sides (a cable has no inside)
+                foreach (var (x, y, z) in new[] { (a, b, cI), (a, cI, b) })
+                {
+                    var f = mesh.AddFace(new[] { baseV + x, baseV + y, baseV + z }, mat);
+                    f.UV = new[] { new Vector2(tc[x].X > 0 ? 1 : 0, tc[x].Y), new Vector2(tc[y].X > 0 ? 1 : 0, tc[y].Y), new Vector2(tc[z].X > 0 ? 1 : 0, tc[z].Y) };
+                    f.Col = new[] { col[x], col[y], col[z] };
+                }
+            }
+        }
     }
 
     static Vector2 ReadUv(Cw.VertexData vd, int v, int comp)
