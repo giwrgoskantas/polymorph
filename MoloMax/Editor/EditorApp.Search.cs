@@ -55,6 +55,10 @@ public sealed partial class EditorApp
             new("Select Linked", "Select", SelectLinked, Edit, () => "Ctrl+L"),
             new("Select Edge Loops", "Select", Loop, Edit),
             new("Select Edge Rings", "Select", Ring, Edit),
+            new("Make Planar (best-fit plane)", "Edit Poly", () => MakePlanar(-1), Edit),
+            new("Make Planar X", "Edit Poly", () => MakePlanar(0), Edit),
+            new("Make Planar Y", "Edit Poly", () => MakePlanar(1), Edit),
+            new("Make Planar Z (level the vertices)", "Edit Poly", () => MakePlanar(2), Edit),
             // object
             new("Duplicate", "Object", () => { if (BlenderKeymap) DuplicateAndGrab(); else CloneSelection(false); }, () => Selected.Count > 0, () => K("Shift+D", "Ctrl+D")),
             new("Instance (linked duplicate)", "Object", () => CloneSelection(true), () => Selected.Count > 0, () => K("Alt+D", "")),
@@ -108,6 +112,7 @@ public sealed partial class EditorApp
             new("Collision from selection (copy under the Drawable)", "GTA", CollisionFromSelection, () => Selected.Count > 0),
             new("Quick Import / Export menu", "File", () => OpenPopup("quickio")),
             new("Game files browser (GTA V models, native buildings)", "GTA", OpenGameBrowser),
+            new("Asset Browser (thumbnails of my models and game props)", "GTA", OpenAssetBrowser),
             new("Import MLO from .ytyp (rooms, portals, entities)", "GTA", ImportMloDialog),
             new("MLO Room Builder (draw the floor plan)", "GTA", OpenRoomBuilder),
             new("Send to my FiveM server (export + restart)", "GTA", SendToServer),

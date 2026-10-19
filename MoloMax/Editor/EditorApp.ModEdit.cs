@@ -82,6 +82,7 @@ public sealed partial class EditorApp
             if (ImGui.Button("Cut##ep", new Vector2(w2, 0))) BeginModal(ModalKind.Knife);
             if (ImGui.Button("Weld##ep", new Vector2(w2, 0))) Weld(0.01f); ImGui.SameLine(0, 4);
             if (ImGui.Button("Collapse##ep", new Vector2(w2, 0))) Collapse();
+            MakePlanarUi();
             Ui.Label("Selection", Theme.TextDim);
             if (ImGui.Button("Loop##ep", new Vector2(w2, 0))) Loop(); ImGui.SameLine(0, 4);
             if (ImGui.Button("Ring##ep", new Vector2(w2, 0))) Ring();

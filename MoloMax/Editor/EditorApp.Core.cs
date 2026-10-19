@@ -162,6 +162,8 @@ public sealed partial class EditorApp : IDisposable
             DrawChecker();
             PumpImports();
             DrawGameBrowser();
+            DrawAssetBrowser();
+            AssetDropOnView();
             DrawUvEditor();
             DrawRoomBuilder();
             PumpSend();
@@ -190,6 +192,7 @@ public sealed partial class EditorApp : IDisposable
         MapFrame();          // MAP mode: streaming, model loads
         Prof("map");
         RenderPreview(dt);   // game files viewer picture
+        PumpThumbs();        // asset browser thumbnails, one at a time
         PrepareLighting();   // scene lights + sun shadow map for the realistic view
         Prof("lighting");
         gpu.BindBackBuffer();
@@ -388,8 +391,26 @@ public sealed partial class EditorApp : IDisposable
                 var (vb, count) = wires.Get(lines.Device, o.Id, ed, o.Version, () => ed ? (obj.Mesh.Verts, obj.Mesh.DrawEdges()) : (obj.Evaluated().Verts, obj.Evaluated().DrawEdges()));
                 lines.DrawStatic(vb, count, o.World * viewProj, col, 0.0004f);
             }
-            if (sel && Level == SubObject.Object && !Theme.IsBlender) Brackets(o);
+            if (Level == SubObject.Object && o.Mesh != null && Selected.Contains(o.Id)) { var (bmn, bmx) = o.Mesh.Bounds(); bracketBoxes.Add((o.World, bmn, bmx)); }
         }
+        // a selected Drawable node: one box around all its meshes
+        if (Level == SubObject.Object)
+            foreach (var id in Selected)
+                if (Scene.Find(id) is { GtaType: GtaObjectType.Model } node)
+                {
+                    var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue);
+                    foreach (var d in Scene.Descendants(node))
+                    {
+                        if (d.Mesh == null || d.Hidden || d.Mesh.Verts.Count == 0) continue;
+                        var (a0, b0) = d.Mesh.Bounds();
+                        for (int c = 0; c < 8; c++)
+                        {
+                            var wp = Vector3.Transform(new Vector3((c & 1) != 0 ? b0.X : a0.X, (c & 2) != 0 ? b0.Y : a0.Y, (c & 4) != 0 ? b0.Z : a0.Z), d.World);
+                            mn = Vector3.Min(mn, wp); mx = Vector3.Max(mx, wp);
+                        }
+                    }
+                    if (mn.X <= mx.X) bracketBoxes.Add((Matrix4x4.Identity, mn, mx));
+                }
         if (cur != null && Level != SubObject.Object) { SubObjectHighlights(cur); DrawModifierSeams(cur); }
         // object mode: a clean outline around the selection, no inner edges (Blender style)
         if (outlineItems.Count > 0)
@@ -400,6 +421,17 @@ public sealed partial class EditorApp : IDisposable
             ctx.Rasterizer.State = renderer.LinesState;
             ctx.OutputMerger.SetDepthStencilState(renderer.DepthRead);
             ctx.OutputMerger.SetBlendState(renderer.Alpha, blendCol, -1);
+        }
+        // selection brackets on top of everything, so they show even from inside a room
+        if (bracketBoxes.Count > 0)
+        {
+            lines.Flush(viewProj, 0.0004f);
+            foreach (var (bw, bmn, bmx) in bracketBoxes) Brackets(bw, bmn, bmx);
+            bracketsDrawn = bracketBoxes.Count;
+            bracketBoxes.Clear();
+            ctx.OutputMerger.SetDepthStencilState(renderer.DepthOff);
+            lines.Flush(viewProj, 0f);
+            ctx.OutputMerger.SetDepthStencilState(renderer.DepthRead);
         }
         ModalPreviewLines();
         PaintCursorLines();
@@ -551,10 +583,11 @@ public sealed partial class EditorApp : IDisposable
         }
     }
 
-    void Brackets(SceneObject o)
+    readonly List<(Matrix4x4 W, Vector3 Min, Vector3 Max)> bracketBoxes = new();
+    int bracketsDrawn;
+    void Brackets(Matrix4x4 w, Vector3 mn, Vector3 mx)
     {
-        var (mn, mx) = o.Mesh.Bounds();
-        var w = o.World; var white = Vector4.One;
+        var white = Vector4.One;
         var size = mx - mn;
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++)
                 {

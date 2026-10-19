@@ -735,6 +735,14 @@ public sealed partial class EditorApp
                 if (ImGui.MenuItem("Remove", "Backspace")) MaxRemove();
                 if (ImGui.MenuItem("Swift Loop")) BeginModal(ModalKind.LoopCut);
             }
+            if (ImGui.BeginMenu("Make Planar"))
+            {
+                if (ImGui.MenuItem("Level (same Z)")) MakePlanar(2);
+                if (ImGui.MenuItem("Same X")) MakePlanar(0);
+                if (ImGui.MenuItem("Same Y")) MakePlanar(1);
+                if (ImGui.MenuItem("Best-fit plane")) MakePlanar(-1);
+                ImGui.EndMenu();
+            }
             if (ImGui.MenuItem("Create (Make Face)")) MakeFace();
             if (ImGui.MenuItem("Normals Inside (MLO room)")) RecalcNormals(true);
             if (ImGui.MenuItem("Normals Outside")) RecalcNormals(false);

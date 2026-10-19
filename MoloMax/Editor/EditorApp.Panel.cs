@@ -223,6 +223,7 @@ public sealed partial class EditorApp
             ImGui.SetNextItemWidth(w2); ImGui.DragFloat("##weldt", ref weldT, 0.001f, 0.0001f, 10f, "%.4f m"); ImGui.SameLine();
             if (ImGui.Button("Weld", new Vector2(w2, 0))) Weld(weldT);
             Theme.Tip("Merge vertices closer than the threshold (selected vertices, or the whole object if none).");
+            if (Level != SubObject.Object) MakePlanarUi();
         }
 
         if (Level == SubObject.Vertex && Ui.Header("Edit Vertices", Open))

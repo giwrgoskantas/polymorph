@@ -191,6 +191,8 @@ public sealed partial class EditorApp
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
+        T("ASSETS: browser thumbnails + placing", AssetTest);
+        T("PLANAR: level vertices", PlanarTest);
     }
 
     IEnumerable<object> TutModeling()
@@ -1104,6 +1106,47 @@ public sealed partial class EditorApp
         SetMapMode(false);
     }
 
+    IEnumerable<object> AssetTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        var dir = StPath("assets_lib"); if (Directory.Exists(dir)) Directory.Delete(dir, true); Directory.CreateDirectory(dir);
+        var thumbs = AssetThumbDir; 
+        // a saved scene in my assets
+        var sc = new Scene();
+        var a = new SceneObject { Id = sc.NextObjectId++, Name = "crate_a", Mesh = Core.Mesh.Primitives.Box(1, 1, 1) }; sc.Objects.Add(a);
+        var b = new SceneObject { Id = sc.NextObjectId++, Name = "crate_b", Mesh = Core.Mesh.Primitives.Cylinder(0.4f, 1.2f, 16), Position = new Vector3(1.5f, 0, 0) }; sc.Objects.Add(b);
+        File.WriteAllText(Path.Combine(dir, "two_crates.mmx"), SceneIO.ToJson(sc));
+        Settings.AssetFolders.Clear(); Settings.AssetFolders.Add(dir);
+        OpenAssetBrowser(); assetSource = 0; assetFamily = 0; assetKey = null; assetSearch = "";
+        yield return Frames(5);
+        Expect(assetItems.Count == 1 && assetItems[0].Name == "two_crates", $"my assets: {assetItems.Count} item(s) in the folder");
+        var tp = assetItems.Count > 0 ? ThumbPath(assetItems[0]) : null;
+        if (tp != null && File.Exists(tp)) File.Delete(tp);
+        yield return Settle(() => tp != null && File.Exists(tp), 20);
+        Expect(tp != null && File.Exists(tp) && new FileInfo(tp).Length > 2000, $"thumbnail rendered and saved ({(tp != null && File.Exists(tp) ? new FileInfo(tp).Length : 0)} bytes)");
+        int before = Scene.Objects.Count;
+        if (assetItems.Count > 0) PlaceAsset(assetItems[0], new Vector3(5, 5, 0));
+        Expect(Scene.Objects.Count == before + 2 && Scene.Objects.Any(o => o.Name == "crate_b" && Vector3.Distance(o.WorldBounds().Min, new Vector3(5, 5, 0)) < 2.5f), "a saved scene placed from the browser (2 objects at the drop point)");
+        // game props
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        if (game != null)
+        {
+            assetSource = 1; assetFamily = 0; assetKey = null; // chairs & seats
+            yield return Settle(() => gameClassify is { IsCompleted: true }, 60);
+            yield return Frames(3);
+            var first = assetItems.Take(6).ToList();
+            foreach (var x in first) { var p = ThumbPath(x); if (File.Exists(p)) File.Delete(p); thumbAsked.Remove(x.Key); }
+            assetKey = null;
+            yield return Settle(() => first.All(x => File.Exists(ThumbPath(x))), 40);
+            Expect(assetItems.Count > 20 && first.Count(x => File.Exists(ThumbPath(x)) && new FileInfo(ThumbPath(x)).Length > 2000) >= 4, $"game props 'Chairs & seats': {assetItems.Count} props, thumbnails for {first.Count(x => File.Exists(ThumbPath(x)))}/6 ({string.Join(", ", first.Select(x => x.Name))})");
+            yield return Frames(5);
+            yield return Shot("asset_browser");
+        }
+        assetsOpen = false;
+    }
+
     IEnumerable<object> MapDiag()
     {
         var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
@@ -1611,5 +1654,46 @@ public sealed partial class EditorApp
         yield return Frames(40);
         foreach (var x in EndFilm()) yield return x;
         SetMapMode(false); Maximized = false;
+    }
+
+    IEnumerable<object> PlanarTest()
+    {
+        Fresh();
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false;
+        var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "lvl";
+        box.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.4f); box.Touch();
+        vp.Camera.Frame(new Vector3(-3, -3, -2), new Vector3(3, 3, 3));
+        bracketsDrawn = 0; SelectOnly(box); yield return Frames(5);
+        Expect(bracketsDrawn > 0, $"object mode: selection box drawn ({bracketsDrawn} box)");
+        yield return Shot("planar_brackets");
+        SetLevel(SubObject.Vertex);
+        var m = box.Mesh; var s = SubSel(box); s.Clear();
+        for (int i = 0; i < m.Verts.Count; i++) if (m.Verts[i].Z > 0.01f || i % 3 == 0) s.Verts.Add(i);
+        int nsel = s.Verts.Count;
+        planarTo = 0; planarLocal = false; MakePlanar(2); yield return Frames(3);
+        var zs = s.Verts.Select(i => Vector3.Transform(box.Mesh.Verts[i], box.World).Z).ToList();
+        Expect(zs.Count == nsel && zs.Max() - zs.Min() < 1e-3f, $"Make Planar Z: {zs.Count} vertices at one world height (spread {zs.Max() - zs.Min():0.#####})");
+        planarTo = 1; MakePlanar(0); yield return Frames(3);
+        var xs = s.Verts.Select(i => Vector3.Transform(box.Mesh.Verts[i], box.World).X).ToList();
+        Expect(xs.Max() - xs.Min() < 1e-3f, "Make Planar X to the lowest");
+        DoUndo(); DoUndo(); yield return Frames(3);
+        s = SubSel(Obj("lvl")); 
+        for (int i = 0; i < Obj("lvl").Mesh.Verts.Count; i++) s.Verts.Add(i);
+        var before = Obj("lvl").Mesh.Verts.ToList();
+        MakePlanar(-1); yield return Frames(3);
+        var after = Obj("lvl").Mesh.Verts;
+        var c = Vector3.Zero; foreach (var p in after) c += p; c /= after.Count;
+        Expect(after.Count == before.Count, "best-fit plane keeps the vertices");
+        yield return Shot("planar_done");
+        SetLevel(SubObject.Object);
+        // a click on another mesh in polygon level goes on editing that mesh
+        var b2 = Prim(CreateKind.Box, new Vector3(4, 0, 0)); b2.Name = "other";
+        vp.Camera.Frame(new Vector3(-3, -3, -2), new Vector3(7, 3, 3)); yield return Frames(3);
+        SelectOnly(Obj("lvl")); SetLevel(SubObject.Polygon); Tool = Tool.Select; yield return Frames(2);
+        int top = FaceToward(b2, Vector3.UnitZ);
+        foreach (var x in ClickAt(FaceScreen(vp, b2, top))) yield return x;
+        yield return Frames(3);
+        Expect(Current == b2 && Level == SubObject.Polygon && SubSel(b2).Faces.Count == 1, $"click on another mesh in polygon level: now editing '{Current?.Name}', {SubSel(b2).Faces.Count} face selected");
+        SetLevel(SubObject.Object);
     }
 }

@@ -131,6 +131,7 @@ public sealed partial class EditorApp
         {
             if (ImGui.MenuItem("Molo GTA panel", "F10", HubOpen)) HubOpen = !HubOpen;
             if (ImGui.MenuItem("Game files browser (GTA V)...")) OpenGameBrowser();
+            if (ImGui.MenuItem("Asset Browser")) OpenAssetBrowser();
             if (ImGui.MenuItem("Import MLO (.ytyp)...")) ImportMloDialog();
             if (ImGui.MenuItem("MLO Room Builder (floor plan)...")) OpenRoomBuilder();
             ImGui.Separator();
@@ -248,6 +249,8 @@ public sealed partial class EditorApp
         ImGui.SameLine(); if (ImGui.Button("Ped")) AddPedReference();
         Theme.Tip("Add a GTA ped (1.818 m) to check the scale. Never exported. Auto scale in the Tool tab.");
         Theme.Tip("Alt+Z. Off (default, like 3ds Max): edit-mode clicks and boxes select through the mesh. On: only the vertices, edges and polygons you can see.");
+        ImGui.SameLine(); if (Theme.Toggle("Assets", assetsOpen)) { if (assetsOpen) assetsOpen = false; else OpenAssetBrowser(); }
+        Theme.Tip("Asset Browser: your models and the game props as thumbnails; double-click or drag into the view");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
         ImGui.AlignTextToFramePadding(); Ui.Text(InteriorLight ? "Interior" : "Sun");
         ImGui.SameLine(); ImGui.SetNextItemWidth(140);

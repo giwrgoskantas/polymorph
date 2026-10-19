@@ -430,6 +430,26 @@ public sealed partial class EditorApp
         var local = vp.Local(screen);
         var ray = vp.Camera.ScreenRay(local.X, local.Y, vp.W, vp.H);
         var cur = Current;
+        if (Level != SubObject.Object && cur != null && cur.ModEdit == null && !Input.Shift && !Input.Ctrl && !Input.Alt)
+        {
+            // clicking another mesh in a sub-object level goes on editing that mesh, same level
+            // (a GTA room is cut in many meshes: the face under the mouse is often not the one being edited)
+            var other = Picking.PickObject(Scene, ray);
+            if (other.HasValue && other.Value.Object != cur && other.Value.Object.Mesh != null && !other.Value.Object.Frozen)
+            {
+                var mine = Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
+                bool vertsNear = false;
+                if (Level is SubObject.Vertex or SubObject.Edge or SubObject.Border && !mine.HasValue)
+                    vertsNear = Level == SubObject.Vertex ? NearestVisibleVertex(vp, cur, local) >= 0 : EdgeUnder(vp, cur, local, 9f, null, visibleOnly: true).HasValue;
+                if (!vertsNear && (!mine.HasValue || other.Value.Distance < mine.Value.Distance - 1e-3f))
+                {
+                    var lv = Level;
+                    Selected.Clear(); Selected.Add(other.Value.Object.Id); ActiveId = other.Value.Object.Id;
+                    Level = lv; cur = other.Value.Object;
+                    SetStatus($"Editing {cur.Name}");
+                }
+            }
+        }
         if (Level != SubObject.Object && cur != null)
         {
             var s = SubSel(cur); var m = cur.Mesh; var w = cur.World;
@@ -437,20 +457,7 @@ public sealed partial class EditorApp
             {
                 case SubObject.Vertex:
                     {
-                        // nearest vertex on screen that is not hidden behind the mesh
-                        var near = new List<(float D, int I)>();
-                        for (int i = 0; i < m.Verts.Count; i++)
-                        {
-                            var wp = Vector3.Transform(m.Verts[i], w);
-                            if (!vp.Camera.Project(wp, vp.W, vp.H, out var sp, out _)) continue;
-                            float d = Vector2.Distance(sp, local);
-                            if (d <= 12f) near.Add((d, i));
-                        }
-                        near.Sort((x, y) => x.D.CompareTo(y.D));
-                        int best = -1;
-                        var oc = near.Count > 0 && !XRay && !vp.WireframeOnly ? new Occluder(cur) : null;
-                        foreach (var (_, i) in near)
-                            if (oc == null || PointVisible(vp, oc, oc.Wv[i])) { best = i; break; }
+                        int best = NearestVisibleVertex(vp, cur, local);
                         ApplySelection(s.Verts, best >= 0 ? new[] { best } : Array.Empty<int>(), true);
                         break;
                     }
@@ -496,6 +503,25 @@ public sealed partial class EditorApp
         }
         else if (!Input.Shift && !Input.Ctrl && !Input.Alt) Selected.Clear();
         SelectionChanged();
+    }
+
+    /// <summary>Nearest vertex of o on screen (12 px) that is not hidden behind the mesh, or -1.</summary>
+    int NearestVisibleVertex(Viewport vp, SceneObject o, Vector2 local)
+    {
+        var m = o.Mesh; var w = o.World;
+        var near = new List<(float D, int I)>();
+        for (int i = 0; i < m.Verts.Count; i++)
+        {
+            var wp = Vector3.Transform(m.Verts[i], w);
+            if (!vp.Camera.Project(wp, vp.W, vp.H, out var sp, out _)) continue;
+            float d = Vector2.Distance(sp, local);
+            if (d <= 12f) near.Add((d, i));
+        }
+        near.Sort((x, y) => x.D.CompareTo(y.D));
+        var oc = near.Count > 0 && !XRay && !vp.WireframeOnly ? new Occluder(o) : null;
+        foreach (var (_, i) in near)
+            if (oc == null || PointVisible(vp, oc, oc.Wv[i])) return i;
+        return -1;
     }
 
     /// <summary>Alt+click (Blender) / double-click (Industry): edge loop, Ctrl+Alt+click: ring; face loop at polygon level.</summary>
