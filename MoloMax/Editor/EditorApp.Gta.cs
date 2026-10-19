@@ -646,7 +646,7 @@ public sealed partial class EditorApp
         Ui.Text(objs.Count == 1 ? o.Name : $"{objs.Count} objects (showing {o.Name})");
         var lay = HubLayout();
         if (o.GtaType == GtaObjectType.Drawable)
-            Ui.TextDisabled("Exports as: " + GtaExporter.ResolveRole(o, lay, Scene.Gta.PortalMaxGap));
+            Ui.TextDisabled("Exports as: " + GtaExporter.ResolveRole(o, lay, Scene.Gta.PortalMaxGap, Scene));
         float lw = 120;
         void Label(string s) { ImGui.AlignTextToFramePadding(); Ui.Text(s); ImGui.SameLine(lw); ImGui.SetNextItemWidth(-1); }
 

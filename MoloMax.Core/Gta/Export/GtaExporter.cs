@@ -47,11 +47,18 @@ public static class GtaExporter
 
     public static string SafeName(string s) => TextureBank.SafeName(s);
 
+    /// <summary>The object slides its texture: UV keys on the timeline or a UV animation in its GTA properties.</summary>
+    public static bool HasUvAnim(SceneObject o, Scene scene) =>
+        o.Gta.Anim is { } a && a.Kind != UvAnimKind.None
+        || scene?.Anim?.Track(o.Id) is { } t && MoloMax.Core.Anim.Ch.Uv.Any(t.Has);
+
     /// <summary>The role an object really gets (Auto resolved).</summary>
-    public static GtaRole ResolveRole(SceneObject o, MloLayout layout, float gap)
+    public static GtaRole ResolveRole(SceneObject o, MloLayout layout, float gap, Scene scene = null)
     {
         if (o.GtaType == GtaObjectType.MloRoom) return GtaRole.Shell;
         if (o.Gta.Role != GtaRole.Auto) return o.Gta.Role;
+        // a texture animation needs its own model (the clip is found by the model's name): never joined into the shell / exterior
+        if (HasUvAnim(o, scene)) return GtaRole.Prop;
         bool mlo = layout != null && layout.Rooms.Count > 1;
         if (!mlo) return GtaRole.Exterior;
         var (mn, mx) = o.WorldBounds();
@@ -141,7 +148,7 @@ public static class GtaExporter
             }
             var isChild = childParts.Values.SelectMany(l => l).ToHashSet();
             // a Drawable node (GIMS) is its own model unless its role is set otherwise
-            GtaRole NodeRole(SceneObject n) => n.GtaType == GtaObjectType.Model ? (n.Gta.Role == GtaRole.Auto ? GtaRole.Prop : n.Gta.Role) : ResolveRole(n, layout, st.PortalMaxGap);
+            GtaRole NodeRole(SceneObject n) => n.GtaType == GtaObjectType.Model ? (n.Gta.Role == GtaRole.Auto ? GtaRole.Prop : n.Gta.Role) : ResolveRole(n, layout, st.PortalMaxGap, scene);
             var freeLights = new List<SceneObject>();
             foreach (var o in objs)
             {
@@ -486,7 +493,21 @@ public static class GtaExporter
                 if (ext is ".ydr" or ".yft" or ".ybn" or ".ytyp" or ".ymap" or ".ytd" or ".ycd" && File.Exists(full)) { try { File.Delete(full); rep.Info.Add("Removed old file " + rel); } catch { } }
             }
             File.WriteAllLines(listFile, rep.Files);
-            if (!File.Exists(Path.Combine(root, "fxmanifest.lua"))) File.WriteAllText(Path.Combine(root, "fxmanifest.lua"), Manifest(res));
+            // the .ytyp must be requested by the manifest, or the game never knows the models (nothing shows, no UV animation)
+            var ytypRel = rep.Files.FirstOrDefault(f => f.EndsWith(".ytyp", StringComparison.OrdinalIgnoreCase))?.Replace('\\', '/');
+            var manifestPath = Path.Combine(root, "fxmanifest.lua");
+            if (!File.Exists(manifestPath)) File.WriteAllText(manifestPath, Manifest(res, ytypRel));
+            else if (ytypRel != null)
+            {
+                var txt = File.ReadAllText(manifestPath);
+                // left alone when the resource loads its ytyp another way (a .ymf manifest, or the line is already there)
+                if (!txt.Contains(Path.GetFileName(ytypRel), StringComparison.OrdinalIgnoreCase) && !txt.Contains(".ymf", StringComparison.OrdinalIgnoreCase)
+                    && !Directory.EnumerateFiles(root, "*.ymf", SearchOption.AllDirectories).Any())
+                {
+                    File.AppendAllText(manifestPath, $"\ndata_file 'DLC_ITYP_REQUEST' '{ytypRel}'\n");
+                    rep.Info.Add($"fxmanifest.lua: added data_file 'DLC_ITYP_REQUEST' '{ytypRel}' (the game needs it to know the models).");
+                }
+            }
             rep.Files.Add("fxmanifest.lua");
             rep.Warnings.AddRange(bank.Warnings.Distinct());
             rep.Info.Insert(0, isMlo
@@ -637,7 +658,7 @@ public static class GtaExporter
         }
     }
 
-    static string Manifest(string res) =>
+    static string Manifest(string res, string ytypRel = null) =>
 $@"fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
@@ -647,7 +668,7 @@ description '{res} - exported with Polymorph'
 version '1.0.0'
 
 this_is_a_map 'yes'
-";
+" + (ytypRel != null ? $"\ndata_file 'DLC_ITYP_REQUEST' '{ytypRel}'\n" : "");
 
     static CollisionMesh MeshCollision(SceneObject o, Matrix4x4 m, int type)
     {

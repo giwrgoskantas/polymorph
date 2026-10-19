@@ -172,7 +172,7 @@ public static class GtaChecker
     public static Vector4[] WantedColours(Scene scene, SceneObject o, MloLayout layout, bool isMlo, float gap, out string rule)
     {
         var root = scene.Root(o);
-        var role = root.GtaType == GtaObjectType.Model ? (root.Gta.Role == GtaRole.Auto ? GtaRole.Prop : root.Gta.Role) : GtaExporter.ResolveRole(o, layout, gap);
+        var role = root.GtaType == GtaObjectType.Model ? (root.Gta.Role == GtaRole.Auto ? GtaRole.Prop : root.Gta.Role) : GtaExporter.ResolveRole(o, layout, gap, scene);
         var (mn, mx) = o.WorldBounds();
         bool inside = isMlo && (role == GtaRole.Shell || GtaExporter.InsideMlo(layout, (mn + mx) * 0.5f, gap));
         var baseCol = inside ? Green : Red;

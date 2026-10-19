@@ -194,6 +194,7 @@ public sealed partial class EditorApp
         T("TUTO 13 demo: sculpt and paint", TutSculptPaintDemo);
         T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
         T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
+        T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
@@ -944,6 +945,60 @@ public sealed partial class EditorApp
     /// <summary>Films: a sofa modeled and painted like in a texturing app: a GTA V fabric, worn edges, stitched seams, seat wear, dust.</summary>
     /// <summary>Demo film: animating like Blender, simply (Key, another frame, move, Key, Play), texture slide, camera, .ycd.</summary>
     /// <summary>Every modifier of the catalogue on a cube, one after the other, with what it changes.</summary>
+    /// <summary>Builds a FiveM resource like a user would: a textured cube, UV keys on the timeline, GTA export.
+    /// POLYMORPH_UVTEST_POS = "x y z heading" (where to put it), POLYMORPH_UVTEST_TEX = the texture, POLYMORPH_UVTEST_OUT = export folder.</summary>
+    IEnumerable<object> GameUvTest()
+    {
+        Fresh();
+        var pos = (Environment.GetEnvironmentVariable("POLYMORPH_UVTEST_POS") ?? "0 0 0 0").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        var tex = Environment.GetEnvironmentVariable("POLYMORPH_UVTEST_TEX");
+        var outDir = Environment.GetEnvironmentVariable("POLYMORPH_UVTEST_OUT") ?? StPath("uvtest_export");
+        Scene.Gta.ResourceName = "molo_uvtest";
+        Scene.GtaOrigin = new Vector3(pos[0], pos[1], pos[2]);
+        var cube = Prim(CreateKind.Box, Vector3.Zero); cube.Name = "molo_uvtest_cube";
+        var mat = GtaMaterial.CreateDefault(Scene.Materials.Max(m => m.Id) + 1, "uvtest_arrows", new Vector3(1));
+        mat.Shader = "default"; mat.DiffuseTexture = tex; Scene.Materials.Add(mat);
+        foreach (var f in cube.Mesh.Faces) f.MatId = mat.Id;
+        cube.Touch();
+        Note($"cube at {Scene.GtaOrigin}, shader {mat.Shader}, texture {tex}");
+        // timeline: Slide V from 0 to 1 over 60 frames (2 s), linear, so it loops without a jump
+        var tr = Scene.Anim.Track(cube.Id, true);
+        tr.Curve(Core.Anim.Ch.UvV, true).SetKey(0, 0, Core.Anim.KeyInterp.Linear);
+        tr.Curve(Core.Anim.Ch.UvV).SetKey(60, 1, Core.Anim.KeyInterp.Linear);
+        Scene.Anim.End = 60;
+        yield return Frames(5);
+        // GTA > Fix all, like the user before an export (exterior prop: red vertex colours, else black in game)
+        var fixes = Core.Gta.Check.GtaChecker.FixAll(Scene); foreach (var o in Scene.Objects) o.Touch();
+        Note("Fix all: " + string.Join("; ", fixes));
+        if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
+        Directory.CreateDirectory(outDir);
+        Core.Gta.Export.ExportReport rep = null; string err = null;
+        try { rep = Core.Gta.Export.GtaExporter.Export(Undo.SnapshotForSave(Scene), outDir, LoadImageRgba, renderer.Textures.SearchFolders.ToList()); } catch (Exception e) { err = e.ToString(); }
+        if (rep == null) { Expect(false, "export: " + err); yield break; }
+        foreach (var l in rep.Errors) Note("ERROR " + l);
+        foreach (var l in rep.Warnings) Note("warning " + l);
+        foreach (var l in rep.Info) Note("info " + l);
+        Expect(rep.Ok, $"export ok into {rep.ResourceFolder}");
+        var files = Directory.GetFiles(rep.ResourceFolder, "*", SearchOption.AllDirectories);
+        foreach (var f in files) Note($"  {Path.GetRelativePath(rep.ResourceFolder, f)}  ({new FileInfo(f).Length} bytes)");
+        var ycd = files.FirstOrDefault(f => f.EndsWith(".ycd", StringComparison.OrdinalIgnoreCase));
+        Expect(ycd != null, $"a .ycd is written ({(ycd != null ? Path.GetFileName(ycd) : "none")})");
+        if (ycd != null)
+        {
+            List<Core.Gta.Anim.YcdClip> clips = null; string rerr = null;
+            try { clips = Core.Gta.Anim.YcdIO.Read(File.ReadAllBytes(ycd), Path.GetFileName(ycd)); } catch (Exception e) { rerr = e.Message; }
+            uint want = Core.Gta.Export.AnimXml.ClipHash("molo_uvtest_cube", 0);
+            Note($"ycd read back: {(clips == null ? rerr : string.Join(", ", clips.Select(c => $"{c.Name} hash {c.Hash} ({c.Frames} frames, uv {c.IsUv})")))}; expected UV clip hash {want}");
+            Expect(clips != null && clips.Any(c => c.IsUv && c.Hash == want), "the .ycd holds the cube's UV clip with the hash the game looks for (model + shader index + 1)");
+        }
+        var ytyp = files.FirstOrDefault(f => f.EndsWith(".ytyp", StringComparison.OrdinalIgnoreCase));
+        Expect(ytyp != null, "a .ytyp is written");
+        var man = File.ReadAllText(Path.Combine(rep.ResourceFolder, "fxmanifest.lua"));
+        Expect(man.Contains("DLC_ITYP_REQUEST") && man.Contains("molo_uvtest.ytyp"), "fxmanifest requests the .ytyp (data_file DLC_ITYP_REQUEST)");
+        var vc = Scene.Find(cube.Id).Mesh.Faces.SelectMany(f => f.Col ?? Array.Empty<Vector4>()).ToList();
+        Expect(vc.Count > 0 && vc.All(c => c.X > 0.9f && c.Y < 0.1f), $"exterior prop has red vertex colours ({(vc.Count > 0 ? vc[0].ToString() : "none")})");
+    }
+
     IEnumerable<object> TutModifiers()
     {
         Fresh(); if (MapMode) SetMapMode(false);
