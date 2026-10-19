@@ -36,6 +36,13 @@ public sealed partial class EditorApp
     /// <summary>The objects the forge works on: the selection, without the donor ghost.</summary>
     List<SceneObject> ForgeSelection() => SelObjects().Where(o => o.Folder != ForgeFolder && o.Mesh.Faces.Count > 0 && o.GtaType != GtaObjectType.Collision).ToList();
 
+    /// <summary>A new or opened scene: the donor, its bones, the fit and the last report belong to the old one.</summary>
+    void ResetForge()
+    {
+        weaponBones = null; weaponMuzzle = null; forgeReport = null;
+        vehicleDonor = null; vehicleWheels = null; vehicleWheelBoxes = null;
+    }
+
     bool ForgeNeedsGame()
     {
         if (game != null) return false;

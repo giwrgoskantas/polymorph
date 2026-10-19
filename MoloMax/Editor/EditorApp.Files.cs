@@ -25,6 +25,7 @@ public sealed partial class EditorApp
         if (!ConfirmDiscard()) return;
         Scene = new Scene(); Undo.Clear(); lastAdd = null; ActiveId = -1; Selected.Clear(); subSel.Clear(); Level = SubObject.Object;
         CurrentFile = null; Dirty = false; renderer.Invalidate(); edgeCache.Clear();
+        ResetForge(); cubeProj = null; decalPlace = null;
         SetStatus("New scene");
     }
 
@@ -44,6 +45,7 @@ public sealed partial class EditorApp
             lastAdd = null; ActiveId = -1;
             Undo.Clear(); Selected.Clear(); subSel.Clear(); Level = SubObject.Object;
             CurrentFile = path; Dirty = false; renderer.Invalidate(); edgeCache.Clear();
+            ResetForge(); cubeProj = null; decalPlace = null;
             renderer.Textures.SearchFolders.Clear();
             renderer.Textures.SearchFolders.Add(Path.GetDirectoryName(Path.GetFullPath(path)));
             renderer.Textures.ClearResolveCache();
