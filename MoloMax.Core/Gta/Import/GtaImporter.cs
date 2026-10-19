@@ -34,6 +34,10 @@ public static class GtaImporter
         /// <summary>Textures of the parent dictionaries (name.parentN.ytd): written only when a material uses them.</summary>
         public readonly Dictionary<string, Cw.Texture> Pending = new(StringComparer.OrdinalIgnoreCase);
         public static Dictionary<uint, string> PresetByHash;
+        /// <summary>Terrain shaders (terrain_cb_w_4lyr...): the 4 layer textures (diffuse, bump) of a material.</summary>
+        public readonly Dictionary<int, (string[] Diff, string[] Bump)> Layers = new();
+        /// <summary>(terrain material, layer) → the material that shows that layer.</summary>
+        public readonly Dictionary<(int, int), int> LayerMat = new();
     }
 
     public static ImportResult Import(string path, ImportOptions opt = null)
@@ -180,6 +184,8 @@ public static class GtaImporter
 
     static readonly uint HDiffuse = MetaXml.Jenkins("DiffuseSampler"), HBump = MetaXml.Jenkins("BumpSampler"),
         HSpec = MetaXml.Jenkins("SpecSampler"), HDetail = MetaXml.Jenkins("DetailSampler"), HTexture = MetaXml.Jenkins("TextureSampler");
+    static readonly uint[] HLayer = Enumerable.Range(0, 4).Select(i => MetaXml.Jenkins("TextureSampler_layer" + i)).ToArray();
+    static readonly uint[] HLayerBump = Enumerable.Range(0, 4).Select(i => MetaXml.Jenkins("BumpSampler_layer" + i)).ToArray();
 
     /// <summary>One GtaMaterial per shader of the drawable; returns the material index (into the import result).</summary>
     static int MaterialFor(Ctx c, Cw.ShaderFX s, string drawableName, int shaderIndex)
@@ -201,6 +207,13 @@ public static class GtaImporter
                 {
                     var tex = TextureRef(c, par.Data);
                     if (tex == null) continue;
+                    int li = Array.IndexOf(HLayer, h), lb = Array.IndexOf(HLayerBump, h);
+                    if (li >= 0 || lb >= 0)
+                    {
+                        if (!c.Layers.TryGetValue(mat.Id, out var lay)) c.Layers[mat.Id] = lay = (new string[4], new string[4]);
+                        if (li >= 0) lay.Diff[li] = tex; else lay.Bump[lb] = tex;
+                        continue;
+                    }
                     if (h == HDiffuse || h == HTexture) mat.DiffuseTexture = tex;
                     else if (h == HBump) mat.BumpTexture = tex;
                     else if (h == HSpec) mat.SpecTexture = tex;
@@ -216,6 +229,9 @@ public static class GtaImporter
                 }
             }
         }
+        // terrain: no single diffuse; the first layer stands for the material (each triangle then takes its own layer)
+        if (mat.DiffuseTexture == null && c.Layers.TryGetValue(mat.Id, out var ly) && ly.Diff.FirstOrDefault(t => t != null) is { } first)
+        { mat.DiffuseTexture = first; mat.BumpTexture ??= ly.Bump.FirstOrDefault(t => t != null); }
         if (mat.DiffuseTexture != null) mat.Name = ModelImporter.SafeName(Path.GetFileNameWithoutExtension(mat.DiffuseTexture), mat.Name);
         c.Res.Materials.Add(mat);
         c.MaterialKey[key] = mat.Id;
@@ -254,18 +270,37 @@ public static class GtaImporter
                 bool Has(Cw.VertexSemantics s) => (flags & (1u << (int)s)) != 0;
                 int baseV = mesh.Verts.Count;
                 var uv = new Vector2[vd.VertexCount]; var col = new Vector4[vd.VertexCount];
+                // terrain_cb_w_4lyr: the layer weights come from colour 1 (blue: layer 0/1 and 2/3, green: pair 0-1 / 2-3), like the game
+                bool terrain = c.Layers.ContainsKey(mat) && Has(Cw.VertexSemantics.Colour1);
+                var lw = terrain ? new Vector4[vd.VertexCount] : null;
                 for (int i = 0; i < vd.VertexCount; i++)
                 {
                     mesh.AddVertex(Vector3.Transform(V(vd.GetVector3(i, (int)Cw.VertexSemantics.Position)), place));
                     uv[i] = Has(Cw.VertexSemantics.TexCoord0) ? ReadUv(vd, i, (int)Cw.VertexSemantics.TexCoord0) : Vector2.Zero;
                     if (Has(Cw.VertexSemantics.Colour0)) { var cc = vd.GetColour(i, (int)Cw.VertexSemantics.Colour0); col[i] = new Vector4(cc.R, cc.G, cc.B, cc.A) / 255f; }
                     else col[i] = PolyMesh.DefaultColour;
+                    if (terrain)
+                    {
+                        var c1 = vd.GetColour(i, (int)Cw.VertexSemantics.Colour1);
+                        float b = c1.B / 255f, gg = c1.G / 255f;
+                        lw[i] = new Vector4((1 - b) * (1 - gg), b * (1 - gg), (1 - b) * gg, b * gg);
+                    }
                 }
                 for (int t = 0; t + 2 < idx.Length; t += 3)
                 {
                     int a = idx[t], b = idx[t + 1], cI = idx[t + 2];
                     if (a >= vd.VertexCount || b >= vd.VertexCount || cI >= vd.VertexCount || a == b || b == cI || a == cI) continue;
-                    var f = mesh.AddFace(new[] { baseV + a, baseV + b, baseV + cI }, mat);
+                    int fm = mat;
+                    if (terrain)
+                    {
+                        var wsum = lw[a] + lw[b] + lw[cI];
+                        int k = 0; float best = wsum.X;
+                        if (wsum.Y > best) { best = wsum.Y; k = 1; }
+                        if (wsum.Z > best) { best = wsum.Z; k = 2; }
+                        if (wsum.W > best) { k = 3; }
+                        fm = LayerMaterial(c, mat, k);
+                    }
+                    var f = mesh.AddFace(new[] { baseV + a, baseV + b, baseV + cI }, fm);
                     f.UV = new[] { uv[a], uv[b], uv[cI] };
                     f.Col = new[] { col[a], col[b], col[cI] };
                 }
@@ -276,6 +311,25 @@ public static class GtaImporter
         mesh.CleanFaces();
         MeshOps.AutoSmooth(mesh, null, 40f);
         c.Res.Meshes.Add(new ImportedMesh { Name = name, Mesh = mesh, GtaType = GtaObjectType.Drawable });
+    }
+
+    /// <summary>The material that shows one layer of a terrain material (a plain textured material, so it also exports).</summary>
+    static int LayerMaterial(Ctx c, int baseMat, int layer)
+    {
+        if (c.LayerMat.TryGetValue((baseMat, layer), out var id)) return id;
+        var lay = c.Layers[baseMat];
+        var tex = lay.Diff[layer];
+        if (tex == null) { c.LayerMat[(baseMat, layer)] = baseMat; return baseMat; }
+        var src = c.Res.Materials.First(m => m.Id == baseMat);
+        if (src.DiffuseTexture == tex) { c.LayerMat[(baseMat, layer)] = baseMat; src.Shader = "normal"; return baseMat; }
+        var m = src.Clone();
+        m.Id = c.Res.Materials.Count;
+        m.Shader = "normal";
+        m.DiffuseTexture = tex; m.BumpTexture = lay.Bump[layer];
+        m.Name = ModelImporter.SafeName(Path.GetFileNameWithoutExtension(tex), src.Name + "_l" + layer);
+        c.Res.Materials.Add(m);
+        c.LayerMat[(baseMat, layer)] = m.Id;
+        return m.Id;
     }
 
     static Vector2 ReadUv(Cw.VertexData vd, int v, int comp)

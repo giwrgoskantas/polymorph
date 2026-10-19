@@ -191,6 +191,7 @@ public sealed partial class EditorApp
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
         T("MAP diag: duplicates", MapDiag);
+        T("MAP terrain: 4-layer ground", MapTerrainTest);
         T("ASSETS: browser thumbnails + placing", AssetTest);
         T("PLANAR: level vertices", PlanarTest);
     }
@@ -1145,6 +1146,33 @@ public sealed partial class EditorApp
             yield return Shot("asset_browser");
         }
         assetsOpen = false;
+    }
+
+    IEnumerable<object> MapTerrainTest()
+    {
+        var gtaFolder = SelfTestArgs.ElementAtOrDefault(0);
+        Fresh();
+        Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        SetMapMode(true); ClearMapBuild();
+        if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
+        yield return Until(() => game != null || gameError != null, 400);
+        yield return Until(() => world != null, 600);
+        var cam = vp.Camera; MapStream = true;
+        int n = 0;
+        foreach (var spot in new[] { new Vector3(-800, -1300, 20), new Vector3(-1100, 400, 70) })
+        {
+            GoTo(spot); cam.Distance = 60; cam.Pitch = 0.45f;
+            yield return Settle(() => backdropIn.IsEmpty && backdropMaps >= backdropTotal, 120);
+            yield return Settle(() => mapStreamQueue.Count == 0 && mapLoadTask == null, 60);
+            yield return Settle(() => archLoading == 0, 60);
+            yield return Frames(30);
+            var vis = Scene.Objects.Where(o => !o.Hidden && o.Mesh != null && o.Gta.MapArchetype != null && Vector3.Distance(o.Position, spot) < 200).ToList();
+            var used = vis.SelectMany(o => o.Mesh.Faces.Select(f => f.MatId)).Distinct().Select(id => Scene.Material(id)).ToList();
+            var white = used.Where(m => m.DiffuseTexture == null).Select(m => m.Name).ToList();
+            var layered = used.Count(m => m.Name.Contains("_l1") || m.Name.Contains("_l2") || m.Name.Contains("_l3") || m.Shader == "normal" && m.FromGame);
+            Expect(true, $"spot {spot}: {vis.Count} objects, {used.Count} materials, {white.Count} without texture ({string.Join(", ", white.Take(8))})");
+            yield return Shot("terrain_" + (++n));
+        }
     }
 
     IEnumerable<object> MapDiag()
