@@ -62,33 +62,11 @@ public sealed partial class EditorApp
         if (!SnapActive) return raw;
         axes ??= new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ };
         var from = snapFrom ?? pivot;
-        if (SnapPoint(vp, out var target))
-        {
-            bool onAxis = SnapAxisConstraint && axis >= 0 && !plane, onPlane = SnapAxisConstraint && axis >= 0 && plane;
-            if (snapMarkerKind == "face" && snapFaceNormal is { } n && snapMovingPts.Count > 0)
-            {
-                // against the face: the selection's deepest point along -n lands on the face plane (it touches, it never
-                // goes in); along the face it follows the mouse (the grabbed point goes under the cursor)
-                float minN = float.MaxValue; foreach (var q in snapMovingPts) minN = MathF.Min(minN, Vector3.Dot(q, n));
-                float push = Vector3.Dot(target, n) - minN;
-                if (onAxis)
-                {
-                    var ax = axes[axis]; float an = Vector3.Dot(ax, n);
-                    // along the dragged arrow until it meets the face; an arrow parallel to the face just slides
-                    return MathF.Abs(an) > 0.2f ? ax * (push / an) : ax * Vector3.Dot(target - from, ax);
-                }
-                var t = target - from; t -= n * Vector3.Dot(t, n);
-                // against a wall (vertical face) it keeps its height: it slides along the wall and stays on its floor
-                if (MathF.Abs(n.Z) < 0.3f) { var up = Vector3.UnitZ - n * n.Z; if (up.LengthSquared() > 1e-6f) { up = Vector3.Normalize(up); t -= up * Vector3.Dot(t, up); } }
-                var d0 = t + n * push;
-                if (onPlane) d0 -= axes[axis] * Vector3.Dot(d0, axes[axis]);
-                return d0;
-            }
-            var d = target - from;
-            if (onAxis) d = axes[axis] * Vector3.Dot(d, axes[axis]);
-            else if (onPlane) d -= axes[axis] * Vector3.Dot(d, axes[axis]);
-            return d;
-        }
+        var r = ApplyElementSnap(vp, from, axes, axis, plane);
+        if (r is { } got) { lastSnap = (Input.Mouse, got, snapMarker ?? from, snapMarkerKind); return got; }
+        // the mouse has not left the point it snapped on: keep that snap (the moved geometry can hide the target for a frame)
+        if (lastSnap is { } ls && Vector2.Distance(ls.Mouse, Input.Mouse) < 3f && AnyElementSnap) { snapMarker = ls.Marker; snapMarkerKind = ls.Kind; return ls.Delta; }
+        lastSnap = null;
         if (!SnapGrid || GridStep <= 0) return raw;
         bool world = MathF.Abs(axes[0].X) > 0.9999f && MathF.Abs(axes[1].Y) > 0.9999f && MathF.Abs(axes[2].Z) > 0.9999f;
         var res = Vector3.Zero;
@@ -102,6 +80,38 @@ public sealed partial class EditorApp
             res += axes[i] * di;
         }
         return res;
+    }
+
+    (Vector2 Mouse, Vector3 Delta, Vector3 Marker, string Kind)? lastSnap;
+
+    /// <summary>The move delta that carries the snap-from point onto the vertex / edge / face under the mouse, kept on the axis or plane; null when none.</summary>
+    Vector3? ApplyElementSnap(Viewport vp, Vector3 from, Vector3[] axes, int axis, bool plane)
+    {
+        if (!SnapPoint(vp, out var target)) return null;
+        bool onAxis = SnapAxisConstraint && axis >= 0 && !plane, onPlane = SnapAxisConstraint && axis >= 0 && plane;
+        if (snapMarkerKind == "face" && snapFaceNormal is { } n && snapMovingPts.Count > 0)
+        {
+            // against the face: the selection's deepest point along -n lands on the face plane (it touches, it never
+            // goes in); along the face it follows the mouse (the grabbed point goes under the cursor)
+            float minN = float.MaxValue; foreach (var q in snapMovingPts) minN = MathF.Min(minN, Vector3.Dot(q, n));
+            float push = Vector3.Dot(target, n) - minN;
+            if (onAxis)
+            {
+                var ax = axes[axis]; float an = Vector3.Dot(ax, n);
+                // along the dragged arrow until it meets the face; an arrow parallel to the face just slides
+                return MathF.Abs(an) > 0.2f ? ax * (push / an) : ax * Vector3.Dot(target - from, ax);
+            }
+            var t = target - from; t -= n * Vector3.Dot(t, n);
+            // against a wall (vertical face) it keeps its height: it slides along the wall and stays on its floor
+            if (MathF.Abs(n.Z) < 0.3f) { var up = Vector3.UnitZ - n * n.Z; if (up.LengthSquared() > 1e-6f) { up = Vector3.Normalize(up); t -= up * Vector3.Dot(t, up); } }
+            var d0 = t + n * push;
+            if (onPlane) d0 -= axes[axis] * Vector3.Dot(d0, axes[axis]);
+            return d0;
+        }
+        var d = target - from;
+        if (onAxis) d = axes[axis] * Vector3.Dot(d, axes[axis]);
+        else if (onPlane) d -= axes[axis] * Vector3.Dot(d, axes[axis]);
+        return d;
     }
 
     /// <summary>Where a move should land with the element snaps on (vertex / edge / face under the mouse). Grid snapping is separate.

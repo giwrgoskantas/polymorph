@@ -614,6 +614,7 @@ public sealed partial class EditorApp
         var slots = new List<int>();
         foreach (var f in o.Mesh.Faces) if (!slots.Contains(f.MatId)) slots.Add(f.MatId);
         if (slots.Count == 0) slots.Add(0);
+        if (SyncMaterialToFaces(o) is int fm && slots.IndexOf(fm) is int si && si >= 0) materialSlot = si;
         materialSlot = Math.Clamp(materialSlot, 0, slots.Count - 1);
         ImGui.BeginChild("##slots", new Vector2(-28, Math.Min(6, slots.Count) * ImGui.GetTextLineHeightWithSpacing() + 10), ImGuiChildFlags.Borders);
         for (int i = 0; i < slots.Count; i++)

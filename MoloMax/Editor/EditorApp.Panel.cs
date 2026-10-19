@@ -270,6 +270,7 @@ public sealed partial class EditorApp
     void MaterialRollout(SceneObject o)
     {
         if (!Ui.Header("Polygon: Material IDs", Open)) return;
+        SyncMaterialToFaces(o);
         var names = Scene.Materials.Select(m => $"{m.Name}  ({m.Shader})").ToArray();
         int idx = Math.Max(0, Scene.Materials.FindIndex(m => m.Id == selectedMaterial));
         ImGui.SetNextItemWidth(-1);

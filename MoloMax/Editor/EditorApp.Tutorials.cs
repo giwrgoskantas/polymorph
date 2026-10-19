@@ -1737,5 +1737,12 @@ public sealed partial class EditorApp
         Expect(MathF.Abs(endV.Y - tgt.Y) < 1e-3f && MathF.Abs(endV.X - startV.X) < 1e-4f && MathF.Abs(endV.Z - startV.Z) < 1e-4f, $"vertex level, Y + vertex snap: Y {startV.Y:0.000} -> {endV.Y:0.000} (target {tgt.Y:0.000}), X/Z kept ({endV.X - startV.X:0.0000}, {endV.Z - startV.Z:0.0000})");
         SetLevel(SubObject.Object); Snap = false; SnapGrid = true; SnapEdge = SnapFace = true;
         UI.ImGuiBackend.SyntheticInput = false; Maximized = false;
+        // Export > Selected models: one .ydr per selected model, nothing else
+        var exDir = StPath("sel_export"); if (Directory.Exists(exDir)) Directory.Delete(exDir, true);
+        SelectOnly(Obj("snapv_a"), Obj("snapv_b"));
+        exportSelFormat = 0; StartExportSelected(ExportRoots(), exDir);
+        yield return Until(() => exportSelTask == null || exportSelTask.IsCompleted, 120);
+        var exFiles = Directory.Exists(exDir) ? Directory.GetFiles(exDir) : Array.Empty<string>();
+        Expect(exFiles.Length == 2 && exFiles.All(f => f.EndsWith(".ydr") && new FileInfo(f).Length > 1000), $"export selected: {exFiles.Length} file(s): {string.Join(", ", exFiles.Select(Path.GetFileName))} {string.Join(" | ", exportSelTask?.Result ?? new List<string>())}");
     }
 }

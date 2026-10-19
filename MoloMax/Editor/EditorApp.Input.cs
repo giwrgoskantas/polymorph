@@ -656,7 +656,7 @@ public sealed partial class EditorApp
     /// <summary>Remembers object transforms or world vertex positions before a transform.</summary>
     void CaptureOriginals()
     {
-        xfObjects.Clear(); xfVerts.Clear();
+        xfObjects.Clear(); xfVerts.Clear(); lastSnap = null;
         var cur = Current;
         if (Level != SubObject.Object && cur != null)
         {

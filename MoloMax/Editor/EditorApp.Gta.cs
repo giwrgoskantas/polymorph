@@ -243,6 +243,13 @@ public sealed partial class EditorApp
 
     void HubExport()
     {
+        // two ways: the selected models, one file each (nothing else), or the whole FiveM resource
+        float hw = (ImGui.GetContentRegionAvail().X - 4) / 2;
+        if (Theme.Toggle("Selected models", exportSelectedOnly, new Vector2(hw, 26))) exportSelectedOnly = true;
+        ImGui.SameLine(0, 4);
+        if (Theme.Toggle("Whole resource", !exportSelectedOnly, new Vector2(hw, 26))) exportSelectedOnly = false;
+        ImGui.Spacing();
+        if (exportSelectedOnly) { HubExportSelected(); return; }
         var st = Scene.Gta;
         float lw = 120;
         void Label(string s) { ImGui.AlignTextToFramePadding(); Ui.Text(s); ImGui.SameLine(lw); ImGui.SetNextItemWidth(-1); }

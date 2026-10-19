@@ -88,3 +88,28 @@ public sealed partial class EditorApp
         Theme.Tip("X / Y / Z use the world axes, or the object's own axes when ticked.");
     }
 }
+
+public sealed partial class EditorApp
+{
+    long faceSelKey;
+    /// <summary>
+    /// Edit mode: when the polygon selection changes, the material panel follows it (the material of the
+    /// selected faces, the most used one if they mix). Returns that material id when it just changed.
+    /// </summary>
+    int? SyncMaterialToFaces(SceneObject o)
+    {
+        if (o?.Mesh == null || Level is not (SubObject.Polygon or SubObject.Element)) { faceSelKey = 0; return null; }
+        var faces = SubSel(o).Faces;
+        if (faces.Count == 0) { faceSelKey = 0; return null; }
+        long key = o.Id * 1000003L + faces.Count;
+        foreach (var f in faces) key = key * 31 + f;
+        if (key == faceSelKey) return null;
+        faceSelKey = key;
+        var count = new Dictionary<int, int>();
+        foreach (var f in faces) if (f < o.Mesh.Faces.Count) { int id = o.Mesh.Faces[f].MatId; count[id] = count.GetValueOrDefault(id) + 1; }
+        if (count.Count == 0) return null;
+        int mat = count.OrderByDescending(kv => kv.Value).First().Key;
+        selectedMaterial = mat;
+        return mat;
+    }
+}
