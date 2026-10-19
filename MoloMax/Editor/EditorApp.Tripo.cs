@@ -26,8 +26,22 @@ public sealed partial class EditorApp
 
     TripoClient NewTripoClient() => new(TripoKey, Settings.TripoChina ? TripoClient.ChinaUrl : TripoClient.GlobalUrl);
 
+    /// <summary>Molo Modding's Tripo link (creator program): signing up through it supports Polymorph.</summary>
+    public const string TripoLink = "https://tripo.pxf.io/0G7AVP";
+    static void OpenUrl(string url) { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { } }
+
+    void TripoLinkButton()
+    {
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.42f, 0.25f, 0.62f, 1));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.52f, 0.32f, 0.74f, 1));
+        if (ImGui.Button("Get Tripo  (AI 3D models)", new Vector2(-1, 26))) OpenUrl(TripoLink);
+        ImGui.PopStyleColor(2);
+        Theme.Tip("Opens Tripo in your browser. Signing up with this link supports Polymorph (it stays free).");
+    }
+
     void HubTripo()
     {
+        TripoLinkButton();
         // ---- account
         bool hasKey = !string.IsNullOrEmpty(TripoKey);
         if (Ui.Header("Account", hasKey ? ImGuiTreeNodeFlags.None : ImGuiTreeNodeFlags.DefaultOpen) || !hasKey || tripoKeyEditing)
@@ -35,6 +49,7 @@ public sealed partial class EditorApp
             if (!hasKey || tripoKeyEditing)
             {
                 Ui.TextWrapped("Paste your Tripo API key (starts with tsk_, from the Tripo developer platform). It is stored encrypted for your Windows account.");
+                if (ImGui.SmallButton("No account yet? Create one")) OpenUrl(TripoLink);
                 ImGui.SetNextItemWidth(-70);
                 ImGui.InputTextWithHint("##tkey", "tsk_...", ref tripoKeyInput, 200, ImGuiInputTextFlags.Password);
                 ImGui.SameLine();

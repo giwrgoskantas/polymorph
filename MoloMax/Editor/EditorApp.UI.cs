@@ -180,6 +180,11 @@ public sealed partial class EditorApp
         {
             if (ImGui.MenuItem("Keyboard Shortcuts")) shortcutsOpen = true;
             if (ImGui.MenuItem("About Polymorph")) aboutOpen = true;
+            ImGui.Separator();
+            if (ImGui.MenuItem("Video tutorials (website)")) OpenUrl("https://molossen.github.io/polymorph/#tutorials");
+            if (ImGui.MenuItem("Report a bug (GitHub)")) OpenUrl("https://github.com/molossen/polymorph/issues");
+            if (ImGui.MenuItem("Molo Modding Discord")) OpenUrl("https://discord.com/invite/molomodding");
+            if (ImGui.MenuItem("Get Tripo (AI 3D models)")) OpenUrl(TripoLink);
             ImGui.EndMenu();
         }
         ModeTabs();

@@ -49,6 +49,11 @@ Short videos, one per topic, attached to the [release page](../../releases/lates
 - **Rendering** — game shader in linear light with a filmic tone curve, sun shadows, 32 scene lights.
 - **Scripting** — Python API and MCP server: Claude can drive Polymorph (see `python/README.md`).
 
+## AI 3D models with Tripo
+
+Polymorph has Tripo built in (Tripo tab): a picture or a sentence becomes a prop, at GTA scale, ready to retouch and export.
+Get Tripo here: https://tripo.pxf.io/0G7AVP (signing up with this link supports Polymorph, which stays free).
+
 ## Requirements
 
 - Windows 10 / 11, 64-bit, a DirectX 11 graphics card.
