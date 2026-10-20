@@ -205,6 +205,7 @@ public sealed partial class EditorApp
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
+        T("SHIFT DRAG DRAW: Shift + drag a face, the original stays drawn", ShiftDragDraw);
         T("UI CHAOS: hundreds of random clicks, drags, keys and commands in the real window (no error, meshes valid, undo exact)", UiChaos);
         T("VERTEX SNAP: in vertex mode, grab a selected vertex and drop it on another (square shown)", TutVertexSnap);
         T("GIMS HUB: Molo GTA panel in the GIMS layout (photos)", TutGimsHub);
@@ -564,6 +565,7 @@ public sealed partial class EditorApp
         Maximized = true; var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
         var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "box";
         var box2 = Prim(CreateKind.Box, new Vector3(4, 1, 0)); box2.Name = "box2";
+        vp.Camera.Yaw = -2.2f; vp.Camera.Pitch = 0.45f; // the default view, whatever the film before left
         vp.Camera.Frame(new Vector3(-3, -3, -1), new Vector3(7, 4, 4));
         SelectOnly(box);
         foreach (var x in StartFilm("08_best_of_all", 16)) yield return x;
@@ -583,14 +585,23 @@ public sealed partial class EditorApp
         foreach (var x in DragTo(g, g - new Vector2(0, 120), 40)) yield return x;
         KeyUpT(Keys.ShiftKey); yield return Frames(30);
         Expect(Undo.LastStamp != st0, "tour: Shift + drag copied the face");
-        if (Undo.LastStamp != st0) DoUndo();
+        // the copy and its move are separate steps: undo until the stamp from before is back
+        for (int u = 0; u < 4 && Undo.LastStamp != st0 && Undo.CanUndo; u++) DoUndo();
+        box = Scene.Find(box.Id); box2 = Scene.Find(box2.Id);
+        Note($"tour: after undo box has {box.Mesh.Faces.Count} faces");
         SetLevel(SubObject.Object); yield return Frames(10);
         foreach (var x in Say("3ds Max · Vertex / edge / face snaps", "Corner on corner, exactly", 20)) yield return x;
         SnapGrid = true; SnapVertexT = SnapEdge = SnapFace = true; SnapNearest = false; Snap = true; SelectOnly(box); Tool = Tool.Move; yield return Frames(10);
         Vector3 W(SceneObject o, int i) => Vector3.Transform(o.Mesh.Verts[i], o.World);
-        int ia = Enumerable.Range(0, box.Mesh.Verts.Count).OrderByDescending(i => W(box, i).X + W(box, i).Z - W(box, i).Y * 0.1f).First();
-        int ib = Enumerable.Range(0, box2.Mesh.Verts.Count).OrderBy(i => W(box2, i).X - W(box2, i).Z + W(box2, i).Y * 0.1f).First();
-        var cA = ScreenOf(vp, W(box, ia)); var cB = ScreenOf(vp, W(box2, ib));
+        // top corners (always in view from above): the one of the box nearest the other box on screen, and the other box's nearest to it
+        var topA = Enumerable.Range(0, box.Mesh.Verts.Count).Where(i => W(box, i).Z > box.WorldBounds().Max.Z - 0.01f).ToList();
+        var topB = Enumerable.Range(0, box2.Mesh.Verts.Count).Where(i => W(box2, i).Z > box2.WorldBounds().Max.Z - 0.01f).ToList();
+        var (b2n, b2x) = box2.WorldBounds(); var c2 = ScreenOf(vp, (b2n + b2x) * 0.5f);
+        int ia = topA.OrderBy(i => Vector2.Distance(ScreenOf(vp, W(box, i)), c2)).First();
+        var cA = ScreenOf(vp, W(box, ia));
+        int ib = topB.OrderBy(i => Vector2.Distance(ScreenOf(vp, W(box2, i)), cA)).First();
+        var cB = ScreenOf(vp, W(box2, ib));
+        Note($"tour: box at {box.World.Translation}, bounds {box.WorldBounds()}, corner {W(box, ia)} -> screen {cA}; target {W(box2, ib)} -> {cB}; viewport {vp.X},{vp.Y} {vp.W}x{vp.H}");
         long st1 = Undo.LastStamp;
         foreach (var x in SnapDrag(cA, cB, "3ds Max · Vertex / edge / face snaps|Hover a corner: the yellow square is the point you grab", "Drag it onto the other box", "Corner on corner, exactly", null)) yield return x;
         Expect(Undo.LastStamp != st1, $"tour: the box was carried corner on corner (hover {snapHover != null})");
@@ -1252,6 +1263,38 @@ public sealed partial class EditorApp
         KeyUpT(Keys.Menu); yield return Frames(30);
         foreach (var x in EndFilm()) yield return x;
         Maximized = false; Tool = Tool.Select;
+    }
+
+    /// <summary>Shift + drag of a face in edit mode: while dragging, the original face stays drawn where it is.</summary>
+    IEnumerable<object> ShiftDragDraw()
+    {
+        Fresh(); paintMode = false; SculptMode = false;
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Shaded;
+        var b = Prim(CreateKind.Box, Vector3.Zero);
+        vp.Camera.Frame(new Vector3(-3, -3, -1), new Vector3(3, 3, 4));
+        UI.ImGuiBackend.SyntheticInput = true;
+        SelectOnly(b); SetLevel(SubObject.Polygon); Tool = Tool.Move;
+        int top = FaceToward(b, Vector3.UnitZ);
+        SubSel(b).Clear(); SubSel(b).Faces.Add(top); yield return Frames(6);
+        var topVerts = b.Mesh.Faces[top].V.ToArray(); var before = topVerts.Select(i => b.Mesh.Verts[i]).ToArray();
+        var g = GizmoGrip(vp, GizmoHandle.Z);
+        foreach (var x in MouseTo(g, 8)) yield return x;
+        yield return Frames(3);
+        PostKey(Keys.ShiftKey, true); yield return Frames(2);
+        PostMouse(0x201, g, 1 | 4); yield return Frames(3);
+        foreach (var x in MouseTo(g - new Vector2(0, 120), 15, 1 | 4)) yield return x;
+        yield return Frames(3);
+        var cur = Scene.Find(b.Id);
+        Note($"mid drag: faces {cur.Mesh.Faces.Count}, transforming {transforming}, gpu version {renderer.DebugVersion(cur)} / object {cur.Version}, mismatching render vertices {renderer.DebugMismatch(cur)}");
+        bool origStays = topVerts.Select((i, k) => Vector3.Distance(cur.Mesh.Verts[i], before[k])).Max() < 1e-4f;
+        Expect(origStays, "the original top face's points do not move (data)");
+        Expect(renderer.DebugMismatch(cur) == 0, $"what is drawn matches the mesh while dragging ({renderer.DebugMismatch(cur)} render vertices off)");
+        yield return Shot("shift_drag_mid");
+        PostMouse(0x202, g - new Vector2(0, 120), 0); yield return Frames(3);
+        PostKey(Keys.ShiftKey, false); yield return Frames(4);
+        cur = Scene.Find(b.Id);
+        Expect(cur.Mesh.Faces.Count == 7, $"7 faces after the copy ({cur.Mesh.Faces.Count})");
+        SetLevel(SubObject.Object); UI.ImGuiBackend.SyntheticInput = false;
     }
 
     IEnumerable<object> TutGimsHub()

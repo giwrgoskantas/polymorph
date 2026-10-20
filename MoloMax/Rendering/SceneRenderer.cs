@@ -263,6 +263,17 @@ public sealed class SceneRenderer : IDisposable
         return runs;
     }
 
+    /// <summary>Self test: render vertices of the edited object whose position is not their mesh point's (-1: no CPU copy).</summary>
+    public int DebugMismatch(SceneObject o)
+    {
+        if (!meshes.TryGetValue(o.Id, out var gm) || gm.Cpu == null) return -1;
+        int bad = 0; var v = o.Mesh.Verts;
+        foreach (var (cpu, cv, _) in gm.Cpu)
+            for (int c = 0; c < cpu.Length; c++) if (cv[c] >= v.Count || Vector3.DistanceSquared(cpu[c].Position, v[cv[c]]) > 1e-8f) bad++;
+        return bad;
+    }
+    public int DebugVersion(SceneObject o) => meshes.TryGetValue(o.Id, out var gm) ? gm.Version : -2;
+
     bool TryMovePoints(SceneObject o, GpuMesh gm)
     {
         if (hintObj != o.Id || hintTo != o.Version || gm.Version != hintFrom || !gm.Edit || gm.Cpu == null || gm.Cpu.Count != gm.Groups.Count || hintVerts == null) return false;
