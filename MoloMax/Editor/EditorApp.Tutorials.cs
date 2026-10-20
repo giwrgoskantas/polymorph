@@ -198,6 +198,7 @@ public sealed partial class EditorApp
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
+        T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("UI OPEN THEME: open window with bookmarks, toolbar fits, look in preferences (photos)", TutOpenTheme);
         T("SHAPES CLEANUP: arch door, round window, segments, clean up (photos)", TutShapesCleanup);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
@@ -1026,6 +1027,66 @@ public sealed partial class EditorApp
 
     /// <summary>Boolean with the real buttons of the Object panel: a door and a window cut in a wall, union, intersect, undo.</summary>
     /// <summary>Wall Opening with the real mouse: trace on the wall, pull sides, presets, Enter, edit an opening later, Ctrl+Z.</summary>
+    IEnumerable<object> TutBevelConnect()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true;
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        IEnumerable<object> Key(Keys k) { KeyDownT(k); yield return Frames(3); KeyUpT(k); yield return Frames(4); }
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height;
+        P.Width = 2; P.Length = 2; P.Height = 2;
+        var b = Prim(CreateKind.Box, Vector3.Zero); b.Name = "bevel";
+        var c = Prim(CreateKind.Box, new Vector3(3.5f, 0, 0)); c.Name = "connect";
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        cam.Frame(new Vector3(-1.5f, -1.5f, -0.2f), new Vector3(5f, 1.5f, 2.4f)); cam.Yaw = -1.1f; cam.Pitch = 0.35f;
+        // bevel: one vertical edge, drag value, wheel = 4 more sides
+        SelectOnly(b); SetLevel(SubObject.Edge);
+        foreach (var e in b.Mesh.AllEdges().Where(e => { var a = b.Mesh.Verts[e.A]; var d = b.Mesh.Verts[e.B]; return a.X > 0.9f && d.X > 0.9f && a.Y < -0.9f && d.Y < -0.9f; })) SubSel(b).Edges.Add(e);
+        yield return Frames(4);
+        chamferSegments = 1;
+        BeginModal(ModalKind.Chamfer); yield return Frames(3);
+        ApplyParametric(0.35f);
+        for (int i = 0; i < 4; i++) foreach (var x in Key(Keys.PageUp)) yield return x;
+        int segModal = chamferSegments;
+        foreach (var x in Key(Keys.Enter)) yield return x;
+        yield return Frames(6);
+        Expect(segModal == 5 && b.Mesh.IsClosedManifold(out _) && b.Mesh.Faces.Count == 11, $"bevel with 5 sides from Page Up in the tool: {b.Mesh.Faces.Count} faces, closed {b.Mesh.IsClosedManifold(out _)}");
+        Expect(lastMeshOp != null && lastMeshOp.Segments == 5, "Adjust Last Operation keeps the segments");
+        // connect: a ring of 4, 3 segments from the panel
+        SetLevel(SubObject.Object); SelectOnly(c); SetLevel(SubObject.Edge);
+        foreach (var e in c.Mesh.AllEdges().Where(e => MathF.Abs(c.Mesh.Verts[e.A].Z - c.Mesh.Verts[e.B].Z) > 1.9f)) SubSel(c).Edges.Add(e);
+        connectSegments = 1;
+        ConnectEdges(); yield return Frames(4);
+        Expect(lastMeshOp?.Kind == ModalKind.Connect, "connect opens the Adjust Last Operation panel");
+        lastMeshOp.Segments = 3; connectSegments = 3;
+        RunMeshOp(ModalKind.Connect, lastMeshOp.Obj, lastMeshOp.BaseMesh, lastMeshOp.BaseSel, 0, 1, 3); lastMeshOp.Version = c.Version;
+        yield return Frames(6);
+        Expect(c.Mesh.Faces.Count == 18 && c.Mesh.IsClosedManifold(out _), $"connect 3 segments: {c.Mesh.Faces.Count} faces");
+        yield return Shot("bevel_connect");
+        // gothic arch on a wall
+        SetLevel(SubObject.Object);
+        P.Width = 4; P.Length = 0.4f; P.Height = 4;
+        var wall = Prim(CreateKind.Box, new Vector3(0, 6, 0)); wall.Name = "church wall";
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        var mod = new WallOpeningModifier();
+        mod.Openings.Add(new OpeningRect { Origin = new Vector3(0, -0.2f, 0), Normal = -Vector3.UnitY, Left = -0.7f, Right = 0.7f, Bottom = 0, Top = 3.2f, Shape = OpeningShape.Gothic, Segments = 16 });
+        wall.Modifiers.Add(mod); wall.Touch();
+        cam.Frame(new Vector3(-2.5f, 3.5f, -0.2f), new Vector3(2.5f, 6.5f, 4.2f)); cam.Yaw = -1.35f; cam.Pitch = 0.12f;
+        SelectOnly(wall); yield return Frames(8);
+        Expect(Scene.Find(wall.Id).Evaluated().IsClosedManifold(out _), "gothic arch cut, closed");
+        yield return Shot("gothic_arch");
+        // material editor: only the selection's materials
+        var m2 = GtaMaterial.CreateDefault(Scene.NextMaterialId++, "brick_red", new Vector3(0.7f, 0.25f, 0.2f)); Scene.Materials.Add(m2);
+        var m3 = GtaMaterial.CreateDefault(Scene.NextMaterialId++, "unused_metal", new Vector3(0.6f)); Scene.Materials.Add(m3);
+        foreach (var f in wall.Mesh.Faces) f.MatId = m2.Id; wall.Touch();
+        materialEditorOpen = true; matSelOnly = true; matSelKey = null;
+        yield return Frames(8);
+        var used = MaterialsOfSelection();
+        Expect(selectedMaterial == m2.Id && used.Count == 1, $"material editor shows the wall's material only and picks it ({Scene.Materials.First(x => x.Id == selectedMaterial).Name})");
+        yield return Shot("material_editor_selection");
+        materialEditorOpen = false;
+    }
+
     IEnumerable<object> TutOpenTheme()
     {
         Fresh(); if (MapMode) SetMapMode(false);

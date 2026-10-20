@@ -6,7 +6,7 @@ using MoloMax.Core.Scenes;
 namespace MoloMax.Core.Modifiers;
 
 /// <summary>Shape of an opening inside its rectangle.</summary>
-public enum OpeningShape { Rectangle, Arch, Circle }
+public enum OpeningShape { Rectangle, Arch, Circle, Gothic }
 
 /// <summary>A hole traced on a wall: door, window, passage (rectangle, arch or round).</summary>
 public sealed class OpeningRect
@@ -41,6 +41,20 @@ public sealed class OpeningRect
                 pts.Add(new(l, b)); pts.Add(new(r, b));
                 if (spring > b + 1e-4f) pts.Add(new(r, spring));
                 for (int k = 1; k < n; k++) { float a = MathF.PI * k / n; pts.Add(new(cx + rx * MathF.Cos(a), spring + ry * MathF.Sin(a))); }
+                if (spring > b + 1e-4f) pts.Add(new(l, spring));
+                break;
+            }
+            case OpeningShape.Gothic:
+            {
+                // pointed (church) arch: two arcs of radius = width, each centred on the opposite springing point
+                float w = r - l, archH = w * 0.8660254f;
+                float sc = MathF.Min(1f, (t - b) / archH), spring = t - archH * sc;
+                int h = Math.Max(2, n / 2);
+                pts.Add(new(l, b)); pts.Add(new(r, b));
+                if (spring > b + 1e-4f) pts.Add(new(r, spring));
+                for (int k = 1; k < h; k++) { float a = MathF.PI / 3f * k / h; pts.Add(new(l + w * MathF.Cos(a), spring + w * MathF.Sin(a) * sc)); }
+                pts.Add(new(cx, spring + archH * sc));
+                for (int k = 1; k < h; k++) { float a = MathF.PI * 2f / 3f + MathF.PI / 3f * k / h; pts.Add(new(r + w * MathF.Cos(a), spring + w * MathF.Sin(a) * sc)); }
                 if (spring > b + 1e-4f) pts.Add(new(l, spring));
                 break;
             }
@@ -113,6 +127,15 @@ public sealed class WallOpeningModifier : Modifier
         const float margin = 0.02f;
         float len = depth + 2 * margin;
         var cutter = Prism(op.Outline(), len);
+        // the reveal takes the material of the wall it goes through
+        int wallMat = -1; float bestD = float.MaxValue;
+        foreach (var f in m.Faces)
+        {
+            if (Vector3.Dot(m.FaceNormal(f), n) < 0.99f) continue;
+            float d = MathF.Abs(Vector3.Dot(m.Verts[f.V[0]] - centre, n));
+            if (d < bestD) { bestD = d; wallMat = f.MatId; }
+        }
+        if (wallMat >= 0) foreach (var f in cutter.Faces) f.MatId = wallMat;
         var basis = new Matrix4x4(right.X, right.Y, right.Z, 0, -n.X, -n.Y, -n.Z, 0, up.X, up.Y, up.Z, 0, 0, 0, 0, 1);
         basis.Translation = op.Origin + n * margin;
         try

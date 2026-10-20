@@ -469,12 +469,20 @@ public sealed partial class EditorApp
 
     public void Collapse() => DoMesh("Collapse", (o, m, s) => { MeshOps.Collapse(m, s.VerticesOf(m, Level)); s.Clear(); });
 
-    public void ConnectEdges() => DoMesh("Connect", (o, m, s) =>
+    public void ConnectEdges()
     {
-        var e = Level == SubObject.Polygon ? new HashSet<EdgeKey>() : s.Edges;
-        var added = MeshOps.ConnectEdges(m, e);
-        s.Edges = added; SetStatus($"Connected {added.Count} edge(s)");
-    });
+        var o = Current; if (o == null) return;
+        var baseMesh = o.Mesh.Clone(); var baseSel = SubSel(o).Clone();
+        DoMesh("Connect", (o, m, s) =>
+        {
+            var e = Level == SubObject.Polygon ? new HashSet<EdgeKey>() : s.Edges;
+            var added = MeshOps.ConnectEdges(m, e, connectSegments);
+            s.Edges = added; SetStatus($"Connected {added.Count} edge(s) - Segments in the Adjust Last Operation panel (F9)");
+        });
+        // segments can be changed afterwards in the Adjust Last Operation panel
+        if (Level != SubObject.Polygon && baseSel.Edges.Count > 0)
+            lastMeshOp = new LastMeshOp { Kind = ModalKind.Connect, Obj = o, BaseMesh = baseMesh, BaseSel = baseSel, Segments = connectSegments, Version = o.Version };
+    }
 
     public void RemoveEdges(bool withVerts) => DoMesh("Remove Edges", (o, m, s) => { MeshOps.RemoveEdges(m, s.Edges, withVerts); s.Edges.Clear(); });
 

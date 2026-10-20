@@ -11,9 +11,14 @@ public static partial class MeshOps
     /// 3ds Max Chamfer / Blender edge Bevel (one segment): each selected edge becomes a strip of width
     /// 2 x <paramref name="amount"/>, corners where several selected edges meet get a cap polygon.
     /// </summary>
-    public static void ChamferEdges(PolyMesh m, ICollection<EdgeKey> edges, float amount)
+    public static void ChamferEdges(PolyMesh m, ICollection<EdgeKey> edges, float amount) => ChamferEdges(m, edges, amount, 1);
+
+    /// <summary>Same, with <paramref name="segments"/> sides across each strip: 1 = flat chamfer, more = a rounded bevel
+    /// (the profile is tangent to both faces, a quarter circle on a square corner).</summary>
+    public static void ChamferEdges(PolyMesh m, ICollection<EdgeKey> edges, float amount, int segments)
     {
         if (edges == null || edges.Count == 0 || amount <= 0) return;
+        segments = Math.Clamp(segments, 1, 32);
         var sel = new HashSet<EdgeKey>(edges);
         var touched = new HashSet<int>(); foreach (var e in sel) { touched.Add(e.A); touched.Add(e.B); }
         var vf = m.BuildVertexFaces();
@@ -46,8 +51,41 @@ public static partial class MeshOps
                 swaps.Add((fi, c, nv));
             }
         }
+        // a vertex stays when a face around it has a copy on one side only (a chamfer ending at a vertex with more
+        // edges, e.g. half of a cut edge): the strip then closes on it instead of tearing the mesh open
+        var kept = new HashSet<int>();
+        foreach (var v in touched)
+            foreach (var g in vf[v])
+            {
+                if (copyOf.ContainsKey((g, v))) continue;
+                var gf = m.Faces[g]; int gn0 = gf.V.Length, gc = Array.IndexOf(gf.V, v);
+                if (gc < 0) continue;
+                int gpv = gf.V[(gc + gn0 - 1) % gn0], gnv = gf.V[(gc + 1) % gn0];
+                int fa = vf[gpv].Intersect(vf[v]).FirstOrDefault(x => x != g, -1), fb = vf[v].Intersect(vf[gnv]).FirstOrDefault(x => x != g, -1);
+                bool hp = fa >= 0 && copyOf.ContainsKey((fa, v)), hn = fb >= 0 && copyOf.ContainsKey((fb, v));
+                if (!(hp && hn)) { kept.Add(v); break; }
+            }
         foreach (var (fi, c, nv) in swaps) m.Faces[fi].V[c] = nv;
         var origOfCopy = copyOf.ToDictionary(kv => kv.Value, kv => kv.Key.Vert);
+        // rounded bevel: the points between the two copies of a vertex (one per face of a chamfered edge), shared by the
+        // strip, the end faces and the corner caps so everything stays joined
+        var arcs = new Dictionary<(int V, int A, int B), List<int>>();
+        List<int> Arc(int v, int qa, int qb)
+        {
+            if (segments <= 1 || qa == qb) return new List<int>();
+            if (arcs.TryGetValue((v, qa, qb), out var l)) return l;
+            if (arcs.TryGetValue((v, qb, qa), out var r)) { var rev = new List<int>(r); rev.Reverse(); return rev; }
+            var p = m.Verts[v]; var da = m.Verts[qa] - p; var db = m.Verts[qb] - p;
+            var pts = new List<int>();
+            for (int k = 1; k < segments; k++)
+            {
+                float t = k / (float)segments * MathF.PI * 0.5f;
+                pts.Add(m.AddVertex(p + da * (1 - MathF.Sin(t)) + db * (1 - MathF.Cos(t))));
+            }
+            arcs[(v, qa, qb)] = pts;
+            return pts;
+        }
+        bool HasArc(int v, int qa, int qb) => arcs.ContainsKey((v, qa, qb)) || arcs.ContainsKey((v, qb, qa));
         // faces at a chamfered vertex with no chamfered edge of their own: the vertex becomes the copies of the two
         // neighbours across its edges (the classic extra corner a chamfer gives the side face)
         var faceAcross = new Func<int, int, int, int>((fi, a, b) => vf[a].Intersect(vf[b]).FirstOrDefault(g => g != fi, -1));
@@ -63,14 +101,40 @@ public static partial class MeshOps
                 int prev = f.V[(c + n - 1) % n], next = f.V[(c + 1) % n];
                 // the original neighbours are found from the original vertex ids (copies replaced only v)
                 int gp = faceAcross(fi, OrigOf(prev), v), gn = faceAcross(fi, v, OrigOf(next));
+                if (kept.Contains(v))
+                {
+                    // the copies sit on this face's edges, the vertex stays
+                    bool hp = gp >= 0 && copyOf.ContainsKey((gp, v)), hn = gn >= 0 && copyOf.ContainsKey((gn, v));
+                    if (hp) { nvList.Add(copyOf[(gp, v)]); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); }
+                    nvList.Add(v); uvList.Add(f.UV[c]); colList.Add(f.Col[c]);
+                    if (hn) { nvList.Add(copyOf[(gn, v)]); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); }
+                    changed |= hp || hn;
+                    continue;
+                }
                 bool any = false;
                 if (gp >= 0 && copyOf.TryGetValue((gp, v), out var cp)) { nvList.Add(cp); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); any = true; }
-                if (gn >= 0 && copyOf.TryGetValue((gn, v), out var cn) && (!any || cn != nvList[^1])) { nvList.Add(cn); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); any = true; }
+                if (gn >= 0 && copyOf.TryGetValue((gn, v), out var cn) && (!any || cn != nvList[^1]))
+                {
+                    if (any && sel.Contains(EdgeKey.Make(v, OrigOf(prev))) == false && gp >= 0 && SharesChamferedEdge(gp, gn, v))
+                        foreach (var ap in Arc(v, nvList[^1], cn)) { nvList.Add(ap); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); }
+                    nvList.Add(cn); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); any = true;
+                }
                 if (!any) { nvList.Add(v); uvList.Add(f.UV[c]); colList.Add(f.Col[c]); } else changed = true;
             }
             if (changed) { f.V = nvList.ToArray(); f.UV = uvList.ToArray(); f.Col = colList.ToArray(); }
         }
         int OrigOf(int x) => origOfCopy.TryGetValue(x, out var o) ? o : x;
+        // two faces meeting along a chamfered edge at v (their copies of v are the two sides of that strip)
+        bool SharesChamferedEdge(int fa, int fb, int v)
+        {
+            foreach (var e in sel)
+            {
+                if (!e.Has(v)) continue;
+                var fs = vf[e.A].Intersect(vf[e.B]).ToList();
+                if (fs.Count == 2 && fs.Contains(fa) && fs.Contains(fb)) return true;
+            }
+            return false;
+        }
         // strips: one quad per chamfered edge between the copies of its two faces
         foreach (var e in sel)
         {
@@ -80,13 +144,36 @@ public static partial class MeshOps
             if (!copyOf.TryGetValue((f1, e.A), out var a1) || !copyOf.TryGetValue((f1, e.B), out var b1) ||
                 !copyOf.TryGetValue((f2, e.A), out var a2) || !copyOf.TryGetValue((f2, e.B), out var b2)) continue;
             var F1 = m.Faces[f1]; int ia = Array.IndexOf(F1.V, a1); bool f1AB = F1.V[(ia + 1) % F1.V.Length] == b1;
-            var nf = f1AB ? m.AddFace(new[] { b1, a1, a2, b2 }, F1.MatId) : m.AddFace(new[] { a1, b1, b2, a2 }, F1.MatId);
-            for (int i = 0; i < 4; i++) nf.Col[i] = F1.Col[0];
+            if (segments == 1)
+            {
+                // flat strip, closing on a kept end vertex when the chamfer stops there
+                var endA = kept.Contains(e.A) ? new List<int> { a1, e.A, a2 } : new List<int> { a1, a2 };
+                var endB = kept.Contains(e.B) ? new List<int> { b1, e.B, b2 } : new List<int> { b1, b2 };
+                var poly = f1AB ? endA.Concat(Enumerable.Reverse(endB)) : endB.Concat(Enumerable.Reverse(endA));
+                var sf = m.AddFace(poly.ToArray(), F1.MatId);
+                for (int i = 0; i < sf.Col.Length; i++) sf.Col[i] = F1.Col[0];
+                continue;
+            }
+            List<int> Side(int end, int q1, int q2)
+            {
+                var l = new List<int> { q1 };
+                if (kept.Contains(end)) for (int k = 1; k < segments; k++) l.Add(end); // the profile shrinks to the vertex
+                else l.AddRange(Arc(end, q1, q2));
+                l.Add(q2); return l;
+            }
+            var As = Side(e.A, a1, a2);
+            var Bs = Side(e.B, b1, b2);
+            for (int k = 0; k + 1 < As.Count; k++)
+            {
+                var nf = f1AB ? m.AddFace(new[] { Bs[k], As[k], As[k + 1], Bs[k + 1] }, F1.MatId) : m.AddFace(new[] { As[k], Bs[k], Bs[k + 1], As[k + 1] }, F1.MatId);
+                nf.Smooth = segments > 1 ? 1u : 0u;
+                for (int i = 0; i < 4; i++) nf.Col[i] = F1.Col[0];
+            }
         }
         // caps where two or more chamfered edges meet: the ring of copies around the vertex
         foreach (var v in touched)
         {
-            if (sel.Count(e => e.Has(v)) < 2) continue;
+            if (sel.Count(e => e.Has(v)) < 2 || kept.Contains(v)) continue;
             var ring = vf[v].Where(fi => copyOf.ContainsKey((fi, v))).Select(fi => copyOf[(fi, v)]).Distinct().ToList();
             if (ring.Count < 3) continue;
             var c = Vector3.Zero; foreach (var r in ring) c += m.Verts[r]; c /= ring.Count;
@@ -96,11 +183,23 @@ public static partial class MeshOps
             Triangulator.Basis(nrm, out var u, out var w);
             float Ang(int x) => MathF.Atan2(Vector3.Dot(m.Verts[x] - c, w), Vector3.Dot(m.Verts[x] - c, u));
             ring.Sort((x, y) => Ang(x).CompareTo(Ang(y)));
+            if (segments > 1)
+            {
+                var full = new List<int>();
+                for (int i = 0; i < ring.Count; i++)
+                {
+                    int x = ring[i], y = ring[(i + 1) % ring.Count];
+                    full.Add(x);
+                    if (HasArc(v, x, y)) full.AddRange(Arc(v, x, y));
+                }
+                ring = full;
+            }
             var cap = m.AddFace(ring.ToArray(), m.Faces[vf[v][0]].MatId);
             for (int i = 0; i < cap.Col.Length; i++) cap.Col[i] = m.Faces[vf[v][0]].Col[0];
         }
         // copies that landed on the same spot (two faces sliding down the same edge) become one vertex
-        WeldByDistance(m, 1e-5f, new HashSet<int>(copyOf.Values));
+        var weldSet = new HashSet<int>(copyOf.Values); foreach (var l in arcs.Values) foreach (var x in l) weldSet.Add(x);
+        WeldByDistance(m, 1e-5f, weldSet);
         m.RemoveUnusedVertices();
         m.CleanFaces();
     }

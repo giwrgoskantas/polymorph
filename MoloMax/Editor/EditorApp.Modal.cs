@@ -8,7 +8,7 @@ using MoloMax.UI;
 
 namespace MoloMax.Editor;
 
-public enum ModalKind { None, Translate, Rotate, Scale, Extrude, Inset, LoopCut, Wall, Chamfer, Knife, Opening }
+public enum ModalKind { None, Translate, Rotate, Scale, Extrude, Inset, LoopCut, Wall, Chamfer, Knife, Opening, Connect }
 
 /// <summary>
 /// Blender-style modal tools: G / R / S with X Y Z constraints (twice = local, Shift = plane),
@@ -146,6 +146,19 @@ public sealed partial class EditorApp
         {
             if (P(ImGuiKey.Backspace) && wallPts.Count > 0) wallPts.RemoveAt(wallPts.Count - 1);
             return;
+        }
+        if (modal.Kind == ModalKind.Chamfer)
+        {
+            // sides of the bevel: mouse wheel (Blender), Page Up / Down, + / -
+            int d = 0;
+            if (MathF.Abs(Input.Wheel) > 0) d = Math.Sign(Input.Wheel);
+            if (P(ImGuiKey.PageUp) || P(ImGuiKey.KeypadAdd) || P(ImGuiKey.Equal)) d = 1;
+            if (P(ImGuiKey.PageDown) || P(ImGuiKey.KeypadSubtract)) d = -1;
+            if (d != 0)
+            {
+                chamferSegments = Math.Clamp(chamferSegments + d, 1, 32);
+                if (!float.IsNaN(modal.LastValue)) ApplyParametric(modal.LastValue);
+            }
         }
         if (modal.Kind is ModalKind.Translate or ModalKind.Rotate or ModalKind.Scale)
         {
@@ -291,7 +304,7 @@ public sealed partial class EditorApp
                     if (hasNum) amount = num;
                     else if (SnapActive) amount = SnapValue(amount, GridStep * 0.1f);
                     ApplyParametric(amount);
-                    modal.Header = $"Chamfer  {amount:0.000} m  {NumShown()}";
+                    modal.Header = $"Chamfer  {amount:0.000} m  {chamferSegments} segment{(chamferSegments > 1 ? "s" : "")} (wheel / Page Up-Down)  {NumShown()}";
                     break;
                 }
             case ModalKind.Inset:
@@ -325,7 +338,7 @@ public sealed partial class EditorApp
         float s = (MathF.Abs(o.Scale.X) + MathF.Abs(o.Scale.Y) + MathF.Abs(o.Scale.Z)) / 3f;
         float local = value / MathF.Max(s, 1e-4f);
         if (modal.Kind == ModalKind.Extrude) MeshOps.ExtrudeFaces(o.Mesh, sel.Faces, local);
-        else if (modal.Kind == ModalKind.Chamfer) { if (local > 1e-5f) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local); sel.Edges.Clear(); }
+        else if (modal.Kind == ModalKind.Chamfer) { if (local > 1e-5f) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local, chamferSegments); sel.Edges.Clear(); }
         else MeshOps.InsetFaces(o.Mesh, sel.Faces, local);
         o.Touch();
     }

@@ -422,6 +422,28 @@ public sealed partial class EditorApp
         DropMaterial(Hovered(), Input.Mouse, id);
     }
 
+    bool matSelOnly = true; string matSelKey; long matUsedKey; HashSet<int> matUsed;
+
+    /// <summary>Material ids used by the selected faces (Polygon / Element mode) or by the selected objects; null when nothing is selected.</summary>
+    HashSet<int> MaterialsOfSelection()
+    {
+        var objs = SelObjects().Where(o => o.Mesh != null).ToList();
+        if (objs.Count == 0) return null;
+        long key = Level.GetHashCode() * 31L + objs.Count;
+        foreach (var o in objs) key = key * 1000003L + o.Id * 7919L + o.Version + (o == Current ? SubSel(o).Faces.Count * 131L : 0);
+        if (key == matUsedKey && matUsed != null) return matUsed;
+        var res = new HashSet<int>();
+        foreach (var o in objs)
+        {
+            var m = o.Evaluated() ?? o.Mesh;
+            if (Level is SubObject.Polygon or SubObject.Element && o == Current && SubSel(o).Faces.Count > 0)
+            { foreach (var fi in SubSel(o).Faces) if (fi < o.Mesh.Faces.Count) res.Add(o.Mesh.Faces[fi].MatId); continue; }
+            foreach (var f in m.Faces) res.Add(f.MatId);
+        }
+        matUsedKey = key; matUsed = res;
+        return res;
+    }
+
     void DrawMaterialEditor()
     {
         if (!materialEditorOpen) return;
@@ -430,11 +452,27 @@ public sealed partial class EditorApp
         if (!ImGui.Begin("Material Editor - GTA Shaders", ref materialEditorOpen, ImGuiWindowFlags.NoSavedSettings)) { ImGui.End(); return; }
 
         int gameMats = 0; foreach (var m in Scene.Materials) if (m.FromGame) gameMats++;
+        // materials of the selection (the selected faces in Polygon mode): shown alone, the first one picked
+        var used = MaterialsOfSelection();
+        string selKey = string.Join(",", Selected.OrderBy(x => x)) + "|" + Level;
+        if (selKey != matSelKey)
+        {
+            matSelKey = selKey;
+            if (used != null && used.Count > 0 && !used.Contains(selectedMaterial)) selectedMaterial = Scene.Materials.First(m => used.Contains(m.Id)).Id;
+        }
+        bool filter = matSelOnly && used != null && used.Count > 0;
         ImGui.BeginGroup();
+        float hw = 98;
+        if (Theme.Toggle("Selection##matf", matSelOnly, new Vector2(hw, 0))) matSelOnly = true;
+        Theme.Tip("Only the materials of the selected objects (or selected faces)");
+        ImGui.SameLine(0, 4);
+        if (Theme.Toggle("All##matf", !matSelOnly, new Vector2(hw, 0))) matSelOnly = false;
         if (gameMats > 0) { ImGui.Checkbox($"Game materials ({gameMats:N0})##gm", ref showGameMaterials); Theme.Tip("Materials of the game models shown in MAP mode (read from the game, not yours). Hidden unless you want to look at them."); }
         ImGui.BeginChild("##matlist", new Vector2(200, gameMats > 0 ? -56 : -30), ImGuiChildFlags.Borders);
+        if (matSelOnly && (used == null || used.Count == 0)) Ui.TextDisabled("Nothing selected:\nall materials");
         foreach (var m in Scene.Materials)
         {
+            if (filter && !used.Contains(m.Id)) continue;
             if (m.FromGame && !showGameMaterials && m.Id != selectedMaterial) continue;
             var c = ImGui.GetCursorScreenPos();
             ImGui.GetWindowDrawList().AddRectFilled(c + new Vector2(0, 3), c + new Vector2(10, 13), ImGui.ColorConvertFloat4ToU32(new Vector4(m.ViewportColour, 1)));

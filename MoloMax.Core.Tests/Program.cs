@@ -4,6 +4,30 @@ using MoloMax.Core.Gta;
 using MoloMax.Core.Mesh;
 using MoloMax.Core.Scenes;
 if (args.Length > 1 && args[0] == "types") { foreach (var t in typeof(CodeWalker.GameFiles.YtdFile).Assembly.GetTypes().Where(t => t.Name.Contains(args[1]))) { Console.WriteLine(t.FullName); foreach (var m in t.GetMembers().Where(m => m.DeclaringType == t)) Console.WriteLine("   " + m.MemberType + " " + m); } return 0; }
+if (args.Length > 0 && args[0] == "chamfer") {
+    float V(PolyMesh m) => MoloMax.Core.Mesh.CsgClean.Volume(m);
+    void Run(string name, Func<PolyMesh, List<EdgeKey>> pick, float amt, int seg)
+    {
+        var b = Primitives.Box(2, 2, 2);
+        var e = pick(b);
+        MeshOps.ChamferEdges(b, e, amt, seg);
+        Console.WriteLine($"{name} seg {seg}: {b.Faces.Count} faces {b.Verts.Count} verts closed {b.IsClosedManifold(out var w)} {w} vol {V(b):0.0000} corners [{string.Join(",", b.Faces.GroupBy(f => f.V.Length).OrderBy(g => g.Key).Select(g => g.Key + "x" + g.Count()))}]");
+    }
+    List<EdgeKey> Edges(PolyMesh b, Func<Vector3, Vector3, bool> pred) => b.BuildEdgeMap().Keys.Where(k => pred(b.Verts[k.A], b.Verts[k.B])).ToList();
+    foreach (var seg in new[] { 1, 4 })
+    {
+        Run("one vertical edge", b => Edges(b, (a, c) => a.X > 0.9f && c.X > 0.9f && a.Y > 0.9f && c.Y > 0.9f), 0.2f, seg);
+        Run("three edges at a corner", b => Edges(b, (a, c) => (a.X > 0.9f && a.Y > 0.9f && a.Z > 1.9f) || (c.X > 0.9f && c.Y > 0.9f && c.Z > 1.9f)), 0.2f, seg);
+        Run("top loop (4 edges)", b => Edges(b, (a, c) => a.Z > 1.9f && c.Z > 1.9f), 0.2f, seg);
+        Run("all 12 edges", b => b.BuildEdgeMap().Keys.ToList(), 0.2f, seg);
+        Run("vertical + top edge (L)", b => Edges(b, (a, c) => (a.X > 0.9f && c.X > 0.9f && a.Y > 0.9f && c.Y > 0.9f) || (a.X > 0.9f && c.X > 0.9f && a.Z > 1.9f && c.Z > 1.9f)), 0.2f, seg);
+        // after a connect: the new loop chamfered
+        Run("connect ring then chamfer the new loop", b => { var ring = Edges(b, (a, c) => MathF.Abs(a.Z - c.Z) > 1.9f).ToHashSet(); return MeshOps.ConnectEdges(b, ring).ToList(); }, 0.2f, seg);
+        Run("connect ring then chamfer one vertical half-edge", b => { var ring = Edges(b, (a, c) => MathF.Abs(a.Z - c.Z) > 1.9f).ToHashSet(); MeshOps.ConnectEdges(b, ring); return Edges(b, (a, c) => a.X > 0.9f && c.X > 0.9f && a.Y > 0.9f && c.Y > 0.9f && a.Z > 0.9f && c.Z > 0.9f); }, 0.2f, seg);
+        Run("extruded face then chamfer its side edge", b => { int top = Enumerable.Range(0, b.Faces.Count).First(i => b.FaceNormal(i).X > 0.9f); MeshOps.ExtrudeFaces(b, new HashSet<int> { top }, 0.3f); return Edges(b, (a, c) => a.X > 1.2f && c.X > 1.2f && a.Y > 0.9f && c.Y > 0.9f); }, 0.055f, seg);
+    }
+    return 0;
+}
 if (args.Length > 0 && args[0] == "dense") {
     void Rep(string name, PolyMesh before, Func<PolyMesh> run) {
         var sw = System.Diagnostics.Stopwatch.StartNew(); PolyMesh r = null; string err = null;
@@ -1713,6 +1737,32 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
     MoloMax.Core.Mesh.MeshOps.ChamferEdges(box1, new[] { top }, 0.25f);
     Console.WriteLine($"       chamfer one edge: {box1.Faces.Count} faces, {box1.Verts.Count} verts, closed {box1.IsClosedManifold(out var w1)} {w1}");
     Check("chamfer one edge: 7 faces, 10 verts, closed", () => box1.Faces.Count == 7 && box1.Verts.Count == 10 && box1.IsClosedManifold(out _));
+    {
+        // bevel with sides, and a bevel stopping in the middle of a cut edge
+        List<EdgeKey> E(PolyMesh b, Func<Vector3, Vector3, bool> pr) => b.BuildEdgeMap().Keys.Where(k => pr(b.Verts[k.A], b.Verts[k.B])).ToList();
+        var r4 = Primitives.Box(2, 2, 2);
+        MeshOps.ChamferEdges(r4, E(r4, (a, c) => a.X > 0.9f && c.X > 0.9f && a.Y > 0.9f && c.Y > 0.9f), 0.2f, 4);
+        float exp4 = 8 - 2 * (0.04f - 0.5f * 0.04f * 4 * MathF.Sin(MathF.PI / 8));
+        Check("bevel 4 segments on one edge: rounded, closed, right volume", () => r4.IsClosedManifold(out _) && Near(Vol(r4), exp4, 1e-3f) && r4.Faces.Count == 10);
+        var all4 = Primitives.Box(2, 2, 2); MeshOps.ChamferEdges(all4, all4.BuildEdgeMap().Keys.ToList(), 0.2f, 4);
+        Check("bevel 4 segments on all 12 edges: closed", () => all4.IsClosedManifold(out _) && Vol(all4) < 8 && Vol(all4) > 7.6f);
+        foreach (int sg in new[] { 1, 3 })
+        {
+            var hb = Primitives.Box(2, 2, 2);
+            MeshOps.ConnectEdges(hb, E(hb, (a, c) => MathF.Abs(a.Z - c.Z) > 1.9f).ToHashSet());
+            MeshOps.ChamferEdges(hb, E(hb, (a, c) => a.X > 0.9f && c.X > 0.9f && a.Y > 0.9f && c.Y > 0.9f && a.Z > 0.9f && c.Z > 0.9f), 0.2f, sg);
+            Check($"bevel ({sg} seg.) stopping in the middle of an edge stays closed (no hole)", () => hb.IsClosedManifold(out _) && Vol(hb) < 8 && Vol(hb) > 7.9f);
+        }
+        var cb = Primitives.Box(2, 2, 2);
+        var added3 = MeshOps.ConnectEdges(cb, E(cb, (a, c) => MathF.Abs(a.Z - c.Z) > 1.9f).ToHashSet(), 3);
+        var heights = cb.Verts.Select(v => MathF.Round(v.Z, 3)).Distinct().OrderBy(z => z).ToList();
+        Check("connect 3 segments: 3 evenly spaced loops, closed", () => added3.Count == 12 && cb.IsClosedManifold(out _) && heights.SequenceEqual(new[] { 0f, 0.5f, 1f, 1.5f, 2f }) && cb.Faces.Count == 18);
+        var gw = Primitives.Box(4, 0.3f, 3);
+        var go = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -0.6f, Right = 0.6f, Bottom = 0, Top = 2.6f, Shape = MoloMax.Core.Modifiers.OpeningShape.Gothic, Segments = 12 };
+        var gr = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(gw, go);
+        var outline = go.Outline(); float gTop = outline.Max(p => p.Y);
+        Check("Wall Opening gothic (church) arch: pointed top at the full height, cut through, closed", () => gr.IsClosedManifold(out _) && Near(gTop, 2.6f, 1e-3f) && Vol(gr) < 3.6f - 0.3f * 2.2f && Vol(gr) > 3.6f - 0.3f * 3.12f);
+    }
 
     var two = Primitives.Box(1, 1, 1); var other = Primitives.Box(1, 1, 1); other.Transform(Matrix4x4.CreateTranslation(0, 0, 3)); two.Append(other);
     int topOfLow = Enumerable.Range(0, two.Faces.Count).First(i => MathF.Abs(two.FaceCenter(i).Z - 1) < 1e-4f && two.FaceNormal(i).Z > 0.9f);

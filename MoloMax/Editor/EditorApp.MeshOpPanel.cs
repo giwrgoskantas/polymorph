@@ -23,23 +23,32 @@ public sealed partial class EditorApp
         public float Value;
         public bool Flip;
         public int Repeat = 1;
+        public int Segments = 1;
         public int Version;
     }
     LastMeshOp lastMeshOp;
+    /// <summary>Sides of the last bevel / new edges of the last connect (kept for the next one, like 3ds Max).</summary>
+    int chamferSegments = 1, connectSegments = 1;
     bool extrudeHandleHover;
 
     /// <summary>Runs extrude / inset / chamfer from a base mesh with a value (shared by the modal tool and the panel).</summary>
-    void RunMeshOp(ModalKind kind, SceneObject o, PolyMesh baseMesh, PolySelection baseSel, float value, int repeat = 1)
+    void RunMeshOp(ModalKind kind, SceneObject o, PolyMesh baseMesh, PolySelection baseSel, float value, int repeat = 1, int segments = 1)
     {
         o.Mesh = baseMesh.Clone();
         var sel = baseSel.Clone();
         subSel[o.Id] = sel;
         float s = (MathF.Abs(o.Scale.X) + MathF.Abs(o.Scale.Y) + MathF.Abs(o.Scale.Z)) / 3f;
         float local = value / MathF.Max(s, 1e-4f);
+        if (kind == ModalKind.Connect)
+        {
+            sel.Edges = MeshOps.ConnectEdges(o.Mesh, sel.Edges, segments);
+            o.Mesh.Validate(); sel.Sanitise(o.Mesh); o.Touch();
+            return;
+        }
         for (int i = 0; i < Math.Max(1, repeat); i++)
         {
             if (kind == ModalKind.Extrude) MeshOps.ExtrudeFaces(o.Mesh, sel.Faces, local);
-            else if (kind == ModalKind.Chamfer) { if (local > 1e-5f && sel.Edges.Count > 0) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local); sel.Edges.Clear(); }
+            else if (kind == ModalKind.Chamfer) { if (local > 1e-5f && sel.Edges.Count > 0) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local, segments); sel.Edges.Clear(); }
             else MeshOps.InsetFaces(o.Mesh, sel.Faces, local);
         }
         o.Touch();
@@ -49,7 +58,7 @@ public sealed partial class EditorApp
     void RememberMeshOp()
     {
         if (modal.Obj == null || modal.BaseMesh == null || float.IsNaN(modal.LastValue)) return;
-        lastMeshOp = new LastMeshOp { Kind = modal.Kind, Obj = modal.Obj, BaseMesh = modal.BaseMesh, BaseSel = modal.BaseSel, Value = modal.LastValue, Version = modal.Obj.Version };
+        lastMeshOp = new LastMeshOp { Kind = modal.Kind, Obj = modal.Obj, BaseMesh = modal.BaseMesh, BaseSel = modal.BaseSel, Value = modal.LastValue, Version = modal.Obj.Version, Segments = modal.Kind == ModalKind.Chamfer ? chamferSegments : 1 };
         lastAdd = null; cubeProj = null;
     }
 
@@ -63,12 +72,22 @@ public sealed partial class EditorApp
         ImGui.SetNextWindowSizeConstraints(new Vector2(260, 0), new Vector2(340, 400));
         ImGui.SetNextWindowCollapsed(!adjustOpen, ImGuiCond.Always);
         ImGui.SetNextWindowBgAlpha(0.94f);
-        string title = op.Kind switch { ModalKind.Extrude => "Extrude Region", ModalKind.Inset => "Inset Faces", _ => "Chamfer" };
+        string title = op.Kind switch { ModalKind.Extrude => "Extrude Region", ModalKind.Inset => "Inset Faces", ModalKind.Connect => "Connect", _ => "Chamfer" };
         bool open = ImGui.Begin($"Adjust Last Operation: {title}###meshop", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing);
         adjustOpen = !ImGui.IsWindowCollapsed();
         if (open)
         {
             bool ch = false;
+            if (op.Kind == ModalKind.Connect)
+            {
+                ImGui.AlignTextToFramePadding(); Ui.Text("Segments"); ImGui.SameLine(100); ImGui.SetNextItemWidth(-1);
+                if (ImGui.SliderInt("##cseg", ref op.Segments, 1, 16)) { connectSegments = op.Segments; ch = true; }
+                Theme.Tip("Number of new edges across each face (evenly spaced).");
+                if (ch) { RunMeshOp(op.Kind, op.Obj, op.BaseMesh, op.BaseSel, 0, 1, op.Segments); op.Version = op.Obj.Version; Dirty = true; }
+                Ui.TextDisabled("F9 shows / hides this panel");
+                ImGui.End();
+                return;
+            }
             float v = op.Flip ? -op.Value : op.Value;
             ImGui.AlignTextToFramePadding(); Ui.Text(op.Kind == ModalKind.Extrude ? "Offset" : op.Kind == ModalKind.Inset ? "Thickness" : "Width"); ImGui.SameLine(100); ImGui.SetNextItemWidth(-1);
             if (ImGui.DragFloat("##mov", ref op.Value, 0.005f, op.Kind == ModalKind.Extrude ? -100 : 0, 100, "%.3f m")) ch = true;
@@ -79,6 +98,12 @@ public sealed partial class EditorApp
                 if (ImGui.SliderInt("##mrep", ref op.Repeat, 1, 10)) ch = true;
                 Theme.Tip("Extrude several times the same distance (segments along the extrusion).");
             }
+            if (op.Kind == ModalKind.Chamfer)
+            {
+                ImGui.AlignTextToFramePadding(); Ui.Text("Segments"); ImGui.SameLine(100); ImGui.SetNextItemWidth(-1);
+                if (ImGui.SliderInt("##chseg", ref op.Segments, 1, 16)) { chamferSegments = op.Segments; ch = true; }
+                Theme.Tip("Sides of the bevel: 1 = flat chamfer, more = rounded (mouse wheel while dragging).");
+            }
             float b4 = (ImGui.GetContentRegionAvail().X - 12) / 4;
             foreach (var q in op.Kind == ModalKind.Extrude ? new[] { 0.1f, 0.5f, 1f, 2.5f } : new[] { 0.01f, 0.02f, 0.05f, 0.1f })
             {
@@ -88,7 +113,7 @@ public sealed partial class EditorApp
             if (ch)
             {
                 float val = op.Kind == ModalKind.Extrude && op.Flip ? -MathF.Abs(op.Value) : op.Value;
-                RunMeshOp(op.Kind, op.Obj, op.BaseMesh, op.BaseSel, val, op.Kind == ModalKind.Extrude ? op.Repeat : 1);
+                RunMeshOp(op.Kind, op.Obj, op.BaseMesh, op.BaseSel, val, op.Kind == ModalKind.Extrude ? op.Repeat : 1, op.Segments);
                 op.Version = op.Obj.Version; Dirty = true;
             }
             Ui.TextDisabled("F9 shows / hides this panel");

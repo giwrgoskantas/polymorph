@@ -54,7 +54,7 @@ public sealed partial class EditorApp
         OpeningHeader();
     }
 
-    void OpeningHeader() => modal.Header = $"Wall Opening {opRect.Width:0.00} x {opRect.Height:0.00} m, sill {opRect.Bottom - opWallBottom:0.00} m: pull the sides or the middle   D door  W window   R A C rect / arch / round   + - segments   Enter cut  Esc cancel";
+    void OpeningHeader() => modal.Header = $"Wall Opening {opRect.Width:0.00} x {opRect.Height:0.00} m, sill {opRect.Bottom - opWallBottom:0.00} m: pull the sides or the middle   D door  W window   R A G C rect / arch / gothic / round   + - segments   Enter cut  Esc cancel";
 
     WallOpeningModifier OpeningModifierOf(SceneObject o) => o.Modifiers.OfType<WallOpeningModifier>().FirstOrDefault();
 
@@ -182,6 +182,7 @@ public sealed partial class EditorApp
         if (P(ImGuiKey.R)) OpeningShapeSet(OpeningShape.Rectangle);
         if (P(ImGuiKey.A)) OpeningShapeSet(OpeningShape.Arch);
         if (P(ImGuiKey.C)) OpeningShapeSet(OpeningShape.Circle);
+        if (P(ImGuiKey.G)) OpeningShapeSet(OpeningShape.Gothic);
         if (P(ImGuiKey.KeypadAdd) || P(ImGuiKey.Equal)) OpeningSegments(opRect.Segments + 2);
         if (P(ImGuiKey.KeypadSubtract) || P(ImGuiKey.Minus)) OpeningSegments(opRect.Segments - 2);
     }
@@ -308,15 +309,15 @@ public sealed partial class EditorApp
         if (ImGui.Button("Door (D)", new Vector2(78, 0))) OpeningPreset(true); ImGui.SameLine();
         if (ImGui.Button("Window (W)", new Vector2(78, 0))) OpeningPreset(false);
         // shape: rectangle, arch, round
-        (string Label, OpeningShape S, string Key)[] shapes = { ("Rect", OpeningShape.Rectangle, "R"), ("Arch", OpeningShape.Arch, "A"), ("Round", OpeningShape.Circle, "C") };
+        (string Label, OpeningShape S, string Key)[] shapes = { ("Rect", OpeningShape.Rectangle, "R"), ("Arch", OpeningShape.Arch, "A"), ("Gothic", OpeningShape.Gothic, "G"), ("Round", OpeningShape.Circle, "C") };
         for (int i = 0; i < shapes.Length; i++)
         {
             if (i > 0) ImGui.SameLine(0, 4);
             bool on = opRect.Shape == shapes[i].S;
             if (on) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ToggleOn);
-            if (ImGui.Button(shapes[i].Label + "##shape", new Vector2(50, 0))) OpeningShapeSet(shapes[i].S);
+            if (ImGui.Button(shapes[i].Label + "##shape", new Vector2(52, 0))) OpeningShapeSet(shapes[i].S);
             if (on) ImGui.PopStyleColor();
-            Theme.Tip($"{(shapes[i].S == OpeningShape.Rectangle ? "Straight rectangle" : shapes[i].S == OpeningShape.Arch ? "Round top, as wide as the opening" : "Round or oval window filling the rectangle")} ({shapes[i].Key})");
+            Theme.Tip($"{shapes[i].S switch { OpeningShape.Rectangle => "Straight rectangle", OpeningShape.Arch => "Round top, as wide as the opening", OpeningShape.Gothic => "Pointed church arch (two arcs meeting at the top)", _ => "Round or oval window filling the rectangle" }} ({shapes[i].Key})");
             TutRect("op_shape_" + shapes[i].Label.ToLowerInvariant());
         }
         if (opRect.Shape != OpeningShape.Rectangle)
@@ -345,7 +346,7 @@ public sealed partial class EditorApp
             var op = mod.Openings[i];
             ImGui.PushID(i);
             ImGui.AlignTextToFramePadding();
-            Ui.Text($"{i + 1}.  {(op.Shape == OpeningShape.Arch ? "Arch " : op.Shape == OpeningShape.Circle ? "Round " : "")}{op.Width:0.00} x {op.Height:0.00} m{(op.Shape != OpeningShape.Rectangle ? $", {op.Segments} seg." : "")}");
+            Ui.Text($"{i + 1}.  {op.Shape switch { OpeningShape.Arch => "Arch ", OpeningShape.Gothic => "Gothic ", OpeningShape.Circle => "Round ", _ => "" }}{op.Width:0.00} x {op.Height:0.00} m{(op.Shape != OpeningShape.Rectangle ? $", {op.Segments} seg." : "")}");
             ImGui.SameLine(ImGui.GetContentRegionAvail().X - 96);
             if (ImGui.Button("Edit", new Vector2(50, 0))) EditOpening(o, mod, i);
             Theme.Tip("Shows the rectangle on the wall: pull its sides, Enter when done.");

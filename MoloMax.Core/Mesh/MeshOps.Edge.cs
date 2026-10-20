@@ -9,60 +9,76 @@ public static partial class MeshOps
     /// face that has two selected edges (select a ring on a quad strip → one new loop).
     /// Returns the new edges.
     /// </summary>
-    public static HashSet<EdgeKey> ConnectEdges(PolyMesh m, ISet<EdgeKey> edges)
+    public static HashSet<EdgeKey> ConnectEdges(PolyMesh m, ISet<EdgeKey> edges) => ConnectEdges(m, edges, 1);
+
+    /// <summary>Same with <paramref name="segments"/> new edges per face, evenly spaced (3ds Max Connect "Segments").</summary>
+    public static HashSet<EdgeKey> ConnectEdges(PolyMesh m, ISet<EdgeKey> edges, int segments)
     {
         var result = new HashSet<EdgeKey>();
         if (edges == null || edges.Count == 0) return result;
-        var mid = new Dictionary<EdgeKey, int>();
-        foreach (var e in edges) mid[e] = m.AddVertex((m.Verts[e.A] + m.Verts[e.B]) * 0.5f);
-
-        var outFaces = new List<Face>(m.Faces.Count + edges.Count);
+        int N = Math.Clamp(segments, 1, 64);
+        // N points on each edge, from A to B
+        var pts = new Dictionary<EdgeKey, int[]>();
+        foreach (var e in edges)
+        {
+            var arr = new int[N];
+            for (int k = 0; k < N; k++) arr[k] = m.AddVertex(Vector3.Lerp(m.Verts[e.A], m.Verts[e.B], (k + 1) / (float)(N + 1)));
+            pts[e] = arr;
+        }
+        var outFaces = new List<Face>(m.Faces.Count + edges.Count * N);
         foreach (var f in m.Faces)
         {
             int n = f.V.Length;
             var v = new List<int>(); var uv = new List<Vector2>(); var col = new List<Vector4>();
-            var cut = new List<int>(); // positions (in the new polygon) of inserted midpoints
+            var groups = new List<List<int>>(); // per cut edge: its new points in the order they appear around the face
             for (int i = 0; i < n; i++)
             {
                 int j = (i + 1) % n;
                 v.Add(f.V[i]); uv.Add(f.UV[i]); col.Add(f.Col[i]);
-                if (mid.TryGetValue(EdgeKey.Make(f.V[i], f.V[j]), out var mv))
+                var key = EdgeKey.Make(f.V[i], f.V[j]);
+                if (pts.TryGetValue(key, out var arr))
                 {
-                    cut.Add(v.Count);
-                    v.Add(mv); uv.Add((f.UV[i] + f.UV[j]) * 0.5f); col.Add((f.Col[i] + f.Col[j]) * 0.5f);
+                    var g = new List<int>();
+                    for (int k = 0; k < N; k++)
+                    {
+                        int idx = key.A == f.V[i] ? k : N - 1 - k;
+                        float t = (k + 1) / (float)(N + 1);
+                        g.Add(arr[idx]);
+                        v.Add(arr[idx]); uv.Add(Vector2.Lerp(f.UV[i], f.UV[j], t)); col.Add(Vector4.Lerp(f.Col[i], f.Col[j], t));
+                    }
+                    groups.Add(g);
                 }
             }
-            if (cut.Count < 2)
+            if (groups.Count < 2)
             {
                 f.V = v.ToArray(); f.UV = uv.ToArray(); f.Col = col.ToArray();
                 outFaces.Add(f);
                 continue;
             }
-            // Split the (now longer) polygon along consecutive pairs of cuts. With two cuts this is
-            // one clean split; with more, cuts are paired in order around the face.
+            // cut edges paired in order around the face; point k of one goes to point N-1-k of the other
             var pieces = new List<(List<int> v, List<Vector2> uv, List<Vector4> col)> { (v, uv, col) };
-            for (int k = 0; k + 1 < cut.Count; k += 2)
-            {
-                // re-locate the two cut vertices inside the piece that contains both
-                int va = v[cut[k]], vb = v[cut[k + 1]];
-                for (int p = 0; p < pieces.Count; p++)
+            for (int gi = 0; gi + 1 < groups.Count; gi += 2)
+                for (int k = 0; k < N; k++)
                 {
-                    var (pv, puv, pcol) = pieces[p];
-                    int ia = pv.IndexOf(va), ib = pv.IndexOf(vb);
-                    if (ia < 0 || ib < 0) continue;
-                    if (ia > ib) (ia, ib) = (ib, ia);
-                    if (ib - ia < 2 && !(ia == 0 && ib == pv.Count - 1)) break; // adjacent: nothing to cut
-                    var a1 = new List<int>(); var u1 = new List<Vector2>(); var c1 = new List<Vector4>();
-                    var a2 = new List<int>(); var u2 = new List<Vector2>(); var c2 = new List<Vector4>();
-                    for (int t = ia; t <= ib; t++) { a1.Add(pv[t]); u1.Add(puv[t]); c1.Add(pcol[t]); }
-                    for (int t = ib; t != ia; t = (t + 1) % pv.Count) { a2.Add(pv[t]); u2.Add(puv[t]); c2.Add(pcol[t]); }
-                    a2.Add(pv[ia]); u2.Add(puv[ia]); c2.Add(pcol[ia]);
-                    pieces[p] = (a1, u1, c1);
-                    pieces.Add((a2, u2, c2));
-                    result.Add(EdgeKey.Make(va, vb));
-                    break;
+                    int va = groups[gi][k], vb = groups[gi + 1][N - 1 - k];
+                    for (int p = 0; p < pieces.Count; p++)
+                    {
+                        var (pv, puv, pcol) = pieces[p];
+                        int ia = pv.IndexOf(va), ib = pv.IndexOf(vb);
+                        if (ia < 0 || ib < 0) continue;
+                        if (ia > ib) (ia, ib) = (ib, ia);
+                        if (ib - ia < 2 && !(ia == 0 && ib == pv.Count - 1)) break; // adjacent: nothing to cut
+                        var a1 = new List<int>(); var u1 = new List<Vector2>(); var c1 = new List<Vector4>();
+                        var a2 = new List<int>(); var u2 = new List<Vector2>(); var c2 = new List<Vector4>();
+                        for (int t = ia; t <= ib; t++) { a1.Add(pv[t]); u1.Add(puv[t]); c1.Add(pcol[t]); }
+                        for (int t = ib; t != ia; t = (t + 1) % pv.Count) { a2.Add(pv[t]); u2.Add(puv[t]); c2.Add(pcol[t]); }
+                        a2.Add(pv[ia]); u2.Add(puv[ia]); c2.Add(pcol[ia]);
+                        pieces[p] = (a1, u1, c1);
+                        pieces.Add((a2, u2, c2));
+                        result.Add(EdgeKey.Make(va, vb));
+                        break;
+                    }
                 }
-            }
             foreach (var (pv, puv, pcol) in pieces)
             {
                 if (pv.Count < 3) continue;

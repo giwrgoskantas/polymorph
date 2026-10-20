@@ -156,7 +156,7 @@ public sealed partial class EditorApp
         }
         // MAP mode: a prop follows the mouse until it is dropped (takes the wheel to turn it)
         if (MapMode && MapPlacementInput(hv, uiMouse)) return;
-        if (hv != null && !uiMouse && MathF.Abs(Input.Wheel) > 0) hv.Camera.Zoom(Input.Wheel);
+        if (hv != null && !uiMouse && MathF.Abs(Input.Wheel) > 0 && modal.Kind != ModalKind.Chamfer) hv.Camera.Zoom(Input.Wheel);
 
         // ---- modal tools take the buttons
         if (modalOn) { ModalMouse(hv); return; }
