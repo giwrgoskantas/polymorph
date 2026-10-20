@@ -80,7 +80,9 @@ public sealed partial class EditorApp
         if (library == null)
         {
             Ui.TextColored(new Vector4(1, 0.5f, 0.4f, 1), libraryError ?? "Library not loaded.");
-            Ui.TextWrapped("Point to your MoloTextureLibrary folder (the one made with molo_material: data\\materials.json, textures\\, previews\\).");
+            Ui.TextWrapped("Point to a texture library folder (data\\materials.json, textures\\), or make one from your own game:");
+            ImGui.Separator();
+            LibraryBuildPanel();
             ImGui.End(); return;
         }
 

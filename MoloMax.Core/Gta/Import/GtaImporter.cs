@@ -47,19 +47,23 @@ public static class GtaImporter
         c.TexDir = opt.TextureFolder ?? Path.Combine(c.Dir, c.Name + "_textures");
         EnsurePresets();
 
+        if (opt.KnownTextures != null) foreach (var kv in opt.KnownTextures) c.TextureFiles[kv.Key] = kv.Value;
         // textures from a .ytd with the same name next to the file (Sollumz does the same lookup)
         var ytdPath = Path.Combine(c.Dir, c.Name + ".ytd");
-        if (File.Exists(ytdPath)) { try { var ytd = new Cw.YtdFile(); ytd.Load(File.ReadAllBytes(ytdPath)); SaveTextures(c, ytd.TextureDict); } catch (Exception e) { c.Res.Warnings.Add($"{c.Name}.ytd: {e.Message}"); } }
-        // parent dictionaries (game files browser): big shared dictionaries, so only what the model uses gets written
-        foreach (var pf in Directory.GetFiles(c.Dir, c.Name + ".parent*.ytd").OrderBy(f => f.Length).ThenBy(f => f, StringComparer.Ordinal))
+        if (opt.KnownTextures == null)
         {
-            try
+            if (File.Exists(ytdPath)) { try { var ytd = new Cw.YtdFile(); ytd.Load(File.ReadAllBytes(ytdPath)); SaveTextures(c, ytd.TextureDict); } catch (Exception e) { c.Res.Warnings.Add($"{c.Name}.ytd: {e.Message}"); } }
+            // parent dictionaries (game files browser): big shared dictionaries, so only what the model uses gets written
+            foreach (var pf in Directory.GetFiles(c.Dir, c.Name + ".parent*.ytd").OrderBy(f => f.Length).ThenBy(f => f, StringComparer.Ordinal))
             {
-                var ytd = new Cw.YtdFile(); ytd.Load(File.ReadAllBytes(pf));
-                foreach (var t in ytd.TextureDict?.Textures?.data_items ?? Array.Empty<Cw.Texture>())
-                    if (t?.Name != null && !c.TextureFiles.ContainsKey(t.Name)) c.Pending.TryAdd(t.Name, t);
+                try
+                {
+                    var ytd = new Cw.YtdFile(); ytd.Load(File.ReadAllBytes(pf));
+                    foreach (var t in ytd.TextureDict?.Textures?.data_items ?? Array.Empty<Cw.Texture>())
+                        if (t?.Name != null && !c.TextureFiles.ContainsKey(t.Name)) c.Pending.TryAdd(t.Name, t);
+                }
+                catch (Exception e) { c.Res.Warnings.Add($"{Path.GetFileName(pf)}: {e.Message}"); }
             }
-            catch (Exception e) { c.Res.Warnings.Add($"{Path.GetFileName(pf)}: {e.Message}"); }
         }
 
         switch (ext)

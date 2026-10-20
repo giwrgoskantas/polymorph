@@ -188,6 +188,7 @@ public sealed partial class EditorApp
         {
             T("game files browser (real install)", () => GameBrowserTest(gtaFolder));
             T("MAP mode: stream Legion Square, place a bench, edit + save .ymap", () => MapModeTest(gtaFolder));
+            T("LIBRARY BUILD: texture library from my own GTA V (every interior)", () => LibraryBuildTest(gtaFolder));
             T("MAP modeling: build on the map, MLO rooms, edit a game model in place", () => MapBuildTest(gtaFolder));
             T("FORGE: weapon and vehicle from a model, game donors", () => ForgeTest(gtaFolder));
             if (ytyp != null && File.Exists(ytyp)) T("MLO import with its models taken from the game", () => MloReal(ytyp));

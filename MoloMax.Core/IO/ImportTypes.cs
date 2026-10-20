@@ -18,6 +18,9 @@ public sealed class ImportOptions
     public bool MergeIntoOne;
     /// <summary>Folder where embedded textures are written. Null = next to the model in "&lt;name&gt;_textures".</summary>
     public string TextureFolder;
+    /// <summary>Texture name -> file already known by the caller: the .ytd next to the model is then not read at all
+    /// (the library builder hands the textures of a whole interior in one go).</summary>
+    public Dictionary<string, string> KnownTextures;
 }
 
 /// <summary>A mesh read from a file. Face MatId values index <see cref="ImportResult.Materials"/>.</summary>

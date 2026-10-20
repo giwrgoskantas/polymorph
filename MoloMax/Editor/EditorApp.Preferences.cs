@@ -280,6 +280,8 @@ public sealed partial class EditorApp : IAddonHost
             Input.ReleaseAllKeys();
         }
         foreach (var f in renderer.Textures.SearchFolders) Ui.TextDisabled(f);
+        ImGui.Separator();
+        LibraryBuildPanel();
     }
 
     void PrefsTripo()

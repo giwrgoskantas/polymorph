@@ -300,6 +300,35 @@ public sealed class GameFiles
         }
     }
 
+    /// <summary>A texture dictionary read straight from the archive.</summary>
+    public YtdFile LoadYtd(GameAsset a) => RpfFile.GetFile<YtdFile>(a.Entry);
+
+    /// <summary>Every interior (MLO archetype) of the game: its name, the .ytyp it comes from and the archetypes placed in it
+    /// (rooms and entity sets).</summary>
+    public List<(string Name, string Ytyp, List<uint> Archetypes)> Interiors(Action<string, float> progress = null)
+    {
+        BuildTypeIndex(progress);
+        var res = new List<(string, string, List<uint>)>();
+        foreach (var fe in ytypOfMlo.Values.Distinct())
+        {
+            try
+            {
+                var y = RpfFile.GetFile<YtypFile>(fe);
+                if (y?.AllArchetypes == null) continue;
+                foreach (var a in y.AllArchetypes)
+                {
+                    if (a is not MloArchetype mlo) continue;
+                    var hs = new List<uint>();
+                    if (mlo.entities != null) foreach (var e in mlo.entities) hs.Add(e._Data.archetypeName.Hash);
+                    if (mlo.entitySets != null) foreach (var set in mlo.entitySets) if (set?.Entities != null) foreach (var e in set.Entities) hs.Add(e._Data.archetypeName.Hash);
+                    res.Add((a.Name ?? JenkIndex.TryGetString(a.Hash.Hash), System.IO.Path.GetFileNameWithoutExtension(fe.NameLower ?? fe.Name), hs));
+                }
+            }
+            catch { }
+        }
+        return res;
+    }
+
     /// <summary>Raw bytes of a model file (resource header included), ready for CodeWalker's loaders.</summary>
     public byte[] ModelBytes(GameAsset a) => FileBytes(a.Entry);
 
