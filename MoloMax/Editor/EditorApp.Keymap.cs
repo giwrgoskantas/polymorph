@@ -242,10 +242,11 @@ public sealed partial class EditorApp
             if (ctrl) MaxRemove(); else MaxDelete();                                            // dissolve / delete straight away
             return;
         }
+        // Alt+W: wireframe on / off (any mode)
+        if (alt && !ctrl && !shift && P(ImGuiKey.W)) { var wv = Viewports[ActiveViewport]; wv.WireframeOnly = !wv.WireframeOnly; SetStatus(wv.WireframeOnly ? "Wireframe" : "Shaded"); return; }
         if (!edit)
         {
-            // Alt+W / Alt+E / Alt+R clear location / rotation / scale
-            if (alt && !ctrl && !shift && P(ImGuiKey.W)) { ClearTransform(0); return; }
+            // Alt+E / Alt+R clear rotation / scale (location: menu Object > Clear)
             if (alt && !ctrl && !shift && P(ImGuiKey.E)) { ClearTransform(1); return; }
             if (alt && !ctrl && !shift && P(ImGuiKey.R)) { ClearTransform(2); return; }
             return;
@@ -705,7 +706,7 @@ public sealed partial class EditorApp
         var vp = Viewports[ActiveViewport];
         if (ImGui.MenuItem("Edged Faces", "F4", vp.EdgedFaces)) vp.EdgedFaces ^= true;
         if (ImGui.MenuItem("Face Orientation", null, FaceOrientation)) FaceOrientation = !FaceOrientation;
-        if (ImGui.MenuItem("Wireframe", K("Shift+Z", "", "F3"), vp.WireframeOnly)) vp.WireframeOnly ^= true;
+        if (ImGui.MenuItem("Wireframe", K("Shift+Z", "Alt+W", "F3"), vp.WireframeOnly)) vp.WireframeOnly ^= true;
 
         ImGui.TableNextRow();
 
@@ -884,7 +885,8 @@ public sealed partial class EditorApp
             ("Double-click / Alt+double-click", "Edge or face loop / ring"),
             ("Ctrl+A / Ctrl+Shift+A / Ctrl+I / Up, Down / Ctrl+L", "Select all / none / invert / more, less / linked"),
             ("Q / W / E / R / T", "Select / Move / Rotate / Scale / Transform tool"),
-            ("Alt+W / Alt+E / Alt+R", "Clear location / rotation / scale"),
+            ("Alt+W", "Wireframe on / off"),
+            ("Alt+E / Alt+R", "Clear rotation / scale"),
             ("Shift+RMB / X / Shift+X", "Place cursor / Snapping / Snap menu"),
             ("Ctrl+D / Del, Backspace / Ctrl+Del", "Duplicate / Delete / Dissolve"),
             ("Tab / 1 2 3 / 4", "Edit mode on / off / Vertex, Edge, Face / Object mode"),

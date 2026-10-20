@@ -140,7 +140,7 @@ public sealed partial class EditorApp
             new("Front View", "View", () => Viewports[ActiveViewport].Camera.SetView(ViewKind.Front), Key: () => K("Numpad 1", "F1")),
             new("Right View", "View", () => Viewports[ActiveViewport].Camera.SetView(ViewKind.Right), Key: () => K("Numpad 3", "F2")),
             new("Perspective / Orthographic", "View", () => ToggleOrtho(Viewports[ActiveViewport].Camera), Key: () => K("Numpad 5", "")),
-            new("Toggle Wireframe", "View", () => Viewports[ActiveViewport].WireframeOnly ^= true, Key: () => K("Shift+Z", "")),
+            new("Toggle Wireframe", "View", () => Viewports[ActiveViewport].WireframeOnly ^= true, Key: () => K("Shift+Z", "Alt+W", "F3")),
             new("Toggle Quad View", "View", () => Maximized = !Maximized, Key: () => K("Ctrl+Alt+Q", "")),
             new("Toggle Sidebar (Properties)", "View", () => ShowPanel = !ShowPanel, Key: () => K("N", "Ctrl+]")),
             new("Toggle Outliner", "View", () => ShowExplorer = !ShowExplorer, Key: () => K("T", "Ctrl+[")),

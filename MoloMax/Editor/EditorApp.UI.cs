@@ -211,7 +211,7 @@ public sealed partial class EditorApp
             var label = m switch { ShadingMode.Realistic => "Realistic (GTA shader)", ShadingMode.Shaded => "Shaded", ShadingMode.VertexColour => "Vertex Color (GTA bake)", ShadingMode.Normals => "Normals", ShadingMode.UVChecker => "UV Checker", _ => "Flat Color" };
             if (ImGui.MenuItem(label, null, vp.Shading == m && !vp.WireframeOnly)) { vp.Shading = m; vp.WireframeOnly = false; }
         }
-        if (ImGui.MenuItem("Wireframe", K("Shift+Z", "", "F3"), vp.WireframeOnly)) vp.WireframeOnly = !vp.WireframeOnly;
+        if (ImGui.MenuItem("Wireframe", K("Shift+Z", "Alt+W", "F3"), vp.WireframeOnly)) vp.WireframeOnly = !vp.WireframeOnly;
         if (ImGui.MenuItem("Edged Faces", "F4", vp.EdgedFaces)) vp.EdgedFaces = !vp.EdgedFaces;
     }
 

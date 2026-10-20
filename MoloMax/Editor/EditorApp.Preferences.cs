@@ -189,6 +189,9 @@ public sealed partial class EditorApp : IAddonHost
         ImGui.Checkbox("Show grid", ref ShowGrid);
         ImGui.Checkbox("Back-face culling in the viewport", ref BackfaceCull);
         ImGui.Checkbox("Face orientation (front / back colours)", ref FaceOrientation);
+        bool ea = Settings.ExtrudeArrow;
+        if (ImGui.Checkbox("Extrude arrow on selected polygons (yellow)", ref ea)) { Settings.ExtrudeArrow = ea; Settings.Save(); }
+        Theme.Tip("Off: extrude with E or the Extrude button.");
         Ui.TextColored(Theme.Gold, "Normals colours");
         bool ColourPref(string label, float[] c, Action<float[]> set)
         {

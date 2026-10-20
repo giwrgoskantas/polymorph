@@ -537,6 +537,7 @@ public sealed partial class EditorApp
         var b = Prim(CreateKind.Box, Vector3.Zero);
         SelectOnly(b);
         SetLevel(SubObject.Polygon);
+        bool eaWas = Settings.ExtrudeArrow; Settings.ExtrudeArrow = true; // off by default, this test turns it on
         int top = Enumerable.Range(0, b.Mesh.Faces.Count).First(f => b.Mesh.FaceNormal(f).Z > 0.9f);
         SubSel(b).Faces = new HashSet<int> { top };
         Maximized = true; Viewports[ActiveViewport].Shading = ShadingMode.Realistic; FrameAll();
@@ -568,7 +569,7 @@ public sealed partial class EditorApp
         yield return Frames(2);
         yield return Shot("cube_projection_panel");
         cubeProj = null;
-        Maximized = false;
+        Maximized = false; Settings.ExtrudeArrow = eaWas;
     }
 
     /// <summary>A checker texture (DDS with mips) for the in-game test content.</summary>

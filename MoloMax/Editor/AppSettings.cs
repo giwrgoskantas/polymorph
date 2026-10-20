@@ -23,6 +23,8 @@ public sealed class AppSettings
     public bool ImportMerge { get; set; }
     /// <summary>Moving vertices / edges / polygons keeps the texture in place (3ds Max "Preserve UVs").</summary>
     public bool PreserveUVs { get; set; }
+    /// <summary>The yellow drag arrow on selected polygons (extrude). Off by default: E or the Extrude button do it.</summary>
+    public bool ExtrudeArrow { get; set; }
     public string LastFolder { get; set; }
     public string LibraryFolder { get; set; }
     /// <summary>Tripo API key, encrypted for this Windows user (DPAPI), base64.</summary>

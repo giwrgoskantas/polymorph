@@ -127,7 +127,7 @@ public sealed partial class EditorApp
     {
         a = b = default; pivot = normal = default;
         var cur = Current;
-        if (cur == null || !(Level is SubObject.Polygon or SubObject.Element) || ModalActive || transforming || SculptMode || paintMode) return false;
+        if (!Settings.ExtrudeArrow || cur == null || !(Level is SubObject.Polygon or SubObject.Element) || ModalActive || transforming || SculptMode || paintMode) return false;
         var faces = SubSel(cur).Faces;
         if (faces.Count == 0 || faces.Count > 20000) return false;
         var m = cur.Mesh; var w = cur.World;
