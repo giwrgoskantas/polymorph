@@ -236,14 +236,15 @@ float4 PSMain(PS_INPUT i) : SV_Target { return i.col * texture0.Sample(sampler0,
 
     /// <summary>Self test: modifier keys come from posted window messages, not from the physical keyboard state.</summary>
     public static bool SyntheticInput;
-    static bool synCtrl, synShift;
+    static bool synCtrl, synShift, synAlt;
 
     static void Key(KeyEventArgs e, bool down)
     {
         var io = ImGui.GetIO();
         if (e.KeyCode == Keys.ControlKey) synCtrl = down;
         if (e.KeyCode == Keys.ShiftKey) synShift = down;
-        io.AddKeyEvent(ImGuiKey.ModCtrl, e.Control || SyntheticInput && synCtrl); io.AddKeyEvent(ImGuiKey.ModShift, e.Shift || SyntheticInput && synShift); io.AddKeyEvent(ImGuiKey.ModAlt, e.Alt);
+        if (e.KeyCode == Keys.Menu) synAlt = down;
+        io.AddKeyEvent(ImGuiKey.ModCtrl, e.Control || SyntheticInput && synCtrl); io.AddKeyEvent(ImGuiKey.ModShift, e.Shift || SyntheticInput && synShift); io.AddKeyEvent(ImGuiKey.ModAlt, e.Alt || SyntheticInput && synAlt);
         var k = Map(e.KeyCode);
         if (k != ImGuiKey.None) io.AddKeyEvent(k, down);
     }
