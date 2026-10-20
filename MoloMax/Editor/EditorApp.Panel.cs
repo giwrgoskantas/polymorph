@@ -425,6 +425,8 @@ public sealed partial class EditorApp
     bool matSelOnly = true; string matSelKey; long matUsedKey; HashSet<int> matUsed;
 
     /// <summary>Material ids used by the selected faces (Polygon / Element mode) or by the selected objects; null when nothing is selected.</summary>
+    int matListShown = -1;
+
     HashSet<int> MaterialsOfSelection()
     {
         var objs = SelObjects().Where(o => o.Mesh != null).ToList();
@@ -470,6 +472,8 @@ public sealed partial class EditorApp
         if (gameMats > 0) { ImGui.Checkbox($"Game materials ({gameMats:N0})##gm", ref showGameMaterials); Theme.Tip("Materials of the game models shown in MAP mode (read from the game, not yours). Hidden unless you want to look at them."); }
         ImGui.BeginChild("##matlist", new Vector2(200, gameMats > 0 ? -56 : -30), ImGuiChildFlags.Borders);
         if (matSelOnly && (used == null || used.Count == 0)) Ui.TextDisabled("Nothing selected:\nall materials");
+        // the list goes to the picked material when it changed from the viewport (like the Scene Explorer)
+        bool scrollToMat = selectedMaterial != matListShown; matListShown = selectedMaterial;
         foreach (var m in Scene.Materials)
         {
             if (filter && !used.Contains(m.Id)) continue;
@@ -477,7 +481,8 @@ public sealed partial class EditorApp
             var c = ImGui.GetCursorScreenPos();
             ImGui.GetWindowDrawList().AddRectFilled(c + new Vector2(0, 3), c + new Vector2(10, 13), ImGui.ColorConvertFloat4ToU32(new Vector4(m.ViewportColour, 1)));
             ImGui.Dummy(new Vector2(12, 0)); ImGui.SameLine();
-            if (ImGui.Selectable($"{m.Name}##m{m.Id}", selectedMaterial == m.Id)) selectedMaterial = m.Id;
+            if (ImGui.Selectable($"{m.Name}##m{m.Id}", selectedMaterial == m.Id)) { selectedMaterial = m.Id; matListShown = m.Id; }
+            if (scrollToMat && m.Id == selectedMaterial && !ImGui.IsItemVisible()) ImGui.SetScrollHereY(0.5f);
             TutRect("mat:" + m.Id);
             // drag it onto an object in the viewport (or a face in Polygon mode) to apply it
             if (ImGui.BeginDragDropSource())
@@ -543,6 +548,8 @@ public sealed partial class EditorApp
             });
             selectedMaterial = 0;
         }
+        ImGui.SameLine();
+        EyedropperButton("eyedrop_me", ImGui.GetFrameHeight());
         ImGui.SameLine();
         if (Theme.Toggle("Assign Material to Selection", true, new Vector2(-1, 0))) AssignMaterial(mat.Id);
         ImGui.End();

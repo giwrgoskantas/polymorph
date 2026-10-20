@@ -73,16 +73,38 @@ public sealed class PolySelection
 
 public static class MeshSelect
 {
-    /// <summary>All faces connected (through shared edges) to the seed faces.</summary>
-    public static HashSet<int> Elements(PolyMesh m, IEnumerable<int> seed)
+    /// <summary>
+    /// All faces connected to the seed faces. Points at the same place count as one (game meshes are cut at every
+    /// texture seam, the pieces of one element only touch by position).
+    /// </summary>
+    public static HashSet<int> Elements(PolyMesh m, IEnumerable<int> seed, float weld = 1e-4f)
     {
-        var em = m.BuildEdgeMap();
+        // each vertex -> one id per position (grid cells, neighbours checked so points across a cell border still join)
+        int nv = m.Verts.Count; var canon = new int[nv];
+        var cells = new Dictionary<(long, long, long), List<int>>();
+        float inv = 1f / weld;
+        for (int v = 0; v < nv; v++)
+        {
+            var p = m.Verts[v]; canon[v] = v;
+            long cx = (long)MathF.Floor(p.X * inv), cy = (long)MathF.Floor(p.Y * inv), cz = (long)MathF.Floor(p.Z * inv);
+            bool found = false;
+            for (long dx = -1; dx <= 1 && !found; dx++) for (long dy = -1; dy <= 1 && !found; dy++) for (long dz = -1; dz <= 1 && !found; dz++)
+                if (cells.TryGetValue((cx + dx, cy + dy, cz + dz), out var l))
+                    foreach (var u in l) if (System.Numerics.Vector3.DistanceSquared(m.Verts[u], p) <= weld * weld) { canon[v] = canon[u]; found = true; break; }
+            var key = (cx, cy, cz);
+            if (!cells.TryGetValue(key, out var own)) cells[key] = own = new List<int>();
+            own.Add(v);
+        }
+        var vf = new Dictionary<int, List<int>>();
+        for (int fi = 0; fi < m.Faces.Count; fi++)
+            foreach (var v in m.Faces[fi].V) { int c = v < nv ? canon[v] : v; if (!vf.TryGetValue(c, out var l)) vf[c] = l = new List<int>(); l.Add(fi); }
         var res = new HashSet<int>(); var st = new Stack<int>();
-        foreach (var f in seed) if (res.Add(f)) st.Push(f);
+        foreach (var f in seed) if (f >= 0 && f < m.Faces.Count && res.Add(f)) st.Push(f);
         while (st.Count > 0)
         {
             var f = st.Pop();
-            foreach (var e in m.FaceEdges(m.Faces[f])) foreach (var g in em[e]) if (res.Add(g)) st.Push(g);
+            foreach (var v in m.Faces[f].V)
+                if (vf.TryGetValue(v < nv ? canon[v] : v, out var l)) foreach (var g in l) if (res.Add(g)) st.Push(g);
         }
         return res;
     }

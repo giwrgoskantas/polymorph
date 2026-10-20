@@ -357,6 +357,15 @@ Check("element select from one face of two separate boxes picks one box", () =>
     var a = Primitives.Box(1, 1, 1); var c = Primitives.Box(1, 1, 1); c.Transform(Matrix4x4.CreateTranslation(3, 0, 0)); a.Append(c);
     return MeshSelect.Elements(a, new[] { 0 }).Count == 6;
 });
+Check("element select joins pieces cut at texture seams (same place, different points), not a box beside it", () =>
+{
+    var a = Primitives.Box(1, 1, 1); var c = Primitives.Box(1, 1, 1); c.Transform(Matrix4x4.CreateTranslation(3, 0, 0)); a.Append(c);
+    // every face gets its own points, like a mesh read from the game
+    var verts = new List<Vector3>();
+    foreach (var f in a.Faces) { var nv = new int[f.V.Length]; for (int i = 0; i < f.V.Length; i++) { nv[i] = verts.Count; verts.Add(a.Verts[f.V[i]]); } f.V = nv; }
+    a.Verts = verts;
+    return MeshSelect.Elements(a, new[] { 0 }).Count == 6;
+});
 
 Console.WriteLine("Scene / IO / picking / lighting");
 Check("scene json round trip keeps geometry, UVs, colours, materials", () =>

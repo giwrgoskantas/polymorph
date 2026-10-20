@@ -33,6 +33,9 @@ public sealed partial class EditorApp
 {
     public readonly CreateParams Params = new();
     (CreateKind Kind, int ObjectId)? lastAdd;
+    /// <summary>Version of the primitive when it was made: once it is edited (moved vertices, edges...), the panel goes away so a
+    /// parameter change can never rebuild it over the edits.</summary>
+    int lastAddVersion;
     bool adjustOpen = true;
     readonly List<Vector3> wallPts = new();
     Vector3 wallCursor;
@@ -77,7 +80,7 @@ public sealed partial class EditorApp
         if (mesh == null) return;
         if (MapMode) Cursor3D = MapGround(); // on the map: on the ground at the middle of the view
         var o = AddObject(name, mesh, Cursor3D, type);
-        if (o != null) { lastAdd = (k, o.Id); adjustOpen = true; }
+        if (o != null) { lastAdd = (k, o.Id); lastAddVersion = o.Version; adjustOpen = true; }
     }
 
     /// <summary>Rebuilds the last added primitive with the current parameters (Adjust Last Operation).</summary>
@@ -88,13 +91,13 @@ public sealed partial class EditorApp
         if (o == null) { lastAdd = null; return; }
         var (mesh, _, _) = BuildPrimitive(lastAdd.Value.Kind);
         if (mesh == null) return;
-        o.Mesh = mesh; o.Touch(); subSel.Remove(o.Id);
+        o.Mesh = mesh; o.Touch(); subSel.Remove(o.Id); lastAddVersion = o.Version;
         Dirty = true;
     }
 
     void DrawAdjustPanel()
     {
-        if (lastAdd == null || !Scene.Objects.Any(o => o.Id == lastAdd.Value.ObjectId)) { lastAdd = null; return; }
+        if (lastAdd == null || Scene.Find(lastAdd.Value.ObjectId) is not { } la || la.Version != lastAddVersion || Level != SubObject.Object) { lastAdd = null; return; }
         var vp = Viewports[ActiveViewport];
         ImGui.SetNextWindowPos(new Vector2(vp.X + 10, vp.Y + vp.H - 10), ImGuiCond.Always, new Vector2(0, 1));
         ImGui.SetNextWindowSizeConstraints(new Vector2(250, 0), new Vector2(340, 600));

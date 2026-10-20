@@ -199,6 +199,7 @@ public sealed partial class EditorApp
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
+        T("VERTEX SNAP: in vertex mode, grab a selected vertex and drop it on another (square shown)", TutVertexSnap);
         T("GIMS HUB: Molo GTA panel in the GIMS layout (photos)", TutGimsHub);
         T("UI OPEN THEME: open window with bookmarks, toolbar fits, look in preferences (photos)", TutOpenTheme);
         T("SHAPES CLEANUP: arch door, round window, segments, clean up (photos)", TutShapesCleanup);
@@ -1089,6 +1090,77 @@ public sealed partial class EditorApp
         Expect(selectedMaterial == m2.Id && used.Count == 1, $"material editor shows the wall's material only and picks it ({Scene.Materials.First(x => x.Id == selectedMaterial).Name})");
         yield return Shot("material_editor_selection");
         materialEditorOpen = false;
+    }
+
+    IEnumerable<object> TutVertexSnap()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height;
+        P.Width = 2; P.Length = 2; P.Height = 2;
+        var b = Prim(CreateKind.Box, Vector3.Zero);
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        cam.Frame(new Vector3(-1.5f, -1.5f, -0.2f), new Vector3(1.5f, 1.5f, 2.4f)); cam.Yaw = -1.1f; cam.Pitch = 0.5f;
+        UI.ImGuiBackend.SyntheticInput = true;
+        SelectOnly(b); SetLevel(SubObject.Vertex); Tool = Tool.Move; Snap = true; SnapVertexT = true;
+        int ia = b.Mesh.Verts.FindIndex(v => v.X > 0.9f && v.Y < -0.9f && v.Z > 1.9f);
+        int ib = b.Mesh.Verts.FindIndex(v => v.X < -0.9f && v.Y < -0.9f && v.Z > 1.9f);
+        SubSel(b).Verts.Clear(); SubSel(b).Verts.Add(ia);
+        yield return Frames(6);
+        var pa = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ia], b.World)) + new Vector2(14, 4);
+        var pb = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ib], b.World));
+        // beside the gizmo centre: the vertex itself, the gizmo is drawn on it so aim a few pixels off its arrows
+        foreach (var x in MouseTo(ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ia], b.World)) + new Vector2(-6, 6), 15)) yield return x;
+        yield return Frames(4);
+        Expect(snapHover != null, "a selected vertex under the mouse is offered (yellow square)");
+        yield return Shot("vertex_hover");
+        var pg0 = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ia], b.World)) + new Vector2(-6, 6);
+        PostMouse(0x201, pg0, 1); tutClick = 0.35f; yield return Frames(3);
+        Expect(pendingGrab != null || transforming, $"press on the vertex starts a grab (pending {pendingGrab != null}, transforming {transforming}, box {lmbTracking}, gizmo {gizmo.Hover}, hover {snapHover != null}, down {Input.Down(System.Windows.Forms.MouseButtons.Left)})");
+        foreach (var x in MouseTo(Vector2.Lerp(pg0, pb, 0.3f), 8, 1)) yield return x;
+        Expect(transforming, $"dragging carries the vertex (pending {pendingGrab != null}, transforming {transforming}, down {Input.Down(System.Windows.Forms.MouseButtons.Left)}, mouse {Input.Mouse})");
+        foreach (var x in MouseTo(pb, 20, 1)) yield return x;
+        yield return Frames(4);
+        Expect(snapMarker != null, $"cyan square on the target vertex ({snapMarker})");
+        PostMouse(0x202, pb, 0); yield return Frames(6);
+        float dist = Vector3.Distance(b.Mesh.Verts[ia], b.Mesh.Verts[ib]);
+        Expect(dist < 1e-3f, $"dropped exactly on the other vertex (distance {dist:0.0000})");
+        // the Add Box panel must never rebuild the box over hand edits
+        lastAdd = (CreateKind.Box, b.Id); lastAddVersion = b.Version - 1; yield return Frames(3);
+        Expect(lastAdd == null, "Adjust Last Operation (Add Box) closes once the box was edited: a parameter change can't undo the edits");
+        yield return Shot("vertex_snapped");
+        // the middle button does the same (Mimi's way): another corner dropped on a third one
+        int ic = b.Mesh.Verts.FindIndex(v => v.X > 0.9f && v.Y > 0.9f && v.Z > 1.9f);
+        int id2 = b.Mesh.Verts.FindIndex(v => v.X > 0.9f && v.Y > 0.9f && v.Z < 0.1f);
+        SubSel(b).Verts.Clear(); SubSel(b).Verts.Add(ic); yield return Frames(4);
+        var pc = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ic], b.World)) + new Vector2(-6, 6);
+        var pd = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[id2], b.World));
+        foreach (var x in MouseTo(pc, 10)) yield return x;
+        yield return Frames(3);
+        PostMouse(0x207, pc, 0x10); yield return Frames(3);
+        Expect(transforming, "middle button on the selected vertex grabs it");
+        foreach (var x in MouseTo(pd, 25, 0x10)) yield return x;
+        yield return Frames(3);
+        yield return Shot("vertex_mmb_target");
+        PostMouse(0x208, pd, 0); yield return Frames(6);
+        float d2 = Vector3.Distance(b.Mesh.Verts[ic], b.Mesh.Verts[id2]);
+        Expect(d2 < 1e-3f, $"middle-button drag drops it on the other vertex (distance {d2:0.0000})");
+        Snap = false;
+        // pipette: a face of another object gives its material; in Polygon mode it goes on the selected faces
+        var red = Scene.AddMaterial("pipette_red", new Vector3(0.9f, 0.1f, 0.1f));
+        var b2 = Prim(CreateKind.Box, new Vector3(0, 4, 0)); b2.Mesh.SetAllMaterial(red.Id); b2.Touch();
+        cam.Frame(new Vector3(-1.5f, -1.5f, -0.2f), new Vector3(1.5f, 5.5f, 2.4f)); yield return Frames(4);
+        SelectOnly(b); SetLevel(SubObject.Polygon); SubSel(b).Faces.Clear(); SubSel(b).Faces.Add(0);
+        eyedropper = true; yield return Frames(2);
+        var top2 = FaceToward(b2, Vector3.UnitZ);
+        var pt = ScreenOf(vp, Vector3.Transform(b2.Mesh.FaceCenter(top2), b2.World));
+        foreach (var x in MouseTo(pt, 10)) yield return x;
+        PostMouse(0x201, pt, 1); yield return Frames(3); PostMouse(0x202, pt, 0); yield return Frames(4);
+        Expect(!eyedropper && selectedMaterial == red.Id && b.Mesh.Faces[0].MatId == red.Id, "pipette: the other box's material is picked and put on the selected face");
+        materialEditorOpen = true; yield return Frames(6);
+        yield return Shot("pipette");
+        materialEditorOpen = false;
+        SetLevel(SubObject.Object); UI.ImGuiBackend.SyntheticInput = false;
     }
 
     IEnumerable<object> TutGimsHub()

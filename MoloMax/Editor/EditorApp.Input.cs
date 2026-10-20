@@ -97,7 +97,16 @@ public sealed partial class EditorApp
             && Tool != Tool.Select && Selected.Count > 0 && !SculptMode && !paintMode)
         {
             var h = gizmo.HitTest(hv, GizmoLayout(hv), Tool, Input.Mouse);
-            if (h != GizmoHandle.None)
+            if ((h == GizmoHandle.None || Level != SubObject.Object) && snapHover is { } mgrab && Tool == Tool.Move)
+            {
+                // snap on, the middle button on a point of the selection: carry that point onto a vertex / edge / face
+                ActiveViewport = Array.IndexOf(Viewports, hv);
+                shiftClone = false;
+                BeginTransform(hv, GizmoHandle.View);
+                snapFrom = mgrab;
+                xfButton = MouseButtons.Middle;
+            }
+            else if (h != GizmoHandle.None)
             {
                 ActiveViewport = Array.IndexOf(Viewports, hv);
                 shiftClone = false;
@@ -161,6 +170,9 @@ public sealed partial class EditorApp
         // ---- modal tools take the buttons
         if (modalOn) { ModalMouse(hv); return; }
 
+        // ---- material pipette: the next click on a face takes its material
+        if (EyedropperInput(hv, uiMouse)) return;
+
         // ---- Molo Paint strokes and decal placement take the left button
         if (DecalPlaceInput(hv, uiMouse) || SculptInput(hv, uiMouse) || PaintInput(hv, uiMouse)) return;
 
@@ -201,6 +213,11 @@ public sealed partial class EditorApp
                 // the view cube: a click picks a face (on release), a press held and dragged turns the view
                 cubeDrag = true; cubeMoved = 0; cubeViewport = hv;
                 cubeOnFace = ViewCube.HitTest(hv, Input.Mouse, out cubeKind);
+            }
+            else if (snapHover is { } vgrab && Tool == Tool.Move && Level != SubObject.Object && Selected.Count > 0)
+            {
+                // edit mode, snap on, the mouse on a selected vertex (even where the gizmo sits): a drag carries that vertex
+                pendingGrab = vgrab; pendingGrabVp = hv; pendingGrabStart = Input.Mouse; lmbDouble = Input.DoubleClick;
             }
             else if (Tool != Tool.Select && gizmo.Hover != GizmoHandle.None)
             {
@@ -447,7 +464,7 @@ public sealed partial class EditorApp
         {
             // clicking another mesh in a sub-object level goes on editing that mesh, same level
             // (a GTA room is cut in many meshes: the face under the mouse is often not the one being edited)
-            var other = Picking.PickObject(Scene, ray);
+            var other = PickVisibleFace(ray); // only what is drawn: the hidden back of a one-sided wall doesn't take the click
             if (other.HasValue && other.Value.Object != cur && other.Value.Object.Mesh != null && !other.Value.Object.Frozen)
             {
                 var mine = Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
@@ -665,6 +682,19 @@ public sealed partial class EditorApp
     }
 
     /// <summary>Back faces of this object are not drawn (Backface Cull, MLO rooms always): picking skips them too.</summary>
+    /// <summary>The nearest face the viewport actually draws (back faces skipped where they are culled).</summary>
+    PickHit? PickVisibleFace(in Ray ray)
+    {
+        PickHit? best = null;
+        foreach (var o in Scene.Objects)
+        {
+            if (o.Hidden || o.Frozen || o.Mesh == null || o.Mesh.Faces.Count == 0 || o.Gta is { BoundsOnly: true }) continue;
+            var h = Picking.PickFace(o, ray, evaluated: o.Modifiers is { Count: > 0 }, cullBack: CulledFor(o));
+            if (h.HasValue && (!best.HasValue || h.Value.Distance < best.Value.Distance)) best = h;
+        }
+        return best;
+    }
+
     bool CulledFor(SceneObject o) => !FaceOrientation && o.GtaType != GtaObjectType.Portal && (BackfaceCull || o.GtaType == GtaObjectType.MloRoom);
 
     void SelectionChanged()

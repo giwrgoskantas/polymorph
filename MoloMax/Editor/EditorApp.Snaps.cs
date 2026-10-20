@@ -228,7 +228,24 @@ public sealed partial class EditorApp
     void UpdateSnapHover(Viewport hv)
     {
         snapHover = null; snapHoverPts = null;
-        if (hv == null || transforming || ModalActive || Tool != Tool.Move || Selected.Count == 0 || Level != SubObject.Object || !SnapActive || !AnyElementSnap) return;
+        if (hv == null || transforming || ModalActive || Tool != Tool.Move || Selected.Count == 0 || !SnapActive || !AnyElementSnap) return;
+        if (Level != SubObject.Object)
+        {
+            // (checked before the gizmo: the gizmo sits on the selected vertex, the vertex wins within a few pixels)
+            // edit mode: a selected vertex (or a corner of the selected edges / faces) under the mouse is the point a drag carries
+            var cur = Current; if (cur == null || hv.Camera == null) return;
+            var m = cur.Mesh; var w = cur.World; var local = hv.Local(Input.Mouse);
+            float best = gizmo.Hover != GizmoHandle.None ? 9f : 12f; int bi = -1;
+            foreach (var vi in SubSel(cur).VerticesOf(m, Level))
+            {
+                if (vi >= m.Verts.Count || !hv.Camera.Project(Vector3.Transform(m.Verts[vi], w), hv.W, hv.H, out var sp, out _)) continue;
+                float d = Vector2.Distance(sp, local);
+                if (d < best) { best = d; bi = vi; }
+            }
+            if (bi >= 0) { snapHover = Vector3.Transform(m.Verts[bi], w); snapHoverKind = "vertex"; }
+            snapMarker = null;
+            return;
+        }
         if (gizmo.Hover != GizmoHandle.None) return;
         // a corner, a point of an edge or of a face of the selection (priority in that order)
         if (SnapPoint(hv, out var p, selectionOnly: true, pxRadius: 12f)) { snapHover = p; snapHoverKind = snapMarkerKind; snapHoverPts = snapElPts; }
@@ -238,12 +255,13 @@ public sealed partial class EditorApp
     /// <summary>The vertices the snap works with, drawn as dots: the selection's while choosing the point to grab, the target's while moving.</summary>
     void SnapDotsOverlay(ImDrawListPtr dl, Viewport vp)
     {
-        if (!SnapActive || !AnyElementSnap || Tool != Tool.Move || Level != SubObject.Object) return;
+        if (!SnapActive || !AnyElementSnap || Tool != Tool.Move) return;
         bool moving = transforming || ModalActive;
+        if (Level != SubObject.Object && !moving && snapHover == null) return; // edit mode: only the grabbed point and the target
         if (!moving && Selected.Count == 0) return;
         if (!moving && Hovered() != vp) return;
         IEnumerable<SceneObject> objs = moving ? (snapTargetObj >= 0 && Scene.Find(snapTargetObj) is { } t ? new[] { t } : Array.Empty<SceneObject>())
-                                               : Selected.Select(id => Scene.Find(id)).Where(o => o != null);
+                                               : Level != SubObject.Object ? Array.Empty<SceneObject>() : Selected.Select(id => Scene.Find(id)).Where(o => o != null);
         var origin = new Vector2(vp.X, vp.Y);
         var tint = moving ? new Vector3(0.2f, 0.95f, 1f) : new Vector3(1f, 0.85f, 0.3f);
         uint Col(float a) => ImGui.ColorConvertFloat4ToU32(new Vector4(tint, a));

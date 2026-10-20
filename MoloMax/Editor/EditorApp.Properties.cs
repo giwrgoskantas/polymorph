@@ -628,6 +628,8 @@ public sealed partial class EditorApp
 
     // ------------------------------------------------------------------------------------- Material
 
+    int slotListObj = -1, slotMatId = -1;
+
     void MaterialProps()
     {
         var o = Current;
@@ -637,8 +639,13 @@ public sealed partial class EditorApp
         var slots = new List<int>();
         foreach (var f in o.Mesh.Faces) if (!slots.Contains(f.MatId)) slots.Add(f.MatId);
         if (slots.Count == 0) slots.Add(0);
+        // the picked slot follows its material (the list order changes after an assign)
+        if (slotMatId >= 0 && slots.IndexOf(slotMatId) is int keep && keep >= 0) materialSlot = keep;
+        int slotBefore = materialSlot;
         if (SyncMaterialToFaces(o) is int fm && slots.IndexOf(fm) is int si && si >= 0) materialSlot = si;
         materialSlot = Math.Clamp(materialSlot, 0, slots.Count - 1);
+        // the list scrolls to the material of the picked faces (like the Scene Explorer goes to the picked object)
+        bool scrollToSlot = materialSlot != slotBefore || o.Id != slotListObj; slotListObj = o.Id;
         ImGui.BeginChild("##slots", new Vector2(-28, Math.Min(6, slots.Count) * ImGui.GetTextLineHeightWithSpacing() + 10), ImGuiChildFlags.Borders);
         for (int i = 0; i < slots.Count; i++)
         {
@@ -646,17 +653,18 @@ public sealed partial class EditorApp
             var c = ImGui.GetCursorScreenPos();
             ImGui.GetWindowDrawList().AddCircleFilled(c + new Vector2(6, 8), 5, ImGui.ColorConvertFloat4ToU32(new Vector4(m.ViewportColour, 1)));
             ImGui.Dummy(new Vector2(14, 0)); ImGui.SameLine();
-            if (ImGui.Selectable($"{m.Name}##slot{i}", materialSlot == i))
+            if (ImGui.Selectable($"{m.Name}##slot{i}", materialSlot == i, ImGuiSelectableFlags.AllowDoubleClick))
             {
-                materialSlot = i;
-                // in edit mode a click on a material selects its faces (Ctrl adds to the selection)
-                if (Level != SubObject.Object)
+                // a click only picks the material (then Assign puts it on the selected faces); a double-click selects its faces
+                materialSlot = i; slotMatId = m.Id; selectedMaterial = m.Id;
+                if (Level != SubObject.Object && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                 {
                     if (Input.Ctrl) { Level = SubObject.Polygon; SubSel(o).Faces.UnionWith(MeshSelect.FacesByMaterial(o.Mesh, m.Id)); }
                     else SelectByMaterial(m.Id);
                 }
             }
-            if (ImGui.IsItemHovered() && Level != SubObject.Object) ImGui.SetTooltip("Click: select its faces · Ctrl+click: add them");
+            if (ImGui.IsItemHovered() && Level != SubObject.Object) ImGui.SetTooltip("Click: pick it (Assign puts it on the selected faces) · Double-click: select its faces · Ctrl+double-click: add them");
+            if (scrollToSlot && i == materialSlot && !ImGui.IsItemVisible()) ImGui.SetScrollHereY(0.5f);
         }
         ImGui.EndChild();
         ImGui.SameLine();
@@ -672,9 +680,11 @@ public sealed partial class EditorApp
         Theme.Tip("New material");
         if (ImGui.Button("L", new Vector2(22, 22))) OpenLibrary(LibraryAction.Assign);
         Theme.Tip("Molo Materials: pick a GTA material from your texture library");
+        EyedropperButton("eyedrop_tab");
         ImGui.EndGroup();
 
         var slotMat = Scene.Material(slots[materialSlot]);
+        slotMatId = slotMat.Id;
         // browse: replace the material of this slot on the object
         var names = Scene.Materials.Select(m => m.Name).ToArray();
         int bi = Math.Max(0, Scene.Materials.FindIndex(m => m.Id == slotMat.Id));
@@ -687,9 +697,19 @@ public sealed partial class EditorApp
         if (Level != SubObject.Object)
         {
             float w3 = (ImGui.GetContentRegionAvail().X - 8) / 3;
-            if (ImGui.Button("Assign", new Vector2(w3, 0))) AssignMaterial(slotMat.Id); ImGui.SameLine();
-            if (ImGui.Button("Select", new Vector2(w3, 0))) SelectByMaterial(slotMat.Id); ImGui.SameLine();
-            if (ImGui.Button("Deselect", new Vector2(w3, 0))) { var s = SubSel(o); s.Faces.RemoveWhere(f => f < o.Mesh.Faces.Count && o.Mesh.Faces[f].MatId == slotMat.Id); }
+            if (ImGui.Button("Assign", new Vector2(w3, 0)))
+            {
+                int nSel = SubSel(o).Faces.Count;
+                if (Level is not (SubObject.Polygon or SubObject.Element) || nSel == 0) SetStatus("Select faces first (Polygon mode), then Assign.");
+                else { AssignMaterial(slotMat.Id); SetStatus($"{slotMat.Name} put on {nSel} face(s)"); }
+            }
+            Theme.Tip("Puts this material on the selected faces");
+            ImGui.SameLine();
+            if (ImGui.Button("Select", new Vector2(w3, 0))) { SelectByMaterial(slotMat.Id); SetStatus($"{SubSel(o).Faces.Count} face(s) with {slotMat.Name} selected"); }
+            Theme.Tip("Selects every face that has this material");
+            ImGui.SameLine();
+            if (ImGui.Button("Deselect", new Vector2(w3, 0))) { var s = SubSel(o); int n0 = s.Faces.Count; s.Faces.RemoveWhere(f => f < o.Mesh.Faces.Count && o.Mesh.Faces[f].MatId == slotMat.Id); SetStatus($"{n0 - s.Faces.Count} face(s) with {slotMat.Name} deselected"); }
+            Theme.Tip("Removes the faces with this material from the selection");
         }
         ImGui.Separator();
         MaterialSettings(slotMat);
