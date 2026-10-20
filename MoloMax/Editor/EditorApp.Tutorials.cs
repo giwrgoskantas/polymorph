@@ -200,6 +200,7 @@ public sealed partial class EditorApp
         T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
         T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
+        T("TUTO 19 GTA panel: create by category, tools, checks, properties, export", TutGtaPanel);
         T("TUTO 18 edit mode tricks: vertex onto vertex, pipette, Alt+W", TutEditTricks);
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
@@ -1295,6 +1296,93 @@ public sealed partial class EditorApp
         cur = Scene.Find(b.Id);
         Expect(cur.Mesh.Faces.Count == 7, $"7 faces after the copy ({cur.Mesh.Faces.Count})");
         SetLevel(SubObject.Object); UI.ImGuiBackend.SyntheticInput = false;
+    }
+
+    IEnumerable<object> DoubleClickAt(Vector2 at, int moveFrames = 20)
+    {
+        foreach (var x in MouseTo(at, moveFrames)) yield return x;
+        yield return Frames(4);
+        PostMouse(0x201, at, 1); tutClick = 0.35f; yield return Frames(1); PostMouse(0x202, at, 0); yield return Frames(1);
+        PostMouse(0x203, at, 1); yield return Frames(1); PostMouse(0x202, at, 0); yield return Frames(6);
+    }
+
+    /// <summary>Film: the GTA panel (GIMS-style) — open it, create objects by category, the tools, checks, properties, export.</summary>
+    IEnumerable<object> TutGtaPanel()
+    {
+        Fresh(); paintMode = false; SculptMode = false; HubOpen = false; hubPage = HubPage.Home; hubBack.Clear();
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        vp.Camera.Yaw = -2.2f; vp.Camera.Pitch = 0.45f;
+        var prop = Prim(CreateKind.Box, new Vector3(0, 0, 0)); prop.Name = "my_prop";
+        vp.Camera.Frame(new Vector3(-4, -4, -1), new Vector3(4, 4, 4));
+        SelectOnly(prop); Tool = Tool.Select;
+        foreach (var x in StartFilm("19_gta_panel", 7)) yield return x;
+        foreach (var x in Say("The GTA panel", "Everything for GTA V and FiveM in one place, laid out like GIMS", 70)) yield return x;
+        // 1. open it
+        foreach (var x in Say("F10 opens it", "Or the GTA button in the toolbar")) yield return x;
+        foreach (var x in Tap(Keys.F10)) yield return x;
+        if (!HubOpen) HubOpen = true;
+        yield return Frames(40);
+        // 2. create object by category
+        foreach (var x in Say("Create object: pick a category", "Model, Collision, MLO, Light - like GIMS")) yield return x;
+        foreach (var x in ClickAt(TutCentre("g:Create object"))) yield return x;
+        if (hubPage != HubPage.Create) { gCreateCat = null; HubGo(HubPage.Create); }
+        yield return Frames(30);
+        foreach (var x in ClickAt(TutCentre("gc:MLO"))) yield return x;
+        if (gCreateCat != "MLO") gCreateCat = "MLO";
+        yield return Frames(20);
+        foreach (var x in Say("Double-click to create it", "Here an MLO room: closed, normals inside")) yield return x;
+        int n0 = Scene.Objects.Count;
+        foreach (var x in DoubleClickAt(TutCentre("gc:Room"))) yield return x;
+        if (Scene.Objects.Count == n0) GimsCreateObject("Room");
+        vp.Camera.Frame(new Vector3(-5, -5, -1), new Vector3(5, 5, 5)); yield return Frames(40);
+        foreach (var x in ClickAt(TutCentre("gc:< categories"))) yield return x;
+        gCreateCat = "Collision"; yield return Frames(15);
+        foreach (var x in Say("Collision lives here too", "Collision from selection, collision box, collision settings")) yield return x;
+        yield return Frames(30);
+        foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
+        if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
+        yield return Frames(15);
+        // 3. tools
+        SelectOnly(prop); yield return Frames(4);
+        foreach (var x in Say("Tools: what to do with the selection", "Clone, collision from selection, vertex colours, clean up")) yield return x;
+        foreach (var x in ClickAt(TutCentre("g:Tools"))) yield return x;
+        if (hubPage != HubPage.GTools) HubGo(HubPage.GTools);
+        yield return Frames(15);
+        foreach (var x in ClickAt(TutCentre("g:tab_game"))) yield return x;
+        gToolsTab = 1; yield return Frames(20);
+        foreach (var x in ClickAt(TutCentre("g:fixvc"))) yield return x;
+        yield return Frames(40);
+        foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
+        if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
+        yield return Frames(15);
+        // 4. checks
+        foreach (var x in Say("Checks: every GTA rule in one click", "Limbo, collision, vertex colours, 60k limit, names - and Fix all")) yield return x;
+        foreach (var x in ClickAt(TutCentre("g:Checks"))) yield return x;
+        if (hubPage != HubPage.Checks) { HubGo(HubPage.Checks); RunGtaChecks(); }
+        checkOpen = false; yield return Frames(70);
+        foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
+        if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
+        yield return Frames(15);
+        // 5. properties
+        foreach (var x in Say("Object properties", "Shell, prop, door or exterior; name, LOD, flags")) yield return x;
+        foreach (var x in ClickAt(TutCentre("g:Object properties"))) yield return x;
+        if (hubPage != HubPage.Object) HubGo(HubPage.Object);
+        yield return Frames(60);
+        foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
+        if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
+        yield return Frames(15);
+        // 6. export
+        foreach (var x in Say("Export: a FiveM resource, ready to ensure", "ydr, ybn, ytyp, ymap and fxmanifest - or just the selected models")) yield return x;
+        foreach (var x in ClickAt(TutCentre("g:Export"))) yield return x;
+        if (hubPage != HubPage.Export) HubGo(HubPage.Export);
+        yield return Frames(70);
+        foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
+        if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
+        foreach (var x in Say("Server sends it to your test server", "Exported, copied and restarted in one click", 70)) yield return x;
+        foreach (var x in MouseTo(TutCentre("g:Server"), 25)) yield return x;
+        yield return Frames(40);
+        foreach (var x in EndFilm()) yield return x;
+        HubOpen = false; checkOpen = false;
     }
 
     IEnumerable<object> TutGimsHub()

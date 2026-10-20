@@ -74,6 +74,7 @@ public sealed partial class EditorApp
         {
             ImGui.SetCursorScreenPos(wp + new Vector2(3 * u, 4 * u));
             if (ImGui.InvisibleButton("##hubback", new Vector2(9 * u, 9 * u))) HubBack();
+            TutRect("g:back");
             bool hv = ImGui.IsItemHovered();
             var c = wp + new Vector2(7.5f * u, 8.5f * u); float r = 3.2f * u;
             dl.AddCircle(c, r + 0.6f * u, U(hv ? GAccent : GGray), 24, 1.5f);
@@ -209,7 +210,7 @@ public sealed partial class EditorApp
     {
         var p = wp + new Vector2(x * u, y * u); var size = new Vector2(w * u, h * u);
         ImGui.SetCursorScreenPos(p);
-        bool clicked = ImGui.InvisibleButton("##gt" + text, size);
+        bool clicked = ImGui.InvisibleButton("##gt" + text, size); TutRect("g:" + text);
         bool hv = ImGui.IsItemHovered(), act = ImGui.IsItemActive();
         var dl = ImGui.GetWindowDrawList();
         dl.AddRectFilled(p, p + size, U(hv || act ? GAccent : GTheme));
@@ -337,6 +338,7 @@ public sealed partial class EditorApp
         if (Theme.Toggle("Polymorph##gtt", gToolsTab == 0, new Vector2(tw, 9 * u))) gToolsTab = 0;
         ImGui.SameLine(0, 2 * u);
         if (Theme.Toggle("Game##gtt", gToolsTab == 1, new Vector2(tw, 9 * u))) gToolsTab = 1;
+        TutRect("g:tab_game");
         ImGui.Spacing();
         if (gToolsTab == 0) { HubTools(); return; }
         float full = ImGui.GetContentRegionAvail().X, half = (full - 2 * u) / 2;
@@ -348,7 +350,8 @@ public sealed partial class EditorApp
         if (ImGui.Button("Clone", new Vector2(26 * u, 9 * u))) { var before = Selected.ToHashSet(); CloneSelection(); if (!gCloneSelect) { Selected.Clear(); foreach (var id in before) Selected.Add(id); SelectionChanged(); } }
         ImGui.SameLine(0, 2 * u); ImGui.Checkbox("Select cloned objects", ref gCloneSelect);
         if (ImGui.Button("Collision from selection", new Vector2(full, 9 * u))) CollisionFromSelection();
-        if (ImGui.Button("Fix vertex colours (green inside, red outside, white emissive)", new Vector2(full, 9 * u)))
+        bool fixVc = ImGui.Button("Fix vertex colours (green inside, red outside, white emissive)", new Vector2(full, 9 * u)); TutRect("g:fixvc");
+        if (fixVc)
         { Do("Fix vertex colours", () => MoloMax.Core.Gta.Check.GtaChecker.FixAll(Scene)); hubIssuesTime = -10; }
         if (ImGui.Button("Clean up (fewer edges, same shape)", new Vector2(full, 9 * u))) CleanUpSelected();
         if (ImGui.Button("Run the checks", new Vector2(full, 9 * u))) { HubGo(HubPage.Checks); RunGtaChecks(); }
@@ -384,7 +387,10 @@ public sealed partial class EditorApp
             ImGui.PushFont(Ui.TileFont); Ui.Text("Select an object category"); ImGui.PopFont();
             ImGui.BeginChild("##gcats", new Vector2(-1, -1), ImGuiChildFlags.Borders);
             foreach (var (cat, _) in GimsCreateCats)
+            {
                 if (ImGui.Selectable(cat, false, ImGuiSelectableFlags.None, new Vector2(0, 7 * u))) gCreateCat = cat;
+                TutRect("gc:" + cat);
+            }
             ImGui.EndChild();
             return;
         }
@@ -394,6 +400,7 @@ public sealed partial class EditorApp
         foreach (var (name, tip) in GimsCreateCats.First(c => c.Cat == gCreateCat).Items)
         {
             if (ImGui.Selectable(name, false, ImGuiSelectableFlags.AllowDoubleClick, new Vector2(0, 7 * u)) && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) GimsCreateObject(name);
+            TutRect("gc:" + name);
             GimsTip(tip + " (double-click)");
         }
         ImGui.EndChild();
