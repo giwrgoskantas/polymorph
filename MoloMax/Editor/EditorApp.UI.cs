@@ -101,7 +101,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Material Editor", "M", materialEditorOpen)) materialEditorOpen = !materialEditorOpen;
             if (ImGui.MenuItem("Sculpt Mode", null, SculptMode, Current != null)) ToggleSculptMode();
             if (ImGui.MenuItem("Run Python Script...")) RunScriptDialog();
-            if (ImGui.MenuItem("Python & MCP (Claude)...")) { prefsOpen = true; prefsSection = 8; }
+            if (ImGui.MenuItem("Python & MCP...")) { prefsOpen = true; prefsSection = 8; }
             ImGui.Separator();
             if (ImGui.MenuItem("Apply Rotation & Scale", K("Ctrl+A", ""))) ResetXForm();
             if (ImGui.MenuItem("Origin to Geometry")) CenterPivot();
@@ -135,7 +135,7 @@ public sealed partial class EditorApp
         }
         if (ImGui.BeginMenu("GTA"))
         {
-            if (ImGui.MenuItem("Molo GTA panel", "F10", HubOpen)) HubOpen = !HubOpen;
+            if (ImGui.MenuItem("GTA panel", "F10", HubOpen)) HubOpen = !HubOpen;
             if (ImGui.MenuItem("Game files browser (GTA V)...")) OpenGameBrowser();
             if (ImGui.MenuItem("Asset Browser")) OpenAssetBrowser();
             if (ImGui.MenuItem("Import MLO (.ytyp)...")) ImportMloDialog();
@@ -288,7 +288,7 @@ public sealed partial class EditorApp
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.08f, 0.07f, 0.05f, 1));
         if (ImGui.Button(" GTA ", sz)) HubOpen = !HubOpen;
         ImGui.PopStyleColor(3);
-        Theme.Tip("Molo GTA panel (F10): export the FiveM resource, MLO builder, collision, checks.");
+        Theme.Tip("GTA panel (F10): export the FiveM resource, MLO builder, collision, checks.");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
         // the last button always fits the window: shorter label, then just the key, when the toolbar is full
         float room = ImGui.GetContentRegionAvail().X - 4;

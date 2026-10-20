@@ -173,7 +173,6 @@ public sealed partial class EditorApp
             ("UV", "Unwrap UVW modifier: seams, peel, relax, stitch, pack, density.", "CREATE", OpenUnwrapModifier),
             ("Sculpt", "Smooth, relax, flatten... to clean generated meshes.", "CREATE", ToggleSculptMode),
             ("Animation", "UV and object animations to YCD (30 fps).", "CREATE", () => hubPage = HubPage.Anim),
-            ("Python & MCP", "Scripts and Claude driving Polymorph.", "CREATE", () => { prefsOpen = true; prefsSection = 8; }),
         };
         string section = null; int col = 0;
         foreach (var t in tiles)
@@ -295,7 +294,7 @@ public sealed partial class EditorApp
             try { lastReport = exportTask.Result; }
             catch (Exception e) { lastReport = new ExportReport(); lastReport.Errors.Add(e.InnerException?.Message ?? e.Message); }
             exportTask = null;
-            SetStatus(lastReport.Ok ? $"Exported {lastReport.Files.Count} files to {lastReport.ResourceFolder}" : "Export failed, see the Molo GTA panel.");
+            SetStatus(lastReport.Ok ? $"Exported {lastReport.Files.Count} files to {lastReport.ResourceFolder}" : "Export failed, see the GTA panel.");
         }
         if (lastReport != null) ReportView(lastReport);
     }
@@ -598,6 +597,8 @@ public sealed partial class EditorApp
         if (objs.Count == 0) { Ui.TextWrapped("Select one or more objects. Changes apply to every selected object."); return; }
         var o = Current ?? objs[0];
         Ui.Text(objs.Count == 1 ? o.Name : $"{objs.Count} objects (showing {o.Name})");
+        // a collision selected: its settings are one click away (like GIMS, collision has no tile of its own)
+        if (o.GtaType is GtaObjectType.Collision or GtaObjectType.CollisionGroup && ImGui.Button("Collision settings (material, RoomID, flags)", new Vector2(-1, 0))) hubPage = HubPage.Collision;
         var lay = HubLayout();
         if (o.GtaType == GtaObjectType.Drawable)
             Ui.TextDisabled("Exports as: " + GtaExporter.ResolveRole(o, lay, Scene.Gta.PortalMaxGap, Scene));

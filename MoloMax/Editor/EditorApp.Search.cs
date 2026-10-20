@@ -41,7 +41,7 @@ public sealed partial class EditorApp
             new("Import Model (GTA ydr / yft / ybn, GLB, OBJ)...", "File", ImportDialog, Key: () => "Ctrl+Shift+O"),
             new("Export OBJ (all)", "File", () => ExportObj(false)),
             new("Export OBJ (selected)", "File", () => ExportObj(true)),
-            new("Export FiveM Resource", "GTA", () => { OpenHub(1); }, Help: "Molo GTA > Export"),
+            new("Export FiveM Resource", "GTA", () => { OpenHub(1); }, Help: "GTA panel > Export"),
             new("Preferences", "Edit", () => prefsOpen = true, Key: () => "Ctrl+,"),
             new("Undo", "Edit", DoUndo, Key: () => "Ctrl+Z"),
             new("Redo", "Edit", DoRedo, Key: () => "Ctrl+Shift+Z"),
@@ -145,7 +145,7 @@ public sealed partial class EditorApp
             new("Toggle Sidebar (Properties)", "View", () => ShowPanel = !ShowPanel, Key: () => K("N", "Ctrl+]")),
             new("Toggle Outliner", "View", () => ShowExplorer = !ShowExplorer, Key: () => K("T", "Ctrl+[")),
             // tools
-            new("Molo GTA Panel", "GTA", () => HubOpen = !HubOpen, Key: () => "F10"),
+            new("GTA Panel", "GTA", () => HubOpen = !HubOpen, Key: () => "F10"),
             new("MLO Builder (rooms, portals)", "GTA", () => OpenHub(2)),
             new("GTA Object Properties", "GTA", () => { propTab = PropTab.Gta; ShowPanel = true; }),
             new("Check Scene for GTA", "GTA", RunGtaChecks),

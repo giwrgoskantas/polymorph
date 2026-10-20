@@ -29,14 +29,14 @@ public sealed partial class EditorApp
 
     static string HubTitle(HubPage p, bool sel) => p switch
     {
-        HubPage.Home => "Molo GTA",
+        HubPage.Home => "Polymorph GTA",
         HubPage.Export => sel ? "Export models" : "Export",
         HubPage.Mlo => "MLO builder",
         HubPage.Object => "Object",
         HubPage.Collision => "Collision",
         HubPage.Checks => "Checks",
         HubPage.Tripo => "Tripo",
-        HubPage.Tools => "Molo tools",
+        HubPage.Tools => "Tools",
         HubPage.GTools => "Tools",
         HubPage.Anim => "Animation",
         HubPage.Create => "Create",
@@ -59,7 +59,7 @@ public sealed partial class EditorApp
         ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.2f, 0.2f, 0.2f, 1));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         bool open = HubOpen;
-        bool shown = ImGui.Begin("Molo GTA###hub", ref open, ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar);
+        bool shown = ImGui.Begin("Polymorph GTA###hub", ref open, ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar);
         ImGui.PopStyleVar();
         if (!shown) { ImGui.End(); ImGui.PopStyleColor(3); HubOpen = open; return; }
 
@@ -162,24 +162,19 @@ public sealed partial class EditorApp
         if (GimsTile("Material editor", wp, u, 6, 55, 54, 26, GimsIcon.Materials)) materialEditorOpen = true;
         GimsTip("GTA shaders: diffuse, normal, specular, parameters");
         if (GimsTile("Tools", wp, u, 62, 55, 26, 26, GimsIcon.Tools)) HubGo(HubPage.GTools);
-        GimsTip("Selected objects actions and the Molo tools");
+        GimsTip("Selected objects actions and the building tools (doors, finishing, decals...)");
         if (GimsTile("MLO", wp, u, 90, 55, 26, 26, GimsIcon.Mlo)) HubGo(HubPage.Mlo);
         GimsTip("Rooms, automatic portals, limbo, timecycles");
         if (GimsTile("Create object", wp, u, 6, 83, 54, 9, GimsIcon.None)) { gCreateCat = null; HubGo(HubPage.Create); }
         if (GimsTile("Object properties", wp, u, 62, 83, 54, 9, GimsIcon.None)) HubGo(HubPage.Object);
 
         GimsSection("Miscellaneous", wp, u, 4, 94);
-        if (GimsTile("Change game path", wp, u, 6, 102, 54, 9, GimsIcon.None))
-        {
-            if (PickFolder("GTA V folder (with GTA5.exe)") is { } pf) { Settings.GtaFolder = pf; Settings.Save(); game = null; SetStatus("Game folder: " + pf); }
-        }
-        GimsTip(string.IsNullOrEmpty(Settings.GtaFolder) ? "No GTA V folder yet" : Settings.GtaFolder);
-        if (GimsTile("Game files", wp, u, 62, 102, 54, 9, GimsIcon.None)) OpenGameBrowser();
+        if (GimsTile("Browse game models", wp, u, 6, 102, 110, 9, GimsIcon.None)) OpenGameBrowser();
+        GimsTip("Every GTA V model of your game by family: preview it, import it with its textures");
         if (GimsTile("Clear cache", wp, u, 6, 113, 26, 26, GimsIcon.Cache)) ClearHubCache();
         GimsTip("Thumbnails, extracted game files and the map mesh cache are rebuilt when needed");
-        if (GimsTile("Collision", wp, u, 34, 113, 26, 26, GimsIcon.Collision)) HubGo(HubPage.Collision);
-        if (GimsTile("Animation", wp, u, 62, 113, 26, 26, GimsIcon.Play)) HubGo(HubPage.Anim);
-        if (GimsTile("Tripo", wp, u, 90, 113, 26, 26, GimsIcon.Cube)) HubGo(HubPage.Tripo);
+        if (GimsTile("Animation", wp, u, 34, 113, 26, 26, GimsIcon.Play)) HubGo(HubPage.Anim);
+        GimsTip("UV and object animations, written as a GTA .ycd");
     }
 
     void ClearHubCache()
@@ -339,7 +334,7 @@ public sealed partial class EditorApp
     void GimsTools(float u)
     {
         float tw = 26 * u;
-        if (Theme.Toggle("Molo##gtt", gToolsTab == 0, new Vector2(tw, 9 * u))) gToolsTab = 0;
+        if (Theme.Toggle("Polymorph##gtt", gToolsTab == 0, new Vector2(tw, 9 * u))) gToolsTab = 0;
         ImGui.SameLine(0, 2 * u);
         if (Theme.Toggle("Game##gtt", gToolsTab == 1, new Vector2(tw, 9 * u))) gToolsTab = 1;
         ImGui.Spacing();
@@ -360,10 +355,10 @@ public sealed partial class EditorApp
         GimsGroup("Pages");
         if (ImGui.Button("Object properties", new Vector2(half, 9 * u))) HubGo(HubPage.Object);
         ImGui.SameLine(0, 2 * u);
-        if (ImGui.Button("Collision", new Vector2(half, 9 * u))) HubGo(HubPage.Collision);
-        if (ImGui.Button("Molo Paint", new Vector2(half, 9 * u))) { propTab = PropTab.Paint; ShowPanel = true; }
+        if (ImGui.Button("Collision settings", new Vector2(half, 9 * u))) HubGo(HubPage.Collision);
+        if (ImGui.Button("Paint", new Vector2(half, 9 * u))) { propTab = PropTab.Paint; ShowPanel = true; }
         ImGui.SameLine(0, 2 * u);
-        if (ImGui.Button("Molo Materials", new Vector2(half, 9 * u))) OpenLibrary(LibraryAction.Browse);
+        if (ImGui.Button("Materials library", new Vector2(half, 9 * u))) OpenLibrary(LibraryAction.Browse);
     }
 
     void GimsGroup(string t)
@@ -377,7 +372,7 @@ public sealed partial class EditorApp
     static readonly (string Cat, (string Name, string Tip)[] Items)[] GimsCreateCats =
     {
         ("Model", new[] { ("Drawable from selection", "The selected meshes become one GTA model"), ("Box", "Primitive"), ("Plane", "Primitive"), ("Cylinder", "Primitive"), ("Sphere", "Primitive"), ("Stairs", "Primitive"), ("Door", "MLO door (own pivot)") }),
-        ("Collision", new[] { ("Collision from selection", "Collision mesh made from the selected objects"), ("Collision box", "A box collision") }),
+        ("Collision", new[] { ("Collision from selection", "Collision mesh made from the selected objects"), ("Collision box", "A box collision"), ("Collision settings", "Automatic collision, materials, RoomID, flags") }),
         ("MLO", new[] { ("Room", "A closed room with normals inside"), ("Portal", "A portal between two rooms (or to the outside)"), ("Room builder (floor plan)", "Draw rooms on a plan") }),
         ("Light", new[] { ("Point light", "GTA point light"), ("Spot light", "GTA spot light") }),
     };
@@ -417,6 +412,7 @@ public sealed partial class EditorApp
             case "Door": AddPrimitive(CreateKind.Door); break;
             case "Collision from selection": CollisionFromSelection(); break;
             case "Collision box": AddPrimitive(CreateKind.CollisionBox); break;
+            case "Collision settings": HubGo(HubPage.Collision); break;
             case "Room": AddPrimitive(CreateKind.Room); break;
             case "Portal": AddPrimitive(CreateKind.Portal); break;
             case "Room builder (floor plan)": OpenRoomBuilder(); break;
