@@ -101,7 +101,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Material Editor", "M", materialEditorOpen)) materialEditorOpen = !materialEditorOpen;
             if (ImGui.MenuItem("Sculpt Mode", null, SculptMode, Current != null)) ToggleSculptMode();
             if (ImGui.MenuItem("Run Python Script...")) RunScriptDialog();
-            if (ImGui.MenuItem("Python & MCP...")) { prefsOpen = true; prefsSection = 8; }
+            if (ImGui.MenuItem("Python & MCP (Claude)...")) { prefsOpen = true; prefsSection = 8; }
             ImGui.Separator();
             if (ImGui.MenuItem("Apply Rotation & Scale", K("Ctrl+A", ""))) ResetXForm();
             if (ImGui.MenuItem("Origin to Geometry")) CenterPivot();

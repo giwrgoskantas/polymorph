@@ -173,6 +173,7 @@ public sealed partial class EditorApp
             ("UV", "Unwrap UVW modifier: seams, peel, relax, stitch, pack, density.", "CREATE", OpenUnwrapModifier),
             ("Sculpt", "Smooth, relax, flatten... to clean generated meshes.", "CREATE", ToggleSculptMode),
             ("Animation", "UV and object animations to YCD (30 fps).", "CREATE", () => hubPage = HubPage.Anim),
+            ("Python & MCP", "Scripts and Claude driving Polymorph.", "CREATE", () => { prefsOpen = true; prefsSection = 8; }),
         };
         string section = null; int col = 0;
         foreach (var t in tiles)
