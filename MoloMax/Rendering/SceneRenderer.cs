@@ -555,6 +555,7 @@ public sealed class SceneRenderer : IDisposable
     /// </summary>
     public void DrawObject(Scene scene, SceneObject o, bool alphaPass, Vector4 highlight, bool backfaceCull)
     {
+        if (UploadBudgetMs > 0 && o.Id != EditObjectId && UploadMs - frameUpload0 > UploadBudgetMs && NeedsUpload(o)) return; // map: shown next frame
         var gm = Upload(o);
         var world = o.World;
         Matrix4x4.Invert(world, out var inv);
