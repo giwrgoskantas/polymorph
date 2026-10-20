@@ -200,6 +200,7 @@ public sealed partial class EditorApp
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
+        T("UI CHAOS: hundreds of random clicks, drags, keys and commands in the real window (no error, meshes valid, undo exact)", UiChaos);
         T("VERTEX SNAP: in vertex mode, grab a selected vertex and drop it on another (square shown)", TutVertexSnap);
         T("GIMS HUB: Molo GTA panel in the GIMS layout (photos)", TutGimsHub);
         T("UI OPEN THEME: open window with bookmarks, toolbar fits, look in preferences (photos)", TutOpenTheme);

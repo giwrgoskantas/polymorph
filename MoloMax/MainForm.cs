@@ -137,6 +137,7 @@ public sealed class MainForm : Form
         }
         catch (Exception e)
         {
+            EditorApp.FrameErrorCount++; EditorApp.LastFrameError = e.ToString();
             // Show each distinct error once instead of a dialog every frame.
             if (e.Message != lastError)
             {

@@ -98,13 +98,20 @@ public sealed partial class EditorApp
         var cur = Current;
         if (Level != SubObject.Object && cur != null)
         {
+            long stamp = Undo.LastStamp;
             switch (Level)
             {
                 case SubObject.Vertex: DoMesh("Delete Vertices", (o, m, s) => { MeshOps.DeleteVertices(m, s.Verts); s.Clear(); }); break;
                 case SubObject.Edge: case SubObject.Border: RemoveEdges(false); break;
                 default: DoMesh("Delete Polygons", (o, m, s) => { MeshOps.DeleteFaces(m, s.Faces); s.Clear(); }); break;
             }
-            if (cur.Mesh.Faces.Count == 0) Do("Delete empty object", () => { Scene.RemoveObjects(o => o == cur); Selected.Clear(); Level = SubObject.Object; });
+            if (cur.Mesh.Faces.Count == 0)
+            {
+                // nothing left: the object goes too, in the same undo step (one Ctrl+Z brings the faces and the object back)
+                void Drop() { Scene.RemoveObjects(o => o == cur); Selected.Clear(); Level = SubObject.Object; }
+                if (Undo.LastStamp != stamp) { Drop(); Dirty = true; }
+                else Do("Delete empty object", Drop);
+            }
             return;
         }
         if (Selected.Count == 0) return;
