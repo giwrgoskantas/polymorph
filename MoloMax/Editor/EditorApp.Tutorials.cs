@@ -956,6 +956,7 @@ public sealed partial class EditorApp
         var outDir = Environment.GetEnvironmentVariable("POLYMORPH_UVTEST_OUT") ?? StPath("uvtest_export");
         Scene.Gta.ResourceName = "molo_uvtest";
         Scene.GtaOrigin = new Vector3(pos[0], pos[1], pos[2]);
+        if (pos.Length > 3) Scene.Gta.Heading = pos[3];
         // A: no animation  B: Polymorph .ycd  C: Unknown10 = 0  D: C + QuantizeFloat  E: emissive shader (like the portal)
         var names = new[] { "a", "b", "c", "d", "e" };
         var cubes = new List<SceneObject>();
