@@ -34,6 +34,8 @@ public sealed class GameFiles
     readonly Dictionary<uint, GameAsset> ytdByHash = new();
     readonly Dictionary<uint, GameAsset> modelByHash = new();
     readonly Dictionary<uint, uint> txdOfArchetype = new();
+    /// <summary>Largest side of each archetype's bounding box (metres), from the .ytyp files.</summary>
+    readonly Dictionary<uint, float> sizeOfArchetype = new();
     /// <summary>Archetypes whose model sits in a drawable dictionary (.ydd): most far LOD / SLOD models of the map.</summary>
     readonly Dictionary<uint, uint> yddOfArchetype = new();
     readonly Dictionary<uint, GameAsset> yddByHash = new();
@@ -181,6 +183,8 @@ public sealed class GameFiles
                             if (a != null)
                             {
                                 txdOfArchetype.TryAdd(a.Hash.Hash, a.TextureDict.Hash);
+                                var bb = a.BBMax - a.BBMin;
+                                sizeOfArchetype.TryAdd(a.Hash.Hash, Math.Max(bb.X, Math.Max(bb.Y, bb.Z)));
                                 if (a.DrawableDict.Hash != 0) yddOfArchetype.TryAdd(a.Hash.Hash, a.DrawableDict.Hash);
                                 if (a is MloArchetype) ytypOfMlo.TryAdd(a.Hash.Hash, fe);
                             }
@@ -299,6 +303,9 @@ public sealed class GameFiles
             }
         }
     }
+
+    /// <summary>Largest side of an archetype's bounding box in metres (-1 when unknown).</summary>
+    public float ArchetypeSize(uint hash) { BuildTypeIndex(); return sizeOfArchetype.TryGetValue(hash, out var s) && float.IsFinite(s) ? s : -1; }
 
     /// <summary>A texture dictionary read straight from the archive.</summary>
     public YtdFile LoadYtd(GameAsset a) => RpfFile.GetFile<YtdFile>(a.Entry);

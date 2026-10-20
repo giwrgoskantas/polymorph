@@ -31,6 +31,12 @@ public static class LibraryBuilder
         public readonly Dictionary<string, int> Mlos = new();
     }
 
+    /// <summary>Models smaller than this (largest side, metres) are props, left out: the library is about surfaces.</summary>
+    public const float MinModelSize = 3f;
+
+    /// <summary>Texture names that are not materials (placeholders, flat colours).</summary>
+    static readonly HashSet<string> Junk = new(StringComparer.OrdinalIgnoreCase) { "blank", "white", "black", "grey", "gray", "xj_gray", "default", "dummy", "null", "flat_normal", "normal_flat", "nonormal", "no_normal" };
+
     public static Result Build(GameFiles g, string folder, Action<string, float> progress, CancellationToken cancel = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -50,8 +56,12 @@ public static class LibraryBuilder
                 foreach (var h in archs) { if (!mlosOf.TryGetValue(h, out var set)) mlosOf[h] = set = new(); set.Add(name ?? ytyp); }
             var work = new List<(GameAsset Asset, uint Arch, uint Txd)>();
             var seen = new HashSet<string>();
+            int props = 0;
             foreach (var h in mlosOf.Keys)
             {
+                // the building itself (walls, floors, ceilings, big fittings), not the small props placed in it
+                float size = g.ArchetypeSize(h);
+                if (size >= 0 && size < MinModelSize) { props++; continue; }
                 var a = g.FindModel(h) ?? g.FindDictionaryOf(h);
                 if (a == null || !seen.Add(a.Path)) continue;
                 var chain = g.TextureChainOf(a, h);
@@ -63,7 +73,7 @@ public static class LibraryBuilder
             var logPath = Path.Combine(folder, "data", "build_log.txt");
             void Log(string line) { try { File.AppendAllText(logPath, line + "\r\n"); } catch { } }
             try { File.Delete(logPath); } catch { }
-            Log($"{interiors.Count} interiors, {work.Count} models");
+            Log($"{interiors.Count} interiors, {work.Count} models ({props} small props left out)");
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var f in Directory.GetFiles(texDir, "*.dds")) written.Add(Path.GetFileNameWithoutExtension(f));
             uint curTxd = uint.MaxValue;
@@ -143,7 +153,7 @@ public static class LibraryBuilder
                     }
             }
             progress?.Invoke("Writing the catalogue...", 0.97f);
-            var list = acc.Values.Where(e => e.Floor + e.Wall + e.Ceil + e.Other > 0)
+            var list = acc.Values.Where(e => e.Floor + e.Wall + e.Ceil + e.Other > 0.25 && !(e.Diffuse != null && Junk.Contains(e.Diffuse)))
                                  .OrderByDescending(e => e.Models.Count).ToList();
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             using (var fs = File.Create(Path.Combine(folder, "data", "materials.json")))
@@ -179,6 +189,7 @@ public static class LibraryBuilder
             File.WriteAllText(Path.Combine(folder, "data", "built_by_polymorph.txt"),
                 $"Built from the GTA V install {g.Folder} on {DateTime.Now:yyyy-MM-dd HH:mm}. For your own use: these textures belong to Rockstar Games.\r\n");
             res.Materials = list.Count;
+            res.Textures = written.Count;
             res.Time = sw.Elapsed;
             progress?.Invoke("Done: " + res, 1);
             return res;
