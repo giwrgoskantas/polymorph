@@ -874,12 +874,12 @@ Console.WriteLine("UV animation (YCD)");
         Console.WriteLine($"       clip hash {(uint)clip.Hash:X8} (want {want:X8}), anim frames {an.Frames}");
         return (uint)clip.Hash == want && an.Frames == 33;
     });
-    Check("ytyp: archetype has flag 1024 and the clip dictionary", () =>
+    Check("ytyp: archetype has flags UV anims + auto start and the clip dictionary", () =>
     {
         var t = new CodeWalker.GameFiles.YtypFile();
         t.Load(File.ReadAllBytes(Path.Combine(res, "molo_anim_test.ytyp")));
         var a = t.AllArchetypes.First(x => x.Name == "molo_anim_test_neon001" || x.Hash == MoloMax.Core.Gta.Export.MetaXml.Jenkins("molo_anim_test_neon001"));
-        return (a._BaseArchetypeDef.flags & 1024) != 0 && (uint)a._BaseArchetypeDef.clipDictionary == MoloMax.Core.Gta.Export.MetaXml.Jenkins("molo_anim_test_anims");
+        return (a._BaseArchetypeDef.flags & 525312) == 525312 && (uint)a._BaseArchetypeDef.clipDictionary == MoloMax.Core.Gta.Export.MetaXml.Jenkins("molo_anim_test_anims");
     });
 }
 

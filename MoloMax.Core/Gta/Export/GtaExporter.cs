@@ -36,6 +36,10 @@ public sealed class ExportReport
 /// </summary>
 public static class GtaExporter
 {
+    /// <summary>Archetype flags of a UV animated model: "UV anims (YCD)" (bit 10) + "Auto start anim" (bit 19).
+    /// Without auto start the clip is loaded but never plays (the texture stays still in game).</summary>
+    public const uint UvAnimFlags = 1024u | 524288u;
+
     sealed class PropModel
     {
         public string Name;
@@ -318,7 +322,7 @@ public static class GtaExporter
                     if (added > 0)
                     {
                         var arch = archetypes.Last(a => a.Name == pm.Name);
-                        arch.Flags |= 1024; arch.ClipDictionary = res + "_anims";
+                        arch.Flags |= UvAnimFlags; arch.ClipDictionary = res + "_anims";
                         animDir = anyInMlo ? mloDir : animDir ?? extDir;
                     }
                 }
@@ -344,7 +348,7 @@ public static class GtaExporter
                     if (added > 0)
                     {
                         var arch = archetypes.Last(a => a.Name == pm.Name);
-                        arch.Flags |= 1024;                 // UV animated archetype
+                        arch.Flags |= UvAnimFlags;          // UV animated archetype that plays on its own
                         arch.ClipDictionary = res + "_anims";
                         animDir = anyInMlo ? mloDir : animDir ?? extDir;
                     }
@@ -440,7 +444,7 @@ public static class GtaExporter
                 var xml = keyedUvClips.Count == 0 ? AnimXml.ClipDictionary(uvClips)
                     : MoloMax.Core.Gta.Anim.YcdIO.ToXml(uvClips.Select(MoloMax.Core.Anim.AnimGta.FromUvClip).Concat(keyedUvClips));
                 written.Add((animDir ?? (isMlo ? mloDir : extDir), res + "_anims", xml, "ycd", null));
-                rep.Info.Add($"{uvClips.Count + keyedUvClips.Count} UV animation(s) at 30 fps in {res}_anims.ycd (archetype flag 1024){(keyedUvClips.Count > 0 ? $", {keyedUvClips.Count} from the timeline keys" : "")}.");
+                rep.Info.Add($"{uvClips.Count + keyedUvClips.Count} UV animation(s) at 30 fps in {res}_anims.ycd (archetype flags UV anims + auto start){(keyedUvClips.Count > 0 ? $", {keyedUvClips.Count} from the timeline keys" : "")}.");
             }
 
             // ---- ytyp and ymaps
