@@ -197,6 +197,7 @@ public sealed partial class EditorApp : IDisposable
         Prof("lighting");
         gpu.BindBackBuffer();
         ctx.ClearRenderTargetView(gpu.BackBufferView, new SharpDX.Mathematics.Interop.RawColor4(0.27f, 0.27f, 0.27f, 1));
+        renderer.UploadBudgetMs = MapMode ? 12 : 0; renderer.BeginFrameUploads();
         gpuTimer ??= new MoloMax.Rendering.GpuTimer(gpu.Device);
         gpuTimer.Begin(ctx);
         for (int i = 0; i < Viewports.Length; i++)

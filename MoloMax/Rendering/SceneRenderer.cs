@@ -426,8 +426,26 @@ public sealed class SceneRenderer : IDisposable
     /// Renders the depth of the opaque objects seen from the sun into the shadow map.
     /// Leaves no render target bound: the caller binds its own target afterwards.
     /// </summary>
-    public void RenderShadows(Scene scene, IEnumerable<SceneObject> casters, Matrix4x4 lightViewProj, in GtaGlobalLights l)
+    /// <summary>Map mode: milliseconds of mesh sending allowed per frame for instanced draws (0: no limit).</summary>
+    public double UploadBudgetMs;
+    double frameUpload0;
+    /// <summary>Call once per frame before drawing.</summary>
+    public void BeginFrameUploads() => frameUpload0 = UploadMs;
+
+    /// <summary>True when the object's GPU mesh is not up to date (drawing it now would send it first).</summary>
+    public bool NeedsUpload(SceneObject o)
     {
+        bool edit = o.Id == EditObjectId;
+        GpuMesh gm;
+        if (o.InstanceKey != null && !edit) { if (!instMeshes.TryGetValue(o.InstanceKey, out gm)) return true; }
+        else if (!meshes.TryGetValue(o.Id, out gm)) return true;
+        return !(gm.Version == o.Version && gm.Edit == edit && gm.Groups.Count > 0);
+    }
+
+    /// <summary>Returns false when it stopped sending new meshes to stay smooth (some casters left out: call again soon).</summary>
+    public bool RenderShadows(Scene scene, IEnumerable<SceneObject> casters, Matrix4x4 lightViewProj, in GtaGlobalLights l, double uploadBudgetMs = double.MaxValue)
+    {
+        double up0 = UploadMs; bool complete = true;
         EnsureShadowMap();
         ctx.PixelShader.SetShaderResource(5, null);
         ctx.OutputMerger.SetRenderTargets(shadowDsv, (RenderTargetView)null);
@@ -441,6 +459,7 @@ public sealed class SceneRenderer : IDisposable
         ctx.OutputMerger.SetDepthStencilState(DepthDefault);
         foreach (var o in casters)
         {
+            if (UploadMs - up0 > uploadBudgetMs && NeedsUpload(o)) { complete = false; continue; } // sent over the next frames
             var gm = Upload(o);
             var world = o.World;
             var ov = new ObjectVarsCB { World = world, NormalMatrix = Matrix4x4.Identity };
@@ -455,6 +474,7 @@ public sealed class SceneRenderer : IDisposable
         }
         ctx.OutputMerger.SetRenderTargets((DepthStencilView)null, (RenderTargetView)null);
         ctx.PixelShader.Set(ps);
+        return complete;
     }
 
     /// <summary>Textures of a material as last looked up: thousands of map draws skip four path lookups each.</summary>
@@ -578,6 +598,8 @@ public sealed class SceneRenderer : IDisposable
     public void DrawInstanced(Scene scene, SceneObject template, Matrix4x4[] worlds, int count, bool alphaPass, bool backfaceCull, bool depthOnly = false)
     {
         if (count <= 0) return;
+        // map mode: new meshes sent at most ~UploadBudgetMs per frame, the others show a frame or two later (no hitch)
+        if (UploadBudgetMs > 0 && UploadMs - frameUpload0 > UploadBudgetMs && NeedsUpload(template)) return;
         var gm = Upload(template);
         if (gm.Groups.Count == 0) return;
         if (instBuf == null || instCap < count)

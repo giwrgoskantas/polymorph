@@ -346,6 +346,46 @@ public sealed class GameFiles
         return e is RpfResourceFileEntry rr ? ResourceBuilder.AddResourceHeader(rr, ResourceBuilder.Compress(raw)) : raw;
     }
 
+    // ---- reading a model straight from the archive (map streaming): no file written and read back
+    /// <summary>Texture dictionaries already parsed, by archive entry (the big shared parent dictionaries are read once).</summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<RpfFileEntry, Lazy<YtdFile>> ytdParsed = new();
+    readonly System.Collections.Concurrent.ConcurrentQueue<RpfFileEntry> ytdOrder = new();
+
+    YtdFile ParsedYtd(RpfFileEntry e)
+    {
+        var lz = ytdParsed.GetOrAdd(e, ee => new Lazy<YtdFile>(() =>
+        {
+            ytdOrder.Enqueue(ee);
+            var raw = ee.File.ExtractFile(ee);
+            if (raw == null) return null;
+            var y = new YtdFile();
+            if (ee is RpfResourceFileEntry rr) y.Load(raw, rr); else y.Load(raw);
+            return y;
+        }, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
+        // keep the memory in check (big dictionaries): the oldest are dropped past 12
+        while (ytdParsed.Count > 12 && ytdOrder.TryDequeue(out var old)) ytdParsed.TryRemove(old, out _);
+        try { return lz.Value; } catch { return null; }
+    }
+
+    /// <summary>The model's decompressed resource and its entry, and its texture dictionaries (own first, then parents), parsed.</summary>
+    public (byte[] Raw, RpfResourceFileEntry Entry, List<YtdFile> Textures) ReadModel(GameAsset a, uint archetypeHash)
+    {
+        if (a.Entry is not RpfResourceFileEntry rr) return (null, null, null);
+        var raw = rr.File.ExtractFile(rr);
+        BuildTypeIndex();
+        var tex = new List<YtdFile>();
+        foreach (var ytd in TextureChainOf(a, archetypeHash)) tex.Add(ParsedYtd(ytd.Entry));
+        return (raw, rr, tex);
+    }
+
+    /// <summary>Imports a game model in memory (textures the materials use are written under <paramref name="folder"/>). Null when it can't.</summary>
+    public MoloMax.Core.IO.ImportResult ImportInMemory(GameAsset a, uint archetypeHash, string folder, MoloMax.Core.IO.ImportOptions opt)
+    {
+        var (raw, entry, tex) = ReadModel(a, archetypeHash);
+        if (raw == null) return null;
+        return MoloMax.Core.Gta.Import.GtaImporter.ImportResource(a.Name, a.Ext, raw, entry, tex, folder, opt);
+    }
+
     /// <summary>Writes the model (and its texture dictionary as name.ytd next to it) into a folder; returns the model file path.</summary>
     public string Extract(GameAsset a, string folder) => Extract(a, folder, a.Hash);
 

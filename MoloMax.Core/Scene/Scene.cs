@@ -465,11 +465,19 @@ public sealed class Scene
         if (Materials.Count == 0) Materials.Add(GtaMaterial.CreateDefault(0, "default_grey", new Vector3(0.72f)));
         // id -> place in the list, checked on every use (the list is edited in many places): drawing a map asks thousands of times a frame
         if (matIndex.TryGetValue(id, out var i) && i < Materials.Count && Materials[i].Id == id) return Materials[i];
+        // the list usually only grew (map streaming adds materials one by one): index the new ones first
+        if (!matIndex.ContainsKey(id) && matIndexed <= Materials.Count)
+        {
+            for (int k = matIndexed; k < Materials.Count; k++) matIndex.TryAdd(Materials[k].Id, k);
+            matIndexed = Materials.Count;
+            if (matIndex.TryGetValue(id, out i) && i < Materials.Count && Materials[i].Id == id) return Materials[i];
+        }
         matIndex.Clear();
         for (int k = 0; k < Materials.Count; k++) matIndex.TryAdd(Materials[k].Id, k);
+        matIndexed = Materials.Count;
         return matIndex.TryGetValue(id, out i) ? Materials[i] : Materials[0];
     }
-    readonly Dictionary<int, int> matIndex = new();
+    readonly Dictionary<int, int> matIndex = new(); int matIndexed;
 
     public GtaMaterial AddMaterial(string name, Vector3 colour)
     {

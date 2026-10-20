@@ -74,7 +74,10 @@ public sealed partial class EditorApp
     /// <summary>Models read at the same time: most cores (the UI thread keeps priority over them).</summary>
     static readonly int ArchParallel = Math.Clamp(Environment.ProcessorCount / 2, 3, 8);
     static string MapMeshesDir => Path.Combine(MapCacheDir, "meshes");
-    static string MapCacheDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Polymorph", "mapcache");
+    static string MapCacheDir => Environment.GetEnvironmentVariable("POLYMORPH_MAPCACHE") is { Length: > 0 } envDir ? envDir
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Polymorph", "mapcache");
+    /// <summary>Self tests: the old way (model written to disk then read) to compare.</summary>
+    static readonly bool MapDiskImport = Environment.GetEnvironmentVariable("POLYMORPH_MAP_DISKIMPORT") == "1";
     /// <summary>One folder for every extracted model and its textures (one texture search folder, game textures shared by name).</summary>
     static string MapModelsDir => Path.Combine(MapCacheDir, "models");
 
@@ -453,8 +456,11 @@ public sealed partial class EditorApp
             var m = sc.Material(id);
             if (m.Id == id && m.Name == src.Name && m.Shader == src.Shader && m.DiffuseTexture == src.DiffuseTexture) return id;
         }
-        var have = sc.Materials.FirstOrDefault(m => m.Name == src.Name && m.Shader == src.Shader && m.DiffuseTexture == src.DiffuseTexture);
-        if (have != null) { mapMatKey[key] = have.Id; return have.Id; }
+        // materials already in the scene (a saved map reopened): indexed as the list grows instead of scanned each time
+        if (!ReferenceEquals(mapMatScanScene, sc) || mapMatScanned > sc.Materials.Count) { mapMatScan.Clear(); mapMatScanned = 0; mapMatScanScene = sc; }
+        for (; mapMatScanned < sc.Materials.Count; mapMatScanned++) { var m = sc.Materials[mapMatScanned]; mapMatScan.TryAdd(m.Name + "|" + m.Shader + "|" + m.DiffuseTexture, m.Id); }
+        if (mapMatScan.TryGetValue(key, out var hid) && sc.Material(hid) is { } have && have.Id == hid && have.Name == src.Name && have.Shader == src.Shader && have.DiffuseTexture == src.DiffuseTexture)
+        { mapMatKey[key] = have.Id; return have.Id; }
         var c = src.Clone(); c.Id = sc.NextMaterialId++; c.FromGame = true;
         sc.Materials.Add(c);
         mapMatKey[key] = c.Id;
@@ -462,6 +468,7 @@ public sealed partial class EditorApp
     }
 
     readonly Dictionary<string, int> mapMatKey = new();
+    readonly Dictionary<string, int> mapMatScan = new(); int mapMatScanned; Scene mapMatScanScene;
     bool texturesArrived;
     double archTakeTime = -10;
 
@@ -483,10 +490,12 @@ public sealed partial class EditorApp
             archLoading--;
             if (s.Task.IsFaulted || s.Task.Result?.R == null) { s.State = 3; s.Error = s.Task.Exception?.GetBaseException().Message ?? s.Task.Result?.Why; s.Task = null; continue; }
             var ld = s.Task.Result; var r = ld.R; s.Task = null;
+            var sf = renderer.Textures.SearchFolders;
+            if (sf.Count < mapTexFolders.Count) { mapTexFolders.Clear(); mapTexFolders.UnionWith(sf); } // the list was reset (a file opened)
             foreach (var tex in r.TexturesWritten)
             {
                 var d = Path.GetDirectoryName(tex);
-                if (d != null && !renderer.Textures.SearchFolders.Contains(d)) renderer.Textures.SearchFolders.Add(d);
+                if (d != null && mapTexFolders.Add(d) && !sf.Contains(d)) sf.Add(d);
             }
             renderer.Textures.ForgetNames(r.TexturesWritten);
             var mesh = ld.Mesh;
@@ -576,9 +585,7 @@ public sealed partial class EditorApp
             a ??= g.FindModel(hash);
             if (a != null)
             {
-                var file = Path.Combine(MapModelsDir, a.Name + a.Ext);
-                if (!File.Exists(file)) file = g.Extract(a, MapModelsDir);
-                var r = MoloMax.Core.IO.ModelImporter.Import(file, opt);
+                var r = ReadGameModel(g, a, hash, opt);
                 var parts = r.Meshes.Where(m => m.GtaType != GtaObjectType.Collision).ToList();
                 ld = Merge(r, parts);
                 if (ld.Mesh.Faces.Count > 0) try { MapMeshCache.Save(MeshCachePath(hash), ld.Mesh, ld.R.Materials); } catch { }
@@ -594,9 +601,7 @@ public sealed partial class EditorApp
                     else
                     {
                         yddDone[dd.Hash] = true; // read once, even when it fails
-                        var file = Path.Combine(MapModelsDir, dd.Name + dd.Ext);
-                        if (!File.Exists(file)) file = g.Extract(dd, MapModelsDir, hash);
-                        var r = MoloMax.Core.IO.ModelImporter.Import(file, opt);
+                        var r = ReadGameModel(g, dd, hash, opt);
                         foreach (var grp in r.Meshes.Where(m => m.GtaType != GtaObjectType.Collision && m.DrawableHash != 0).GroupBy(m => m.DrawableHash))
                         {
                             var one = Merge(r, grp.ToList());
@@ -613,6 +618,22 @@ public sealed partial class EditorApp
         if (ld.Mesh != null && ld.Mesh.Faces.Count > 0) { (ld.Min, ld.Max) = ld.Mesh.Bounds(); ld.Groups = MoloMax.Core.Mesh.RenderMeshBuilder.Build(ld.Mesh); }
         return ld;
     }
+
+    /// <summary>A game model read in memory (archive → model, no file written then read back); the old way if that fails.</summary>
+    static MoloMax.Core.IO.ImportResult ReadGameModel(GameFiles g, GameAsset a, uint hash, MoloMax.Core.IO.ImportOptions opt)
+    {
+        try
+        {
+            if (!MapDiskImport && g.ImportInMemory(a, hash, MapModelsDir, opt) is { } r) return r;
+        }
+        catch { }
+        var file = Path.Combine(MapModelsDir, a.Name + a.Ext);
+        if (!File.Exists(file)) file = g.Extract(a, MapModelsDir, hash);
+        return MoloMax.Core.IO.ModelImporter.Import(file, opt);
+    }
+
+    /// <summary>Texture folders of the map models already in the search list (thousands: a list lookup per texture was slow).</summary>
+    readonly HashSet<string> mapTexFolders = new(StringComparer.OrdinalIgnoreCase);
 
     static ArchLoad FromCache(uint hash)
     {

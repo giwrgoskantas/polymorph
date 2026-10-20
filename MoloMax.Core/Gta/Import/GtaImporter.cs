@@ -72,43 +72,14 @@ public static class GtaImporter
         switch (ext)
         {
             case ".ydr":
-                {
-                    var f = xml ? Cw.XmlYdr.GetYdr(LoadXml(path), c.Dir) : LoadRes<Cw.YdrFile>(path, (y, d) => y.Load(d));
-                    if (f?.Drawable == null) throw new InvalidDataException("No drawable in this file.");
-                    AddDrawable(c, f.Drawable, c.Name, null);
-                    if (f.Drawable.Bound != null) AddBounds(c, f.Drawable.Bound, c.Name + "_col", Matrix4x4.Identity);
-                    break;
-                }
+                DoYdr(c, xml ? Cw.XmlYdr.GetYdr(LoadXml(path), c.Dir) : LoadRes<Cw.YdrFile>(path, (y, d) => y.Load(d)));
+                break;
             case ".ydd":
-                {
-                    var f = xml ? Cw.XmlYdd.GetYdd(LoadXml(path), c.Dir) : LoadRes<Cw.YddFile>(path, (y, d) => y.Load(d));
-                    var list = f?.Drawables ?? Array.Empty<Cw.Drawable>();
-                    if (list.Length == 0) throw new InvalidDataException("No drawable in this dictionary.");
-                    var hashOf = new Dictionary<Cw.Drawable, uint>();
-                    if (f.Dict != null) foreach (var kv in f.Dict) if (kv.Value != null) hashOf.TryAdd(kv.Value, kv.Key);
-                    foreach (var d in list)
-                    {
-                        var n = ModelImporter.SafeName(d.Name, c.Name);
-                        int first = c.Res.Meshes.Count;
-                        AddDrawable(c, d, n, null);
-                        if (d.Bound != null) AddBounds(c, d.Bound, n + "_col", Matrix4x4.Identity);
-                        uint h = hashOf.TryGetValue(d, out var hv) ? hv : 0;
-                        for (int i = first; i < c.Res.Meshes.Count; i++) c.Res.Meshes[i].DrawableHash = h;
-                    }
-                    break;
-                }
+                DoYdd(c, xml ? Cw.XmlYdd.GetYdd(LoadXml(path), c.Dir) : LoadRes<Cw.YddFile>(path, (y, d) => y.Load(d)));
+                break;
             case ".yft":
-                {
-                    var f = xml ? Cw.XmlYft.GetYft(LoadXml(path), c.Dir) : LoadRes<Cw.YftFile>(path, (y, d) => y.Load(d));
-                    var frag = f?.Fragment ?? throw new InvalidDataException("No fragment in this file.");
-                    if (frag.Drawable != null) AddDrawable(c, frag.Drawable, c.Name, frag.Drawable.Skeleton);
-                    var lod = frag.PhysicsLODGroup?.PhysicsLOD1;
-                    if (lod?.Bound != null) AddBounds(c, lod.Bound, c.Name + "_col", Matrix4x4.Identity);
-                    int glass = frag.GlassWindows?.data_items?.Length ?? 0;
-                    if (glass > 0) c.Res.Warnings.Add($"{glass} breakable glass window(s) are not imported.");
-                    if ((frag.Cloths?.data_items?.Length ?? 0) > 0) c.Res.Warnings.Add("Cloth is not imported.");
-                    break;
-                }
+                DoYft(c, xml ? Cw.XmlYft.GetYft(LoadXml(path), c.Dir) : LoadRes<Cw.YftFile>(path, (y, d) => y.Load(d)));
+                break;
             case ".ybn":
                 {
                     var f = xml ? Cw.XmlYbn.GetYbn(LoadXml(path)) : LoadRes<Cw.YbnFile>(path, (y, d) => y.Load(d));
@@ -118,11 +89,86 @@ public static class GtaImporter
                 }
             default: throw new NotSupportedException($"{ext} is not a GTA model file.");
         }
+        return Finish(c);
+    }
+
+    static ImportResult Finish(Ctx c)
+    {
         foreach (var m in c.Res.Meshes) { m.Mesh.CleanFaces(); m.Mesh.RemoveUnusedVertices(); }
         c.Res.Meshes.RemoveAll(m => m.Mesh.Faces.Count == 0);
         if (c.Res.Materials.Count == 0) c.Res.Materials.Add(GtaMaterial.CreateDefault(0, "imported", new Vector3(0.75f)));
         c.Res.KeepFileOrigin = true;
         return c.Res;
+    }
+
+    static void DoYdr(Ctx c, Cw.YdrFile f)
+    {
+        if (f?.Drawable == null) throw new InvalidDataException("No drawable in this file.");
+        AddDrawable(c, f.Drawable, c.Name, null);
+        if (f.Drawable.Bound != null) AddBounds(c, f.Drawable.Bound, c.Name + "_col", Matrix4x4.Identity);
+    }
+
+    static void DoYdd(Ctx c, Cw.YddFile f)
+    {
+        var list = f?.Drawables ?? Array.Empty<Cw.Drawable>();
+        if (list.Length == 0) throw new InvalidDataException("No drawable in this dictionary.");
+        var hashOf = new Dictionary<Cw.Drawable, uint>();
+        if (f.Dict != null) foreach (var kv in f.Dict) if (kv.Value != null) hashOf.TryAdd(kv.Value, kv.Key);
+        foreach (var d in list)
+        {
+            var n = ModelImporter.SafeName(d.Name, c.Name);
+            int first = c.Res.Meshes.Count;
+            AddDrawable(c, d, n, null);
+            if (d.Bound != null) AddBounds(c, d.Bound, n + "_col", Matrix4x4.Identity);
+            uint h = hashOf.TryGetValue(d, out var hv) ? hv : 0;
+            for (int i = first; i < c.Res.Meshes.Count; i++) c.Res.Meshes[i].DrawableHash = h;
+        }
+    }
+
+    static void DoYft(Ctx c, Cw.YftFile f)
+    {
+        var frag = f?.Fragment ?? throw new InvalidDataException("No fragment in this file.");
+        if (frag.Drawable != null) AddDrawable(c, frag.Drawable, c.Name, frag.Drawable.Skeleton);
+        var lod = frag.PhysicsLODGroup?.PhysicsLOD1;
+        if (lod?.Bound != null) AddBounds(c, lod.Bound, c.Name + "_col", Matrix4x4.Identity);
+        int glass = frag.GlassWindows?.data_items?.Length ?? 0;
+        if (glass > 0) c.Res.Warnings.Add($"{glass} breakable glass window(s) are not imported.");
+        if ((frag.Cloths?.data_items?.Length ?? 0) > 0) c.Res.Warnings.Add("Cloth is not imported.");
+    }
+
+    /// <summary>
+    /// A model read straight from the game archive (no file written and read back): <paramref name="raw"/> is the
+    /// decompressed resource, <paramref name="textures"/> its texture dictionary then the parent ones (already parsed,
+    /// shared between models). Textures the materials use are written into <paramref name="folder"/>/name_textures.
+    /// </summary>
+    public static ImportResult ImportResource(string name, string ext, byte[] raw, Cw.RpfResourceFileEntry entry, IList<Cw.YtdFile> textures, string folder, ImportOptions opt = null)
+    {
+        opt ??= new ImportOptions();
+        var c = new Ctx { Res = new ImportResult(), Dir = folder, SkipExisting = opt.SkipExistingTextures, Weld = opt.WeldVertices };
+        c.Name = ModelImporter.SafeName(name, "model");
+        c.TexDir = opt.TextureFolder ?? Path.Combine(folder, c.Name + "_textures");
+        EnsurePresets();
+        if (opt.KnownTextures != null) foreach (var kv in opt.KnownTextures) c.TextureFiles[kv.Key] = kv.Value;
+        if (textures != null)
+            for (int k = 0; k < textures.Count; k++)
+            {
+                var ytd = textures[k]; if (ytd?.TextureDict == null) continue;
+                try
+                {
+                    if (k == 0) SaveTextures(c, ytd.TextureDict);
+                    else foreach (var t in ytd.TextureDict.Textures?.data_items ?? Array.Empty<Cw.Texture>())
+                            if (t?.Name != null && !c.TextureFiles.ContainsKey(t.Name)) c.Pending.TryAdd(t.Name, t);
+                }
+                catch (Exception e) { c.Res.Warnings.Add($"textures: {e.Message}"); }
+            }
+        switch (ext.ToLowerInvariant())
+        {
+            case ".ydr": { var y = new Cw.YdrFile(); y.Load(raw, entry); DoYdr(c, y); break; }
+            case ".ydd": { var y = new Cw.YddFile(); y.Load(raw, entry); DoYdd(c, y); break; }
+            case ".yft": { var y = new Cw.YftFile(); y.Load(raw, entry); DoYft(c, y); break; }
+            default: throw new NotSupportedException($"{ext} is not a GTA model file.");
+        }
+        return Finish(c);
     }
 
     static XmlDocument LoadXml(string path) { var d = new XmlDocument(); d.Load(path); return d; }

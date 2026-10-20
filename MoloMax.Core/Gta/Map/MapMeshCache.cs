@@ -70,27 +70,33 @@ public static class MapMeshCache
                 }
                 mats.Add(x);
             }
+            // the geometry (most of the file) read in one block and decoded from memory
+            var rest = new byte[fs.Length - fs.Position];
+            int got = 0; while (got < rest.Length) { int k = fs.Read(rest, got, rest.Length - got); if (k <= 0) break; got += k; }
+            var b = rest; int p = 0;
+            int I() { int v = BitConverter.ToInt32(b, p); p += 4; return v; }
+            float F() { float v = BitConverter.ToSingle(b, p); p += 4; return v; }
             var m = new PolyMesh();
-            int nv = r.ReadInt32();
-            m.Verts = new List<Vector3>(nv);
-            for (int i = 0; i < nv; i++) m.Verts.Add(V3(r));
-            int nf = r.ReadInt32();
-            m.Faces = new List<Face>(nf);
+            int nv = I();
+            var verts = new Vector3[nv];
+            for (int i = 0; i < nv; i++) verts[i] = new Vector3(F(), F(), F());
+            m.Verts = new List<Vector3>(verts);
+            int nf = I();
+            var faces = new Face[nf];
             for (int i = 0; i < nf; i++)
             {
-                int n = r.ReadInt32(); int mat = r.ReadInt32(); uint sm = r.ReadUInt32(); bool c1 = r.ReadBoolean();
-                var vi = new int[n];
-                var f = new Face(vi, mat, sm);
-                if (c1) f.Col1 = new Vector4[n];
+                int n = I(); int mat = I(); uint sm = (uint)I(); bool c1 = b[p++] != 0;
+                var vi = new int[n]; var uv = new Vector2[n]; var col = new Vector4[n]; var col1 = c1 ? new Vector4[n] : null;
                 for (int c = 0; c < n; c++)
                 {
-                    vi[c] = r.ReadInt32();
-                    f.UV[c] = new Vector2(r.ReadSingle(), r.ReadSingle());
-                    f.Col[c] = V4(r);
-                    if (c1) f.Col1[c] = V4(r);
+                    vi[c] = I();
+                    uv[c] = new Vector2(F(), F());
+                    col[c] = new Vector4(F(), F(), F(), F());
+                    if (c1) col1[c] = new Vector4(F(), F(), F(), F());
                 }
-                m.Faces.Add(f);
+                faces[i] = Face.FromArrays(vi, uv, col, col1, mat, sm);
             }
+            m.Faces = new List<Face>(faces);
             return (m, mats);
         }
         catch { return null; }

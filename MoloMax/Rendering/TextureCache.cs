@@ -250,7 +250,11 @@ public sealed class TextureCache : IDisposable
     {
         LastGetPending = false;
         if (nameOrPath != null && dynamic.TryGetValue(nameOrPath, out var dyn)) return dyn.Srv;
+        // map mode: finding a texture on disk counts in the frame budget too (thousands of new names when an area streams in)
+        if (FrameBudgetMs > 0 && frameLoadMs >= FrameBudgetMs && nameOrPath != null && !resolved.ContainsKey(nameOrPath)) { pendingNow++; LastGetPending = true; return null; }
+        double r0 = LoadMs;
         var path = Resolve(nameOrPath);
+        frameLoadMs += LoadMs - r0;
         if (path == null) return null;
         if (cache.TryGetValue(path, out var srv)) return srv;
         if (failed.Contains(path)) return null;

@@ -383,7 +383,8 @@ public sealed partial class EditorApp
         var proj = Matrix4x4.CreateOrthographicOffCenter(-r, r, -r, r, 0.05f, r * 4);
         shadowVP = view * proj;
         shadowTexel = 2 * r / SceneRenderer.ShadowSize;
-        renderer.RenderShadows(Scene, casters, shadowVP, gl);
-        shadowHash = hash; mapShadowTime = ImGui.GetTime();
+        // at most ~10 ms of new meshes per refresh: the rest of the casters arrive over the next refreshes (no 400 ms hitch)
+        bool complete = renderer.RenderShadows(Scene, casters, shadowVP, gl, 10);
+        shadowHash = complete ? hash : 0; mapShadowTime = complete ? ImGui.GetTime() : ImGui.GetTime() - 10;
     }
 }
