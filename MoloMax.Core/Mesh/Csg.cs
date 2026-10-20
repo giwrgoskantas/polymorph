@@ -15,8 +15,12 @@ public static class Csg
     sealed class Poly
     {
         public List<Vtx> V; public Vector3 N; public float W; public int Mat; public uint Smooth;
+        /// <summary>Face of A it comes from (-1 = B), whether it was split, whether it is that whole face (not a triangle of it).</summary>
+        public int Src = -1; public bool Cut, Whole;
+        /// <summary>Source face group: A face index, or 1 000 000 + B face index.</summary>
+        public int Grp = -1;
         public Poly(List<Vtx> v, int mat, uint smooth) { V = v; Mat = mat; Smooth = smooth; var n = Vector3.Cross(v[1].P - v[0].P, v[2].P - v[0].P); for (int i = 2; i + 1 < v.Count && n.LengthSquared() < 1e-14f; i++) n = Vector3.Cross(v[i].P - v[0].P, v[i + 1].P - v[0].P); N = n.LengthSquared() > 0 ? Vector3.Normalize(n) : Vector3.UnitZ; W = Vector3.Dot(N, v[0].P); }
-        public Poly Flipped() { var v = new List<Vtx>(V); v.Reverse(); return new Poly(v, Mat, Smooth); }
+        public Poly Flipped() { var v = new List<Vtx>(V); v.Reverse(); return new Poly(v, Mat, Smooth) { Src = Src, Cut = Cut, Whole = Whole, Grp = Grp }; }
     }
 
     const float Eps = 1e-5f;
@@ -45,8 +49,8 @@ public static class Csg
                         var v = vi.Lerp(vj, t); f.Add(v); b.Add(v);
                     }
                 }
-                if (f.Count >= 3) front.Add(new Poly(f, p.Mat, p.Smooth) { N = p.N, W = p.W });
-                if (b.Count >= 3) back.Add(new Poly(b, p.Mat, p.Smooth) { N = p.N, W = p.W });
+                if (f.Count >= 3) front.Add(new Poly(f, p.Mat, p.Smooth) { N = p.N, W = p.W, Src = p.Src, Grp = p.Grp, Cut = true });
+                if (b.Count >= 3) back.Add(new Poly(b, p.Mat, p.Smooth) { N = p.N, W = p.W, Src = p.Src, Grp = p.Grp, Cut = true });
                 break;
         }
     }
@@ -92,13 +96,16 @@ public static class Csg
     static List<Poly> ToPolys(PolyMesh m, Matrix4x4 world)
     {
         var res = new List<Poly>();
-        foreach (var f in m.Faces)
+        for (int fi = 0; fi < m.Faces.Count; fi++)
+        {
+            var f = m.Faces[fi];
             foreach (var (a, b, c) in Triangulator.Triangulate(m, f))
             {
                 var v = new List<Vtx>();
                 foreach (var k in new[] { a, b, c }) v.Add(new Vtx { P = Vector3.Transform(m.Verts[f.V[k]], world), UV = f.UV[k], Col = f.Col[k] });
-                if (Vector3.Cross(v[1].P - v[0].P, v[2].P - v[0].P).LengthSquared() > 1e-14f) res.Add(new Poly(v, f.MatId, f.Smooth));
+                if (Vector3.Cross(v[1].P - v[0].P, v[2].P - v[0].P).LengthSquared() > 1e-14f) res.Add(new Poly(v, f.MatId, f.Smooth) { Grp = 1_000_000 + fi });
             }
+        }
         return res;
     }
 
@@ -124,7 +131,76 @@ public static class Csg
             centre = (mn + mx) * 0.5f;
         }
         var toLocal = Matrix4x4.CreateTranslation(-centre);
-        var A = new Node(ToPolys(a, wa * toLocal)); var B = new Node(ToPolys(b, wb * toLocal));
+        var waL = wa * toLocal;
+        var polysB = ToPolys(b, wb * toLocal);
+        foreach (var p in polysB) p.Cut = true;
+        // only the faces of A near B take part: the rest can't change and comes out exactly as it was
+        var bmn = new Vector3(float.MaxValue); var bmx = new Vector3(float.MinValue);
+        foreach (var p in polysB) foreach (var v in p.V) { bmn = Vector3.Min(bmn, v.P); bmx = Vector3.Max(bmx, v.P); }
+        bmn -= new Vector3(1e-3f); bmx += new Vector3(1e-3f);
+        var near = new List<Poly>(); var far = new List<int>();
+        var aWorld = a.Verts.Select(v => Vector3.Transform(v, waL)).ToArray();
+        for (int fi = 0; fi < a.Faces.Count; fi++)
+        {
+            var f = a.Faces[fi];
+            var fmn = new Vector3(float.MaxValue); var fmx = new Vector3(float.MinValue);
+            foreach (var vi in f.V) { fmn = Vector3.Min(fmn, aWorld[vi]); fmx = Vector3.Max(fmx, aWorld[vi]); }
+            bool overlap = fmn.X <= bmx.X && fmx.X >= bmn.X && fmn.Y <= bmx.Y && fmx.Y >= bmn.Y && fmn.Z <= bmx.Z && fmx.Z >= bmn.Z;
+            if (!overlap) { far.Add(fi); continue; }
+            near.AddRange(FacePolys(a, f, fi, aWorld));
+        }
+        var res = Run(a, b, near, polysB, far, op, waL, wa, centre, out var region);
+        if (res == null || !res.IsClosedManifold(out _))
+        {
+            // the local cut didn't close (odd shapes): do it on the whole mesh
+            var all = new List<Poly>();
+            for (int fi = 0; fi < a.Faces.Count; fi++) all.AddRange(FacePolys(a, a.Faces[fi], fi, aWorld));
+            var polysB2 = ToPolys(b, wb * toLocal); foreach (var p in polysB2) p.Cut = true;
+            var full = Run(a, b, all, polysB2, new List<int>(), op, waL, wa, centre, out region);
+            if (full != null) res = full;
+        }
+        return CsgClean.Clean(res, region); // straight faces like a hand cut, on the cut faces only
+    }
+
+    /// <summary>A face as one polygon when it is flat and convex (it can then come out untouched), else its triangles.</summary>
+    static IEnumerable<Poly> FacePolys(PolyMesh m, Face f, int fi, Vector3[] world)
+    {
+        bool convex = f.V.Length >= 3 && IsFlatConvex(f.V.Select(v => world[v]).ToArray());
+        if (convex)
+        {
+            var v = f.V.Select((vi, k) => new Vtx { P = world[vi], UV = f.UV[k], Col = f.Col[k] }).ToList();
+            yield return new Poly(v, f.MatId, f.Smooth) { Src = fi, Grp = fi, Whole = true };
+            yield break;
+        }
+        foreach (var (a, b, c) in Triangulator.Triangulate(m, f))
+        {
+            var v = new List<Vtx>();
+            foreach (var k in new[] { a, b, c }) v.Add(new Vtx { P = world[f.V[k]], UV = f.UV[k], Col = f.Col[k] });
+            if (Vector3.Cross(v[1].P - v[0].P, v[2].P - v[0].P).LengthSquared() > 1e-14f) yield return new Poly(v, f.MatId, f.Smooth) { Src = fi, Grp = fi };
+        }
+    }
+
+    static bool IsFlatConvex(Vector3[] p)
+    {
+        int n = p.Length; if (n < 3) return false;
+        var nrm = Vector3.Zero;
+        for (int i = 0; i < n; i++) nrm += Vector3.Cross(p[i], p[(i + 1) % n]);
+        if (nrm.LengthSquared() < 1e-14f) return false;
+        nrm = Vector3.Normalize(nrm); float d = Vector3.Dot(nrm, p[0]);
+        for (int i = 0; i < n; i++)
+        {
+            if (MathF.Abs(Vector3.Dot(nrm, p[i]) - d) > 1e-5f) return false;
+            var e1 = p[(i + 1) % n] - p[i]; var e2 = p[(i + 2) % n] - p[(i + 1) % n];
+            if (Vector3.Dot(Vector3.Cross(e1, e2), nrm) < -1e-9f) return false;
+        }
+        return true;
+    }
+
+    static PolyMesh Run(PolyMesh a, PolyMesh b, List<Poly> nearA, List<Poly> polysB, List<int> far, Op op, Matrix4x4 waL, Matrix4x4 wa, Vector3 centre, out Dictionary<Face, int> region)
+    {
+        // region of each output face: Kept = untouched, else its source face (cleaning never mixes two source faces)
+        var reg = new Dictionary<Face, int>(ReferenceEqualityComparer.Instance); region = reg;
+        var A = new Node(nearA); var B = new Node(polysB);
         switch (op)
         {
             case Op.Union:
@@ -137,20 +213,61 @@ public static class Csg
         Matrix4x4.Invert(wa, out var invA);
         var inv = Matrix4x4.CreateTranslation(centre) * invA;
         var res = new PolyMesh();
-        foreach (var p in A.All())
+        Face CopyOriginal(Face f)
         {
-            var idx = p.V.Select(v => res.AddVertex(Vector3.Transform(v.P, inv))).ToArray();
-            var f = res.AddFace(idx, p.Mat, p.Smooth);
-            f.UV = p.V.Select(v => v.UV).ToArray(); f.Col = p.V.Select(v => v.Col).ToArray();
+            var idx = f.V.Select(v => res.AddVertex(a.Verts[v])).ToArray();
+            var nf = res.AddFace(idx, f.MatId, f.Smooth); nf.UV = (Vector2[])f.UV.Clone(); nf.Col = (Vector4[])f.Col.Clone();
+            if (f.Col1 != null) nf.Col1 = (Vector4[])f.Col1.Clone();
+            return nf;
+        }
+        // faces that can't be touched (subtract / union keep them, intersect drops them)
+        if (op != Op.Intersect) foreach (var fi in far) reg[CopyOriginal(a.Faces[fi])] = CsgClean.Kept;
+        var outPolys = A.All();
+        // whole faces of A that came through without a cut: written back exactly as they were
+        var triCount = new Dictionary<int, int>(); var triUncut = new Dictionary<int, int>();
+        foreach (var p in nearA) if (!p.Whole) triCount[p.Src] = triCount.GetValueOrDefault(p.Src) + 1;
+        foreach (var p in outPolys) if (p.Src >= 0 && !p.Whole && !p.Cut) triUncut[p.Src] = triUncut.GetValueOrDefault(p.Src) + 1;
+        var wholeDone = new HashSet<int>();
+        var groups = new Dictionary<int, List<Poly>>();
+        foreach (var p in outPolys)
+        {
+            bool sameSide = p.Src >= 0 && Vector3.Dot(p.N, a.FaceNormal(a.Faces[p.Src]) is var fn && fn.LengthSquared() > 0 ? Vector3.Normalize(Vector3.TransformNormal(fn, waL)) : p.N) > 0;
+            if (p.Src >= 0 && !p.Cut && sameSide && (p.Whole || triUncut.GetValueOrDefault(p.Src) == triCount.GetValueOrDefault(p.Src)))
+            {
+                if (wholeDone.Add(p.Src)) reg[CopyOriginal(a.Faces[p.Src])] = CsgClean.Kept;
+                continue;
+            }
+            (groups.TryGetValue(p.Grp, out var gl) ? gl : groups[p.Grp] = new List<Poly>()).Add(p);
+        }
+        // the pieces of each cut face put back together on their own (the BSP slivers become one polygon per face)
+        foreach (var (grp, list) in groups)
+        {
+            var t = new PolyMesh();
+            foreach (var p in list)
+            {
+                var idx = p.V.Select(v => t.AddVertex(Vector3.Transform(v.P, inv))).ToArray();
+                var f = t.AddFace(idx, p.Mat, p.Smooth);
+                f.UV = p.V.Select(v => v.UV).ToArray(); f.Col = p.V.Select(v => v.Col).ToArray();
+            }
+            MeshOps.WeldByDistance(t, 1e-4f);
+            FixTJunctions(t, 1e-4f);
+            MergeCoplanar(t);
+            foreach (var f in t.Faces)
+            {
+                var idx = f.V.Select(v => res.AddVertex(t.Verts[v])).ToArray();
+                var nf = res.AddFace(idx, f.MatId, f.Smooth); nf.UV = f.UV; nf.Col = f.Col;
+                reg[nf] = grp;
+            }
         }
         MeshOps.WeldByDistance(res, 1e-4f);
         FixTJunctions(res, 1e-4f);
-        MergeCoplanar(res);
-        return CsgClean.Clean(res); // straight quads like a hand cut (kept as is when it can't be done cleanly)
+        return res;
     }
 
     /// <summary>The BSP leaves flat faces cut in long slivers: neighbours on the same plane (same material) become one polygon again.</summary>
-    public static void MergeCoplanar(PolyMesh m)
+    public static void MergeCoplanar(PolyMesh m) => MergeCoplanar(m, null);
+
+    public static void MergeCoplanar(PolyMesh m, Func<Face, bool> allow)
     {
         var n = new Vector3[m.Faces.Count]; var d = new float[m.Faces.Count];
         for (int i = 0; i < n.Length; i++) { n[i] = m.FaceNormal(i); d[i] = Vector3.Dot(n[i], m.Verts[m.Faces[i].V[0]]); }
@@ -165,7 +282,7 @@ public static class Csg
                 if (!side.TryGetValue(e, out var s)) { side[e] = (fi, 1); continue; }
                 side[e] = (s.F, s.Count + 1);
                 int g = s.F;
-                if (s.Count == 1 && g != fi && m.Faces[g].MatId == f.MatId && Vector3.Dot(n[g], n[fi]) > 0.99999f && MathF.Abs(d[g] - d[fi]) < 1e-4f) flat.Add(e);
+                if (s.Count == 1 && g != fi && (allow == null || (allow(m.Faces[g]) && allow(f))) && m.Faces[g].MatId == f.MatId && Vector3.Dot(n[g], n[fi]) > 0.99999f && MathF.Abs(d[g] - d[fi]) < 1e-4f) flat.Add(e);
                 else flat.Remove(e);
             }
         }

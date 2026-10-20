@@ -13,7 +13,13 @@ public static class CsgClean
     const float Eps = 1e-5f;
     const int MaxCuts = 14;
 
-    public static PolyMesh Clean(PolyMesh m)
+    /// <summary>Region of a face the boolean didn't touch: left exactly as it is.</summary>
+    public const int Kept = int.MinValue;
+
+    public static PolyMesh Clean(PolyMesh m) => Clean(m, null);
+
+    /// <summary>Same, with a region per face: <see cref="Kept"/> faces stay as they are, the others are only merged within their own region.</summary>
+    public static PolyMesh Clean(PolyMesh m, IDictionary<Face, int> region)
     {
         if (m.Faces.Count == 0 || !m.IsClosedManifold(out _)) return m;
         float vol0 = Volume(m);
@@ -21,10 +27,16 @@ public static class CsgClean
         try
         {
             var c = m.Clone();
-            DissolveCollinear(c);
+            Dictionary<Face, int> fixedFaces = null;
+            if (region != null)
+            {
+                fixedFaces = new Dictionary<Face, int>(ReferenceEqualityComparer.Instance);
+                for (int i = 0; i < m.Faces.Count; i++) if (region.TryGetValue(m.Faces[i], out var r)) fixedFaces[c.Faces[i]] = r;
+            }
+            DissolveCollinear(c, fixedFaces);
             for (int round = 0; round < 3; round++)
             {
-                bool changed = RebuildFlatAreas(c);
+                bool changed = RebuildFlatAreas(c, fixedFaces);
                 Csg.FixTJunctions(c, 1e-4f);
                 if (!changed) break;
             }
@@ -38,7 +50,9 @@ public static class CsgClean
     // ------------------------------------------------------------------ stray points on straight edges
 
     /// <summary>A point used by two faces only, sitting on the straight line between its two neighbours, is removed.</summary>
-    public static void DissolveCollinear(PolyMesh m)
+    public static void DissolveCollinear(PolyMesh m) => DissolveCollinear(m, null);
+
+    static void DissolveCollinear(PolyMesh m, Dictionary<Face, int> region)
     {
         for (int pass = 0; pass < 8; pass++)
         {
@@ -50,6 +64,7 @@ public static class CsgClean
             foreach (var (v, faces) in uses)
             {
                 if (faces.Count != 2 || faces.Any(f => removed.Contains(f))) continue;
+                if (region != null && faces.Any(f => region.GetValueOrDefault(m.Faces[f]) == Kept)) continue;
                 (int, int)? pair = null; bool ok = true;
                 foreach (var fi in faces)
                 {
@@ -80,7 +95,7 @@ public static class CsgClean
 
     sealed class Quad { public float Xa, Xb, Ya, Yb; } // a rectangle in the plane's own axes
 
-    static bool RebuildFlatAreas(PolyMesh m)
+    static bool RebuildFlatAreas(PolyMesh m, Dictionary<Face, int> region)
     {
         int nf = m.Faces.Count;
         var normal = new Vector3[nf]; var dist = new float[nf];
@@ -98,6 +113,11 @@ public static class CsgClean
             if (l.Count == 2)
             {
                 int a = l[0], b = l[1];
+                if (region != null)
+                {
+                    int ra = region.GetValueOrDefault(m.Faces[a]), rb = region.GetValueOrDefault(m.Faces[b]);
+                    if (ra == Kept || rb == Kept || ra != rb) continue;
+                }
                 if (m.Faces[a].MatId == m.Faces[b].MatId && Vector3.Dot(normal[a], normal[b]) > 0.99999f && MathF.Abs(dist[a] - dist[b]) < 1e-4f) parent[Find(a)] = Find(b);
             }
         var groups = Enumerable.Range(0, nf).GroupBy(Find).Select(g => g.ToList()).ToList();
@@ -110,11 +130,12 @@ public static class CsgClean
         foreach (var g in groups)
         {
             // only areas the boolean cut: several faces, or one polygon with more than 4 corners
-            if (g.Count == 1 && m.Faces[g[0]].V.Length <= 4) continue;
+            if (g.Count == 1 && (m.Faces[g[0]].V.Length <= 4 || (region != null && region.GetValueOrDefault(m.Faces[g[0]]) == Kept))) continue;
             var rebuilt = Rebuild(m, g, normal[g[0]], vertKey, Key);
             if (rebuilt == null) continue;
             if (rebuilt.Count == g.Count && g.All(fi => m.Faces[fi].V.Length == 4)) continue; // already clean quads
             foreach (var fi in g) drop.Add(fi);
+            if (region != null) { int r = region.GetValueOrDefault(m.Faces[g[0]]); foreach (var rf in rebuilt) region[rf] = r; }
             add.AddRange(rebuilt); changed = true;
         }
         if (!changed) return false;
@@ -147,7 +168,25 @@ public static class CsgClean
 
         var xs = Distinct(border.SelectMany(e => new[] { e.A.X, e.B.X }));
         var ys = Distinct(border.SelectMany(e => new[] { e.A.Y, e.B.Y }));
-        if (xs.Count > MaxCuts || ys.Count > MaxCuts) return null;
+        // points sitting in the middle of a straight border edge (a neighbour's edge ends there): the faces must be cut
+        // through them, else the neighbour's edge would leave a T (an extra corner in the middle of a side)
+        var forcedX = new List<float>(); var forcedY = new List<float>();
+        var ends = new Dictionary<(long, long), List<bool>>();
+        (long, long) K2(Vector2 p) => ((long)MathF.Round(p.X / Eps), (long)MathF.Round(p.Y / Eps));
+        foreach (var (a, b) in border)
+        {
+            bool vert = MathF.Abs(a.X - b.X) <= Eps;
+            foreach (var p in new[] { a, b }) { var k = K2(p); if (!ends.TryGetValue(k, out var l)) ends[k] = l = new List<bool>(2); l.Add(vert); }
+        }
+        foreach (var (a, b) in border)
+            foreach (var p in new[] { a, b })
+            {
+                var l = ends[K2(p)];
+                if (l.Count != 2 || l[0] != l[1]) continue;
+                if (l[0]) forcedY.Add(p.Y); else forcedX.Add(p.X);
+            }
+        forcedX = Distinct(forcedX); forcedY = Distinct(forcedY);
+        if (xs.Count - forcedX.Count > MaxCuts || ys.Count - forcedY.Count > MaxCuts || (long)xs.Count * ys.Count > 40000) return null;
         var vertical = border.Where(e => MathF.Abs(e.A.X - e.B.X) <= Eps).ToList();
 
         // a grid cell is inside when a ray going left from its centre crosses the vertical border an odd number of times
@@ -161,7 +200,7 @@ public static class CsgClean
                 if ((hits & 1) == 1) cells.Add(new Quad { Xa = xs[i], Xb = xs[i + 1], Ya = ys[j], Yb = ys[j + 1] });
             }
         if (cells.Count == 0) return null;
-        cells = MergeCells(cells, new List<float>(), new List<float>());
+        cells = MergeCells(cells, forcedX, forcedY);
         // the grid must cover exactly the same area
         float area = 0; foreach (var (a, b) in border) area += a.X * b.Y - b.X * a.Y; area = MathF.Abs(area) * 0.5f;
         float cellArea = cells.Sum(c => (c.Xb - c.Xa) * (c.Yb - c.Ya));

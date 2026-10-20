@@ -4,6 +4,36 @@ using MoloMax.Core.Gta;
 using MoloMax.Core.Mesh;
 using MoloMax.Core.Scenes;
 if (args.Length > 1 && args[0] == "types") { foreach (var t in typeof(CodeWalker.GameFiles.YtdFile).Assembly.GetTypes().Where(t => t.Name.Contains(args[1]))) { Console.WriteLine(t.FullName); foreach (var m in t.GetMembers().Where(m => m.DeclaringType == t)) Console.WriteLine("   " + m.MemberType + " " + m); } return 0; }
+if (args.Length > 0 && args[0] == "dense") {
+    void Rep(string name, PolyMesh before, Func<PolyMesh> run) {
+        var sw = System.Diagnostics.Stopwatch.StartNew(); PolyMesh r = null; string err = null;
+        try { r = run(); } catch (Exception e) { err = e.Message; }
+        if (r == null) { Console.WriteLine($"{name}: ERROR {err}"); return; }
+        Console.WriteLine($"{name}: {before.Faces.Count} -> {r.Faces.Count} faces, closed {r.IsClosedManifold(out var w)} {w}, vol {MoloMax.Core.Mesh.CsgClean.Volume(before):0.000} -> {MoloMax.Core.Mesh.CsgClean.Volume(r):0.000}, {sw.ElapsedMilliseconds} ms, corners [{string.Join(",", r.Faces.Select(f => f.V.Length).GroupBy(x => x).OrderBy(g => g.Key).Take(8).Select(g => g.Key + "x" + g.Count()))}]");
+    }
+    var T = Matrix4x4.CreateTranslation(2500, -1500, 30);
+    var dense = Primitives.Box(4, 0.3f, 3, 40, 3, 30); MeshOps.WeldByDistance(dense, 1e-5f); dense.CleanFaces();
+    var door = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -1.4f, Right = -0.4f, Bottom = 0, Top = 2.1f };
+    var win = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = 0.45f, Right = 1.55f, Bottom = 1.0f, Top = 2.0f };
+    { var T0 = Matrix4x4.CreateTranslation(1500, -800, 40);
+      var cs = MoloMax.Core.Mesh.Csg.Apply(Primitives.Box(2, 2, 2), T0, Primitives.Sphere(1.3f, 32), Matrix4x4.CreateTranslation(0, 0, 1) * T0, MoloMax.Core.Mesh.Csg.Op.Subtract);
+      if (Environment.GetEnvironmentVariable("DENSE_DUMP") == "2") for (int i = 0; i < cs.Faces.Count; i++) { var nn = cs.FaceNormal(i); if (MathF.Abs(nn.X) > 0.9999f || MathF.Abs(nn.Y) > 0.9999f || MathF.Abs(nn.Z) > 0.9999f) Console.WriteLine($"  n={nn.X:0},{nn.Y:0},{nn.Z:0} corners {cs.Faces[i].V.Length} c={cs.FaceCenter(cs.Faces[i])}"); } }
+    Rep("dense wall 40x30 + door", dense, () => MoloMax.Core.Modifiers.WallOpeningModifier.Cut(dense, door));
+    { var rw = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(MoloMax.Core.Modifiers.WallOpeningModifier.Cut(dense, door), win);
+      if (Environment.GetEnvironmentVariable("DENSE_DUMP") == "1") foreach (var f in rw.Faces.Where(f => f.V.Length > 4)) Console.WriteLine("  " + string.Join(" ", f.V.Select(v => $"({rw.Verts[v].X:0.###},{rw.Verts[v].Y:0.###},{rw.Verts[v].Z:0.###})"))); }
+    Rep("dense wall 40x30 + door + window", dense, () => MoloMax.Core.Modifiers.WallOpeningModifier.Cut(MoloMax.Core.Modifiers.WallOpeningModifier.Cut(dense, door), win));
+    var odd = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -0.333f, Right = 0.517f, Bottom = 0.777f, Top = 1.913f };
+    Rep("dense wall + opening not on the grid", dense, () => MoloMax.Core.Modifiers.WallOpeningModifier.Cut(dense, odd));
+    var cyl = Primitives.Cylinder(2, 3, 64);
+    Rep("cylinder 64 sides - box (boolean)", cyl, () => MoloMax.Core.Mesh.Csg.Apply(cyl, T, Primitives.Box(1, 5, 1.5f), Matrix4x4.CreateTranslation(0, 0, 0.8f) * T, MoloMax.Core.Mesh.Csg.Op.Subtract));
+    var curvedOp = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -2, 0), Normal = -Vector3.UnitY, Left = -0.5f, Right = 0.5f, Bottom = 0.5f, Top = 2f };
+    var tube = Primitives.Tube(2f, 1.8f, 3, 64);
+    Rep("round tower wall (tube 64) + Wall Opening", tube, () => MoloMax.Core.Modifiers.WallOpeningModifier.Cut(tube, curvedOp));
+    var big = Primitives.Sphere(2, 96); 
+    Rep("sphere ~18k faces - box (boolean)", big, () => MoloMax.Core.Mesh.Csg.Apply(big, T, Primitives.Box(1.5f, 1.5f, 1.5f), Matrix4x4.CreateTranslation(1.5f, 0, 0.5f) * T, MoloMax.Core.Mesh.Csg.Op.Subtract));
+    var bigwall = Primitives.Box(20, 0.3f, 6, 200, 3, 60); MeshOps.WeldByDistance(bigwall, 1e-5f); bigwall.CleanFaces();
+    Rep("big wall 200x60 (24k faces) + door", bigwall, () => MoloMax.Core.Modifiers.WallOpeningModifier.Cut(bigwall, door));
+    return 0; }
 if (args.Length > 2 && args[0] == "game") return GameTest.Run(args[1], args[2]);
 if (args.Length > 1 && args[0] == "bench") return LeatherBench.Run(args[1], args.Length > 2 && args[2] == "worn");
 if (args.Length > 0 && args[0] == "bench") { if (args.Length > 1 && args[1] == "lightxml") LightXml.Run(); else if (args.Length > 2) Reflect.Run(args[2]); else if (args.Length > 1) BenchImport.Run(); else Bench.Run(); return 0; }
@@ -1764,6 +1794,16 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
         Check("Wall Opening: saved / reopened with its openings", () => wo2 != null && wo2.Openings.Count == 2 && Near(wo2.Openings[1].Bottom, 1.0f, 1e-4f));
         var cl = (MoloMax.Core.Modifiers.WallOpeningModifier)wo.Clone(); cl.Openings[0].Left = -1.9f;
         Check("Wall Opening: a copy (undo snapshot) does not share its openings", () => Near(wo.Openings[0].Left, -1.4f, 1e-6f));
+        {
+            // dense mesh: only the faces the hole crosses change, the user's grid stays, and it stays fast
+            var dw = Primitives.Box(4, 0.3f, 3, 40, 3, 30); MeshOps.WeldByDistance(dw, 1e-5f); dw.CleanFaces();
+            var dd = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -1.4f, Right = -0.4f, Bottom = 0, Top = 2.1f };
+            var swd = System.Diagnostics.Stopwatch.StartNew();
+            var dr = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(dw, dd);
+            long ms = swd.ElapsedMilliseconds;
+            Console.WriteLine($"       dense wall + door: {dw.Faces.Count} -> {dr.Faces.Count} faces, {ms} ms, all quads {dr.Faces.All(f => f.V.Length == 4)}");
+            Check("Wall Opening on a dense wall (2820 faces): grid kept, only quads, closed, right volume, fast", () => dr.Faces.All(f => f.V.Length == 4) && dr.Faces.Count > 2400 && dr.IsClosedManifold(out _) && Near(Vol(dr), 3.6f - 0.3f * 2.1f, 0.01f) && ms < 3000);
+        }
         // MLO room box (single surface, normals inside): the hole goes in the wall face
         var room = Primitives.Room(6, 6, 3);
         int wallF = Enumerable.Range(0, room.Faces.Count).First(i => room.FaceNormal(i).Y > 0.99f); // the wall at y = -3, facing into the room
