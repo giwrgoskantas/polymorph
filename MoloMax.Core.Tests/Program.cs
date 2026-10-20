@@ -1762,6 +1762,19 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
         var gr = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(gw, go);
         var outline = go.Outline(); float gTop = outline.Max(p => p.Y);
         Check("Wall Opening gothic (church) arch: pointed top at the full height, cut through, closed", () => gr.IsClosedManifold(out _) && Near(gTop, 2.6f, 1e-3f) && Vol(gr) < 3.6f - 0.3f * 2.2f && Vol(gr) > 3.6f - 0.3f * 3.12f);
+        {
+            // MLO: gothic arches cut with the Wall Opening modifier in two facing room walls -> one portal between them
+            var sc = new Scene();
+            var r1 = sc.Add("Nave", Primitives.Room(6, 6, 4), Vector3.Zero, GtaObjectType.MloRoom);
+            var r2 = sc.Add("Chapel", Primitives.Room(6, 6, 4), new Vector3(6.1f, 0, 0), GtaObjectType.MloRoom);
+            var a1 = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(3, 0, 0), Normal = -Vector3.UnitX, Left = -0.8f, Right = 0.8f, Bottom = 0, Top = 3.2f, Shape = MoloMax.Core.Modifiers.OpeningShape.Gothic };
+            var a2 = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(-3, 0, 0), Normal = Vector3.UnitX, Left = -0.8f, Right = 0.8f, Bottom = 0, Top = 3.2f, Shape = MoloMax.Core.Modifiers.OpeningShape.Gothic };
+            var m1 = new MoloMax.Core.Modifiers.WallOpeningModifier(); m1.Openings.Add(a1); r1.Modifiers.Add(m1); r1.Touch();
+            var m2 = new MoloMax.Core.Modifiers.WallOpeningModifier(); m2.Openings.Add(a2); r2.Modifiers.Add(m2); r2.Touch();
+            var lay2 = MoloMax.Core.Gta.Export.MloLayout.Build(sc, sc.Gta);
+            Console.WriteLine($"       MLO with gothic arches: {lay2.Rooms.Count - 1} rooms, {lay2.Portals.Count} portal(s), border edges {MeshOps.BorderEdges(r1.Evaluated()).Count}");
+            Check("MLO: gothic arches made with Wall Opening in two room walls give the portal between the rooms", () => lay2.Portals.Any(p => p.RoomFrom > 0 && p.RoomTo > 0));
+        }
     }
 
     var two = Primitives.Box(1, 1, 1); var other = Primitives.Box(1, 1, 1); other.Transform(Matrix4x4.CreateTranslation(0, 0, 3)); two.Append(other);

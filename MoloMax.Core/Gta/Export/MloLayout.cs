@@ -89,11 +89,12 @@ public sealed class MloLayout
         for (int r = 1; r < lay.Rooms.Count; r++)
         {
             var o = lay.Rooms[r].Source;
-            foreach (var loop in BorderLoops(o.Mesh))
+            var rm = o.Evaluated() ?? o.Mesh; // openings made by modifiers (Wall Opening: arches, round windows) count too
+            foreach (var loop in BorderLoops(rm))
             {
                 var w = o.World;
                 var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue);
-                foreach (var v in loop) { var p = Vector3.Transform(o.Mesh.Verts[v], w); mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); }
+                foreach (var v in loop) { var p = Vector3.Transform(rm.Verts[v], w); mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); }
                 int axis = ThinAxis(mn, mx);
                 var size = mx - mn;
                 float a1 = size[(axis + 1) % 3], a2 = size[(axis + 2) % 3];

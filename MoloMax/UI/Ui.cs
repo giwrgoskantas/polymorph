@@ -13,7 +13,7 @@ public static class Ui
     static string E(string s) => string.IsNullOrEmpty(s) ? "" : s.Replace("%", "%%");
 
     // brand fonts (set by the ImGui backend)
-    public static ImFontPtr LabelFont, BrandFont;
+    public static ImFontPtr LabelFont, BrandFont, HeaderFont, SubHeaderFont, TileFont;
     public static bool HasLabelFont;
     /// <summary>A collapsing section header in the label font (IBM Plex Mono).</summary>
     public static bool Header(string label, ImGuiTreeNodeFlags flags = 0)

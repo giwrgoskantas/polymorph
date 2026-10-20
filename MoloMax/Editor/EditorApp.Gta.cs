@@ -17,7 +17,7 @@ namespace MoloMax.Editor;
 public sealed partial class EditorApp
 {
     public bool HubOpen;
-    enum HubPage { Home, Export, Mlo, Object, Collision, Checks, Coming, Tripo, Tools, Anim }
+    enum HubPage { Home, Export, Mlo, Object, Collision, Checks, Coming, Tripo, Tools, Anim, GTools, Create, Settings, Info, Results }
     HubPage hubPage = HubPage.Home;
     string hubComing = "";
 
@@ -42,55 +42,7 @@ public sealed partial class EditorApp
 
     // ---------------------------------------------------------------- window
 
-    void DrawHub()
-    {
-        if (!HubOpen) return;
-        float y = menuH + toolbarH;
-        float right = gpu.Width - (ShowPanel ? panelW : 0);
-        ImGui.SetNextWindowPos(new Vector2(right - 430, y + 8), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new Vector2(420, MathF.Min(680, gpu.Height - y - statusH - 16)), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(340, 260), new Vector2(900, 2000));
-        bool open = HubOpen;
-        if (!ImGui.Begin("Molo GTA###hub", ref open, ImGuiWindowFlags.NoCollapse)) { ImGui.End(); HubOpen = open; return; }
-        HubOpen = open;
-
-        // header: back + page title, like GIMS task pages
-        if (hubPage != HubPage.Home)
-        {
-            if (ImGui.Button("< Home")) hubPage = HubPage.Home;
-            ImGui.SameLine();
-        }
-        Ui.TextColored(HubAccent, hubPage switch
-        {
-            HubPage.Home => "MOLO GTA  -  choose a task",
-            HubPage.Export => exportSelectedOnly ? "EXPORT MODELS" : "EXPORT FIVEM RESOURCE",
-            HubPage.Mlo => "MLO BUILDER",
-            HubPage.Object => "OBJECT PROPERTIES",
-            HubPage.Collision => "COLLISION",
-            HubPage.Checks => "CHECKS",
-            HubPage.Tripo => "TRIPO  -  AI 3D MODELS",
-            HubPage.Tools => "MOLO TOOLS",
-            HubPage.Anim => "ANIMATION  -  YCD 30 FPS",
-            _ => hubComing.ToUpperInvariant(),
-        });
-        ImGui.Separator();
-        ImGui.BeginChild("##hubpage", Vector2.Zero);
-        switch (hubPage)
-        {
-            case HubPage.Home: HubHome(); break;
-            case HubPage.Export: HubExport(); break;
-            case HubPage.Mlo: HubMlo(); break;
-            case HubPage.Object: HubObject(); break;
-            case HubPage.Collision: HubCollision(); break;
-            case HubPage.Checks: HubChecks(); break;
-            case HubPage.Tripo: HubTripo(); break;
-            case HubPage.Tools: HubTools(); break;
-            case HubPage.Anim: HubAnim(); break;
-            default: HubComing(); break;
-        }
-        ImGui.EndChild();
-        ImGui.End();
-    }
+    void DrawHub() => DrawGimsHub();
 
     public void OpenHub(int page = 0) { HubOpen = true; hubPage = (HubPage)page; }
 
@@ -430,6 +382,8 @@ public sealed partial class EditorApp
         if (ImGui.Button("Add room at cursor", new Vector2(w2, 0))) { AddPrimitive(CreateKind.Room); }
         ImGui.SameLine();
         if (ImGui.Button("Selected -> Room", new Vector2(-1, 0))) SetGtaType(GtaObjectType.MloRoom);
+        if (ImGui.Button("Cut an opening in a room wall (door, window, arch, gothic, round)", new Vector2(-1, 0))) StartOpeningTool();
+        Theme.Tip("Select the room, click, drag on its wall, pick Rect / Arch / Gothic / Round in the panel, Enter. The portal is found from the opening.");
         Theme.Tip("Rooms are closed boxes with normals facing inward. Cut the doorways in the walls: portals are found from those openings.");
         if (ImGui.Button("Selected -> Portal", new Vector2(w2, 0))) SetGtaType(GtaObjectType.Portal);
         Theme.Tip("A flat object standing in a doorway (between two rooms, or a room and the outside).");

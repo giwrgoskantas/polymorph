@@ -69,6 +69,11 @@ float4 PSMain(PS_INPUT i) : SV_Target { return i.col * texture0.Sample(sampler0,
         FontBrand = File.Exists(unb) ? io.Fonts.AddFontFromFileTTF(unb, 22f, null, ranges) : FontBold;
         Ui.LabelFont = FontLabel; Ui.HasLabelFont = File.Exists(plex);
         Ui.BrandFont = FontBrand;
+        // panel headers in the GIMS Evo style: Segoe UI Light (big page title, section titles), Semilight for tiles
+        string light = Path.Combine(fonts, "segoeuil.ttf"), semi = Path.Combine(fonts, "segoeuisl.ttf");
+        Ui.HeaderFont = File.Exists(light) ? io.Fonts.AddFontFromFileTTF(light, 34f, null, ranges) : FontBold;
+        Ui.SubHeaderFont = File.Exists(light) ? io.Fonts.AddFontFromFileTTF(light, 22f, null, ranges) : FontBold;
+        Ui.TileFont = File.Exists(semi) ? io.Fonts.AddFontFromFileTTF(semi, 16f, null, ranges) : io.Fonts.Fonts[0];
     }
     public ImFontPtr FontLabel { get; private set; }
     public ImFontPtr FontBrand { get; private set; }
