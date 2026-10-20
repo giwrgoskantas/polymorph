@@ -20,11 +20,16 @@ Cut doors, windows and passages **straight on the wall** — no cutter object, n
 2. **Drag a rectangle** on the wall — a single click makes a 1.20 m window.
 3. **Pull any side** (or the middle handle to move it). **D** = door from the floor (2.10 m), **W** = window (sill 0.90 m).
    Exact sizes in the small panel: width, height, sill.
+   **Shape**: Rect / **Arch** / **Round** (keys R, A, C) and the number of **segments** on the curve (slider, or + / -).
 4. **Enter** — the opening is cut through the wall with clean straight faces and the reveal inside. **Esc** cancels.
 
 Every opening stays editable in the **Wall Opening** modifier (Modifiers tab > *Edit*: pull a side, the cut follows live),
 can be removed at any time, and is applied for good with *Apply*. Works on thick walls and on MLO room boxes
-(the doorway becomes a portal by itself). Undo with Ctrl+Z at every step.
+(the doorway becomes a portal by itself), even dense walls: only the faces the hole crosses change, your grid stays.
+Undo with Ctrl+Z at every step.
+
+**Clean Up** (right-click > *Clean up*, or the Clean Up modifier): fewer edges, same shape. Flat areas cut in many
+faces become one polygon, points in the middle of straight edges go. UV seams, colours, materials and smoothing are kept.
 
 ## Tutorials
 
