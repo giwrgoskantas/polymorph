@@ -25,6 +25,7 @@ public enum ModifierCategory { Edit, Generate, Deform, Normals }
 [JsonDerivedType(typeof(CastModifier), "cast")]
 [JsonDerivedType(typeof(EditPolyModifier), "edit_poly")]
 [JsonDerivedType(typeof(UnwrapUvwModifier), "unwrap_uvw")]
+[JsonDerivedType(typeof(WallOpeningModifier), "wall_opening")]
 public abstract class Modifier
 {
     public string Name;
@@ -39,13 +40,14 @@ public abstract class Modifier
     /// <summary>Returns the modified mesh. <paramref name="m"/> is a private copy and may be changed in place.</summary>
     public abstract PolyMesh Apply(PolyMesh m, bool render);
 
-    public Modifier Clone() => (Modifier)MemberwiseClone();
+    public virtual Modifier Clone() => (Modifier)MemberwiseClone();
 
     public static readonly (string Name, ModifierCategory Cat, Func<Modifier> Make)[] Catalog =
     {
         ("Edit Poly", ModifierCategory.Edit, () => new EditPolyModifier()),
         ("Unwrap UVW", ModifierCategory.Edit, () => new UnwrapUvwModifier()),
         ("Weld", ModifierCategory.Edit, () => new WeldModifier()),
+        ("Wall Opening", ModifierCategory.Generate, () => new WallOpeningModifier()),
         ("Array", ModifierCategory.Generate, () => new ArrayModifier()),
         ("Mirror", ModifierCategory.Generate, () => new MirrorModifier()),
         ("Symmetry", ModifierCategory.Generate, () => new SymmetryModifier()),

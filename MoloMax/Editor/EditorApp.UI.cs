@@ -262,6 +262,8 @@ public sealed partial class EditorApp
         ImGui.SameLine(); if (ImGui.Button("Ped")) AddPedReference();
         Theme.Tip("Add a GTA ped (1.818 m) to check the scale. Never exported. Auto scale in the Tool tab.");
         Theme.Tip("Alt+Z. Off (default): edit-mode clicks and boxes select through the mesh. On: only the vertices, edges and polygons you can see.");
+        ImGui.SameLine(); if (Theme.Toggle("Opening", modal.Kind == ModalKind.Opening)) { if (modal.Kind == ModalKind.Opening) CancelModal(); else StartOpeningTool(); } TutRect("tb_opening");
+        Theme.Tip("Wall Opening: drag a rectangle on the selected wall (door, window, passage), pull its sides, Enter cuts.");
         ImGui.SameLine(); if (Theme.Toggle("Sculpt", SculptMode)) ToggleSculptMode(); TutRect("tb_sculpt");
         Theme.Tip("Sculpt the selected mesh: draw, smooth, inflate, grab, pinch, flatten... (brushes in the panel, Esc leaves)");
         ImGui.SameLine(); if (Theme.Toggle("Paint", paintMode)) TogglePaintMode(); TutRect("tb_paint");

@@ -1746,6 +1746,35 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
         Check("boolean clean: a round hole leaves 2 clean polygons per flat side (no triangle fan), closed", () => flatFaces <= 12 && cs.IsClosedManifold(out _));
     }
     {
+        // Wall Opening modifier: rectangles traced on a wall, cut through with clean faces
+        var sc = new Scene();
+        var wallObj = sc.Add("wall", Primitives.Box(4, 0.3f, 3), new Vector3(2500, -1500, 30));
+        var wo = new MoloMax.Core.Modifiers.WallOpeningModifier();
+        // front face of the box is at y = -0.15 (normal -Y); door from the floor, window with a sill
+        wo.Openings.Add(new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -1.4f, Right = -0.4f, Bottom = 0, Top = 2.1f });
+        wo.Openings.Add(new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = 0.45f, Right = 1.55f, Bottom = 1.0f, Top = 2.0f });
+        wallObj.Modifiers.Add(wo); wallObj.Touch();
+        var ev = wallObj.Evaluated();
+        float expectV = 4 * 0.3f * 3 - 1.0f * 0.3f * 2.1f - 1.1f * 0.3f * 1.0f;
+        bool straightE = ev.Faces.All(f => Enumerable.Range(0, f.V.Length).All(i => { var d = ev.Verts[f.V[(i + 1) % f.V.Length]] - ev.Verts[f.V[i]]; return (MathF.Abs(d.X) > 1e-4f ? 1 : 0) + (MathF.Abs(d.Y) > 1e-4f ? 1 : 0) + (MathF.Abs(d.Z) > 1e-4f ? 1 : 0) <= 1; }));
+        Console.WriteLine($"       wall opening: {ev.Faces.Count} faces, closed {ev.IsClosedManifold(out _)}, volume {Vol(ev):0.000} (expect {expectV:0.000}), straight {straightE}, base mesh {wallObj.Mesh.Faces.Count} faces");
+        Check("Wall Opening: door + window traced on a thick wall, cut through, clean straight faces, base mesh untouched", () => ev.IsClosedManifold(out _) && Near(Vol(ev), expectV, 0.01f) && straightE && wallObj.Mesh.Faces.Count == 6);
+        var back2 = SceneIO.FromJson(SceneIO.ToJson(sc));
+        var wo2 = back2.Objects[0].Modifiers.OfType<MoloMax.Core.Modifiers.WallOpeningModifier>().FirstOrDefault();
+        Check("Wall Opening: saved / reopened with its openings", () => wo2 != null && wo2.Openings.Count == 2 && Near(wo2.Openings[1].Bottom, 1.0f, 1e-4f));
+        var cl = (MoloMax.Core.Modifiers.WallOpeningModifier)wo.Clone(); cl.Openings[0].Left = -1.9f;
+        Check("Wall Opening: a copy (undo snapshot) does not share its openings", () => Near(wo.Openings[0].Left, -1.4f, 1e-6f));
+        // MLO room box (single surface, normals inside): the hole goes in the wall face
+        var room = Primitives.Room(6, 6, 3);
+        int wallF = Enumerable.Range(0, room.Faces.Count).First(i => room.FaceNormal(i).Y > 0.99f); // the wall at y = -3, facing into the room
+        var wc = room.FaceCenter(room.Faces[wallF]);
+        var rop = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(wc.X, wc.Y, 0), Normal = room.FaceNormal(wallF), Left = -0.6f, Right = 0.6f, Bottom = 0, Top = 2.3f };
+        var cutRoom = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(room, rop);
+        var loops = MeshOps.BorderEdges(cutRoom).Count;
+        Console.WriteLine($"       room box opening: {room.Faces.Count} -> {cutRoom.Faces.Count} faces, open border edges {loops}");
+        Check("Wall Opening: an MLO room box gets a doorway in its wall face (open loop for the portal)", () => cutRoom.Faces.Count > room.Faces.Count && loops >= 3);
+    }
+    {
         // undo: meshes copied in the background after an import, the first edit then only takes the copy
         var sc = new Scene(); var big = sc.Add("big", Primitives.Plane(10, 10, 150, 150), Vector3.Zero);
         var us = new UndoStack();

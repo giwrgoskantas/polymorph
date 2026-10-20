@@ -376,6 +376,7 @@ public sealed partial class EditorApp
                 ImGui.Indent(6);
                 if (m is EditPolyModifier epm) EditPolyFields(o, i, epm);
                 else if (m is UnwrapUvwModifier uwm) UnwrapFields(o, i, uwm);
+                else if (m is WallOpeningModifier wom) WallOpeningFields(o, wom);
                 else if (ModifierFields(m)) o.Touch();
                 ImGui.Unindent(6);
             }

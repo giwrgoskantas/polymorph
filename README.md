@@ -10,6 +10,22 @@ Build props, MLO interiors and whole map edits, then export a FiveM resource tha
 
 > Version 1.0.0 — see [CHANGELOG.md](CHANGELOG.md). Download the ready-to-run zip from the [Releases](../../releases) page.
 
+## ★ New: Wall Opening — doors and windows in one gesture
+
+![Wall Opening](docs/wall_opening.jpg)
+
+Cut doors, windows and passages **straight on the wall** — no cutter object, no boolean to set up:
+
+1. Select the wall, click **Opening** in the toolbar (or right-click the wall > *Cut opening*).
+2. **Drag a rectangle** on the wall — a single click makes a 1.20 m window.
+3. **Pull any side** (or the middle handle to move it). **D** = door from the floor (2.10 m), **W** = window (sill 0.90 m).
+   Exact sizes in the small panel: width, height, sill.
+4. **Enter** — the opening is cut through the wall with clean straight faces and the reveal inside. **Esc** cancels.
+
+Every opening stays editable in the **Wall Opening** modifier (Modifiers tab > *Edit*: pull a side, the cut follows live),
+can be removed at any time, and is applied for good with *Apply*. Works on thick walls and on MLO room boxes
+(the doorway becomes a portal by itself). Undo with Ctrl+Z at every step.
+
 ## Tutorials
 
 Short videos, one per topic, attached to the [release page](../../releases/latest) (plus a one-minute trailer):
@@ -26,11 +42,13 @@ Short videos, one per topic, attached to the [release page](../../releases/lates
 | 10 · Modeling on the map | A box edited in place, MLO rooms built on the ground, a game model turned into your own copy |
 | 11 · Weapon Forge | A model fitted on a game weapon's skeleton, written as an add-on weapon |
 | 12 · Vehicle Forge | A car fitted on a game car's wheels, written as a FiveM vehicle |
+| 17 · Wall Opening | Trace a door and a window on a wall, pull the sides, Enter, edit later |
 | 08 · Best of all | What comes from 3ds Max, Blender and the GTA V tools, side by side |
 
 ## What's inside
 
-- **Modeling** — Edit Poly and Unwrap UVW as non-destructive modifiers; extrude, inset, bevel, chamfer, bridge, knife, booleans;
+- **Modeling** — Edit Poly and Unwrap UVW as non-destructive modifiers; **Wall Opening** (doors / windows traced on the wall);
+  extrude, inset, bevel, chamfer, bridge, knife, booleans with automatic clean topology;
   Shift + move copies faces or pulls new faces out of edges; sculpt tools to clean generated meshes.
 - **Snaps** — vertex, edge and face snaps with visible targets: grab a point of the object and drop it on another one;
   a face snap puts the object against the surface, never inside.

@@ -583,6 +583,8 @@ public sealed partial class EditorApp
             Theme.Tip("Copy or instance (shares the mesh) of the selection");
             if (ImGui.MenuItem("Join", "Ctrl+J", false, Selected.Count > 1)) JoinSelected();
             if (ImGui.MenuItem("Edit Mode", "Tab", false, Current != null)) ToggleEditMode();
+            if (ImGui.MenuItem("Cut opening (door / window)", null, false, Current != null)) StartOpeningTool();
+            Theme.Tip("Wall Opening: drag a rectangle on the wall, pull its sides, Enter cuts. No cutter, no boolean to set up.");
             if (ImGui.BeginMenu("Set Origin"))
             {
                 if (ImGui.MenuItem("Origin to Geometry")) CenterPivot();

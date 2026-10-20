@@ -8,7 +8,7 @@ using MoloMax.UI;
 
 namespace MoloMax.Editor;
 
-public enum ModalKind { None, Translate, Rotate, Scale, Extrude, Inset, LoopCut, Wall, Chamfer, Knife }
+public enum ModalKind { None, Translate, Rotate, Scale, Extrude, Inset, LoopCut, Wall, Chamfer, Knife, Opening }
 
 /// <summary>
 /// Blender-style modal tools: G / R / S with X Y Z constraints (twice = local, Shift = plane),
@@ -140,6 +140,7 @@ public sealed partial class EditorApp
         bool shift = ImGui.GetIO().KeyShift;
         if (P(ImGuiKey.Escape)) { CancelModal(); return; }
         if (P(ImGuiKey.Enter) || P(ImGuiKey.KeypadEnter)) { ConfirmModal(); return; }
+        if (modal.Kind == ModalKind.Opening) { OpeningKeys(); return; }
 
         if (modal.Kind == ModalKind.Wall)
         {
@@ -190,6 +191,7 @@ public sealed partial class EditorApp
     void ModalMouse(Viewport hv)
     {
         if (modal.Kind == ModalKind.Wall) { WallMouse(hv); return; }
+        if (modal.Kind == ModalKind.Opening) { OpeningMouse(hv); return; }
         if (modal.Kind == ModalKind.LoopCut) { LoopCutMouse(hv); return; }
         if (modal.Kind == ModalKind.Knife) { KnifeMouse(hv); return; }
         UpdateModal();
@@ -421,6 +423,7 @@ public sealed partial class EditorApp
     {
         var k = modal.Kind;
         if (k == ModalKind.Wall) { FinishWall(false); return; }
+        if (k == ModalKind.Opening) { ConfirmOpening(); return; }
         if (k == ModalKind.LoopCut) { if (modal.Hover.HasValue) { } CancelModal(); return; }
         if (k == ModalKind.Knife) { modal.Kind = ModalKind.None; return; }
         if (k is ModalKind.Extrude or ModalKind.Inset or ModalKind.Chamfer) RememberMeshOp();
@@ -453,6 +456,9 @@ public sealed partial class EditorApp
             case ModalKind.Wall:
                 wallPts.Clear();
                 break;
+            case ModalKind.Opening:
+                CancelOpening();
+                break;
         }
         SetStatus("Cancelled");
     }
@@ -481,11 +487,14 @@ public sealed partial class EditorApp
         if (modal.Kind == ModalKind.Extrude)
             lines.Line(modal.Pivot - modal.Normal * 2000, modal.Pivot + modal.Normal * 2000, new Vector4(0.3f, 0.75f, 1f, 1));
         WallPreviewLines();
+        OpeningLines();
     }
 
     void ModalOverlay(ImDrawListPtr dl, Viewport vp)
     {
         ExtrudeHandleOverlay(dl, vp);
+        OpeningOverlay(dl, vp);
+        if (modal.Kind == ModalKind.Opening && vp == Viewports[ActiveViewport]) OpeningPanel();
         if (modal.Kind == ModalKind.None || vp != Viewports[ActiveViewport]) return;
         // header strip at the top of the viewport, like Blender's tool header
         var text = modal.Header;

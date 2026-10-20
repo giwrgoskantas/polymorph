@@ -5,6 +5,7 @@ using MoloMax.Core.Gta.Library;
 using System.Numerics;
 using ImGuiNET;
 using MoloMax.Core.Mesh;
+using MoloMax.Core.Modifiers;
 using MoloMax.Core.Scenes;
 using MoloMax.Core.Tools;
 using MoloMax.Core.Paint;
@@ -195,6 +196,7 @@ public sealed partial class EditorApp
         T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
         T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
+        T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
@@ -1020,6 +1022,90 @@ public sealed partial class EditorApp
     }
 
     /// <summary>Boolean with the real buttons of the Object panel: a door and a window cut in a wall, union, intersect, undo.</summary>
+    /// <summary>Wall Opening with the real mouse: trace on the wall, pull sides, presets, Enter, edit an opening later, Ctrl+Z.</summary>
+    IEnumerable<object> TutWallOpening()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true; propTab = PropTab.Modifiers; if (TimelineOpen) ToggleTimeline();
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height;
+        P.Width = 4f; P.Length = 0.3f; P.Height = 3f;
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "wall";
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        cam.Frame(new Vector3(-2.6f, -2.5f, -0.3f), new Vector3(2.6f, 2.5f, 3.3f)); cam.Yaw = -1.3f; cam.Pitch = 0.12f; // in front of the wall
+        SelectOnly(wall); yield return Frames(10);
+        Vector2 W(float x, float z) => ScreenOf(vp, new Vector3(x, -0.15f, z)); // a point on the front face
+        string Info() { var m = Scene.Find(wall.Id).Evaluated(); return $"{m.Faces.Count} faces, closed {m.IsClosedManifold(out _)}, volume {Core.Mesh.CsgClean.Volume(m):0.000}"; }
+        IEnumerable<object> Key(Keys k) { KeyDownT(k); yield return Frames(3); KeyUpT(k); yield return Frames(6); }
+
+        foreach (var x in StartFilm("17_wall_opening", 7)) yield return x;
+        foreach (var x in Say("Wall Opening", "Doors and windows traced straight on the wall. No cutter, no boolean.", 70)) yield return x;
+
+        foreach (var x in Say("1. Click Opening, drag a rectangle on the wall", "Select the wall first (or right-click > Cut opening)", 25)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tb_opening"), false, 25)) yield return x;
+        bool started = modal.Kind == ModalKind.Opening;
+        foreach (var x in DragTo(W(-1.4f, 0.6f), W(-0.5f, 1.8f), 40)) yield return x;
+        yield return Frames(15);
+        bool traced = opRect != null && opPhase == 1;
+        Note($"traced: tool {started}, rect {opRect?.Width:0.00} x {opRect?.Height:0.00}");
+        Expect(started && traced && opRect.Width > 0.7f && opRect.Height > 1f, $"tool started from the toolbar, rectangle traced ({opRect?.Width:0.00} x {opRect?.Height:0.00} m)");
+
+        foreach (var x in Say("2. D = door: from the floor, 2.10 m high", "W = window (sill 0.90 m, 1.20 m high)", 20)) yield return x;
+        foreach (var x in Key(Keys.D)) yield return x;
+        yield return Frames(20);
+        Expect(MathF.Abs(opRect.Height - 2.1f) < 0.01f && MathF.Abs(opRect.Bottom - opWallBottom) < 0.01f, $"D makes it a door ({opRect.Width:0.00} x {opRect.Height:0.00}, sill {opRect.Bottom - opWallBottom:0.00})");
+
+        foreach (var x in Say("3. Pull a side to adjust it", "Each side has its handle; the middle one moves it all", 20)) yield return x;
+        float rightBefore = opRect.Right;
+        var rh = OpScreen(vp, opRect.Right, (opRect.Bottom + opRect.Top) * 0.5f);
+        var rightDir = Vector2.Normalize(W(1, 1) - W(0, 1));
+        foreach (var x in DragTo(rh, rh + rightDir * 60, 30)) yield return x;
+        yield return Frames(15);
+        Expect(opRect.Right > rightBefore + 0.05f, $"pulling the right side widens it ({rightBefore:0.00} -> {opRect.Right:0.00})");
+
+        foreach (var x in Say("4. Enter: the opening is cut", "Clean straight faces, the reveal inside the wall", 20)) yield return x;
+        string before = Info();
+        foreach (var x in Key(Keys.Enter)) yield return x;
+        yield return Frames(30);
+        var mod = Scene.Find(wall.Id).Modifiers.OfType<WallOpeningModifier>().FirstOrDefault();
+        string afterDoor = Info();
+        Note($"door: {before} -> {afterDoor}");
+        Expect(mod != null && mod.Openings.Count == 1 && Scene.Find(wall.Id).Evaluated().IsClosedManifold(out _) && Scene.Find(wall.Id).Mesh.Faces.Count == 6, $"Enter cuts the door ({afterDoor}), base mesh untouched");
+
+        foreach (var x in Say("5. A window: one click, W, Cut", "A click makes a 1.20 m window, the panel gives exact sizes", 20)) yield return x;
+        foreach (var x in ClickAt(TutCentre("tb_opening"), false, 25)) yield return x;
+        foreach (var x in ClickAt(W(1.1f, 1.5f), false, 25)) yield return x;
+        yield return Frames(10);
+        foreach (var x in Key(Keys.W)) yield return x;
+        yield return Frames(15);
+        foreach (var x in ClickAt(TutCentre("op_cut"), false, 25)) yield return x;
+        yield return Frames(30);
+        mod = Scene.Find(wall.Id).Modifiers.OfType<WallOpeningModifier>().FirstOrDefault();
+        string afterWin = Info();
+        Note($"window: {afterWin}");
+        Expect(mod != null && mod.Openings.Count == 2 && Scene.Find(wall.Id).Evaluated().IsClosedManifold(out _), $"window cut from the panel button ({afterWin})");
+
+        foreach (var x in Say("6. Change it later: Modifiers > Edit", "Pull a side, the cut follows live. Enter when done.", 20)) yield return x;
+        propTab = PropTab.Modifiers; yield return Frames(15);
+        EditOpening(Scene.Find(wall.Id), mod, 1); yield return Frames(15);
+        float topBefore = mod.Openings[1].Top;
+        var th = OpScreen(vp, (opRect.Left + opRect.Right) * 0.5f, opRect.Top);
+        var upDir = Vector2.Normalize(W(0, 2) - W(0, 1));
+        foreach (var x in DragTo(th, th + upDir * 50, 30)) yield return x;
+        yield return Frames(10);
+        foreach (var x in Key(Keys.Enter)) yield return x;
+        yield return Frames(25);
+        float topAfter = Scene.Find(wall.Id).Modifiers.OfType<WallOpeningModifier>().First().Openings[1].Top;
+        Expect(topAfter > topBefore + 0.05f && Scene.Find(wall.Id).Evaluated().IsClosedManifold(out _), $"editing the window raises its top ({topBefore:0.00} -> {topAfter:0.00}), {Info()}");
+
+        foreach (var x in Say("7. Ctrl+Z", "Every step can be undone", 20)) yield return x;
+        KeyDownT(Keys.ControlKey); KeyDownT(Keys.Z); yield return Frames(4); KeyUpT(Keys.Z); KeyUpT(Keys.ControlKey); yield return Frames(30);
+        float topUndo = Scene.Find(wall.Id).Modifiers.OfType<WallOpeningModifier>().First().Openings[1].Top;
+        Expect(MathF.Abs(topUndo - topBefore) < 0.01f, $"Ctrl+Z puts the window back ({topAfter:0.00} -> {topUndo:0.00})");
+        foreach (var x in Say("Wall Opening", "Right-click the wall > Cut opening, or the Opening button. Apply the modifier when it's final.", 70)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
+    }
+
     IEnumerable<object> TutBoolean()
     {
         Fresh(); if (MapMode) SetMapMode(false);
