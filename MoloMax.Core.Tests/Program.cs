@@ -1730,6 +1730,22 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
         Check("boolean far from the origin (GTA coordinates): no crash, closed, same result", () => allOk);
     }
     {
+        // clean topology after a boolean: straight cuts, no slivers, no diagonals
+        var T = Matrix4x4.CreateTranslation(1500, -800, 40);
+        var cwall = Primitives.Box(4, 0.3f, 3);
+        var cw1 = MoloMax.Core.Mesh.Csg.Apply(cwall, T, Primitives.Box(1, 1, 2.1f), Matrix4x4.CreateTranslation(-0.9f, 0, -0.05f) * T, MoloMax.Core.Mesh.Csg.Op.Subtract);
+        var cw2 = MoloMax.Core.Mesh.Csg.Apply(cw1, T, Primitives.Box(1.1f, 1, 0.9f), Matrix4x4.CreateTranslation(1.0f, 0, 1.1f) * T, MoloMax.Core.Mesh.Csg.Op.Subtract);
+        bool noTri = cw2.Faces.All(f => f.V.Length >= 4);
+        bool straight = cw2.Faces.All(f => Enumerable.Range(0, f.V.Length).All(i => { var d = cw2.Verts[f.V[(i + 1) % f.V.Length]] - cw2.Verts[f.V[i]]; int axes = (MathF.Abs(d.X) > 1e-4f ? 1 : 0) + (MathF.Abs(d.Y) > 1e-4f ? 1 : 0) + (MathF.Abs(d.Z) > 1e-4f ? 1 : 0); return axes <= 1; }));
+        Console.WriteLine($"       wall + door + window: {cw2.Faces.Count} faces, no triangle {noTri}, only straight edges {straight}, volume {Vol(cw2):0.000}");
+        Check("boolean clean: door + window in a wall = straight edges only, no triangles, closed, right volume", () => noTri && straight && cw2.Faces.Count <= 26 && cw2.IsClosedManifold(out _) && Near(Vol(cw2), 4 * 0.3f * 3 - 1 * 0.3f * 2.05f - 1.1f * 0.3f * 0.9f, 0.01f));
+        var cs = MoloMax.Core.Mesh.Csg.Apply(Primitives.Box(2, 2, 2), T, Primitives.Sphere(1.3f, 32), Matrix4x4.CreateTranslation(0, 0, 1) * T, MoloMax.Core.Mesh.Csg.Op.Subtract);
+        var origin = new Vector3(1500, -800, 40);
+        int flatFaces = Enumerable.Range(0, cs.Faces.Count).Count(i => { var nn = cs.FaceNormal(i); var c = cs.Faces[i].V.Aggregate(Vector3.Zero, (q, v) => q + cs.Verts[v]) / cs.Faces[i].V.Length - origin; return (MathF.Abs(nn.X) > 0.9999f || MathF.Abs(nn.Y) > 0.9999f || MathF.Abs(nn.Z) > 0.9999f) && (MathF.Abs(c.X) > 0.999f || MathF.Abs(c.Y) > 0.999f || c.Z < 0.001f || c.Z > 1.999f); });
+        Console.WriteLine($"       box - sphere: {cs.Faces.Count} faces, {flatFaces} on the flat sides");
+        Check("boolean clean: a round hole leaves 2 clean polygons per flat side (no triangle fan), closed", () => flatFaces <= 12 && cs.IsClosedManifold(out _));
+    }
+    {
         // undo: meshes copied in the background after an import, the first edit then only takes the copy
         var sc = new Scene(); var big = sc.Add("big", Primitives.Plane(10, 10, 150, 150), Vector3.Zero);
         var us = new UndoStack();

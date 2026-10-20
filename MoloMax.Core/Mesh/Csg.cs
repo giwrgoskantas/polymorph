@@ -146,7 +146,7 @@ public static class Csg
         MeshOps.WeldByDistance(res, 1e-4f);
         FixTJunctions(res, 1e-4f);
         MergeCoplanar(res);
-        return res;
+        return CsgClean.Clean(res); // straight quads like a hand cut (kept as is when it can't be done cleanly)
     }
 
     /// <summary>The BSP leaves flat faces cut in long slivers: neighbours on the same plane (same material) become one polygon again.</summary>
