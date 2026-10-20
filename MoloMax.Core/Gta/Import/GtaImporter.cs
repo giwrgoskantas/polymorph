@@ -30,6 +30,8 @@ public static class GtaImporter
         public ImportResult Res;
         public string Name, Dir, TexDir;
         public bool SkipExisting;
+        /// <summary>Weld + smoothing of the game triangles (off for the texture library build: only materials are read).</summary>
+        public bool Weld = true;
         public readonly Dictionary<string, string> TextureFiles = new(StringComparer.OrdinalIgnoreCase);
         public readonly Dictionary<string, int> MaterialKey = new();
         /// <summary>Textures of the parent dictionaries (name.parentN.ytd): written only when a material uses them.</summary>
@@ -40,7 +42,7 @@ public static class GtaImporter
     public static ImportResult Import(string path, ImportOptions opt = null)
     {
         opt ??= new ImportOptions();
-        var c = new Ctx { Res = new ImportResult(), Dir = Path.GetDirectoryName(Path.GetFullPath(path)), SkipExisting = opt.SkipExistingTextures };
+        var c = new Ctx { Res = new ImportResult(), Dir = Path.GetDirectoryName(Path.GetFullPath(path)), SkipExisting = opt.SkipExistingTextures, Weld = opt.WeldVertices };
         var lower = path.ToLowerInvariant();
         bool xml = lower.EndsWith(".xml");
         string ext = Path.GetExtension(xml ? lower[..^4] : lower);
@@ -302,9 +304,12 @@ public static class GtaImporter
             }
         }
         // shared positions are welded so the mesh is editable (UV / colour seams stay per corner); triangles to quads where flat
-        MeshOps.WeldByDistance(mesh, 1e-5f);
-        mesh.CleanFaces();
-        MeshOps.AutoSmooth(mesh, null, 40f);
+        if (c.Weld)
+        {
+            MeshOps.WeldByDistance(mesh, 1e-5f);
+            mesh.CleanFaces();
+            MeshOps.AutoSmooth(mesh, null, 40f);
+        }
         c.Res.Meshes.Add(new ImportedMesh { Name = name, Mesh = mesh, GtaType = GtaObjectType.Drawable });
     }
 

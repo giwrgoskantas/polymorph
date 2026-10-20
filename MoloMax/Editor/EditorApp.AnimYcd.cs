@@ -52,7 +52,7 @@ public sealed partial class EditorApp
     {
         var model = AnimGta.ModelName(o).ToLowerInvariant();
         if (c.Name.StartsWith(model + "_uv", StringComparison.OrdinalIgnoreCase)) return true;
-        int shaders = Math.Max(1, o.Mesh.Faces.Select(f => f.MatId).Distinct().Count());
+        int shaders = Math.Max(1, UsedMaterials(o).Count);
         for (int i = 0; i < shaders; i++) if (MoloMax.Core.Gta.Export.AnimXml.ClipHash(model, i) == c.Hash) return true;
         return false;
     }

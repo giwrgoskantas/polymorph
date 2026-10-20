@@ -42,7 +42,27 @@ public sealed class Camera
         return Matrix4x4.CreatePerspectiveFieldOfView(Fov, MathF.Max(aspect, 1e-3f), Near, Far);
     }
 
-    public Matrix4x4 ViewProj(float aspect) => View * Projection(aspect);
+    public Matrix4x4 ViewProj(float aspect)
+    {
+        // cached: Project() runs for thousands of points per frame and rebuilding the matrix each time cost more than the projection
+        var k = (Target, Distance, Yaw, Pitch, Fov, Ortho, OrthoHeight, Near, Far, aspect);
+        if (vpKey.Equals(k) && vpValid) return vpCache;
+        vpCache = View * Projection(aspect); vpKey = k; vpValid = true;
+        return vpCache;
+    }
+    (Vector3, float, float, float, float, bool, float, float, float, float) vpKey; Matrix4x4 vpCache; bool vpValid;
+
+    /// <summary>World → viewport-local pixel with a matrix computed once (loops over many points: pass World * ViewProj and object-space points).</summary>
+    public static bool Project(in Matrix4x4 m, Vector3 p, float w, float h, out Vector2 screen)
+    {
+        float cx = p.X * m.M11 + p.Y * m.M21 + p.Z * m.M31 + m.M41;
+        float cy = p.X * m.M12 + p.Y * m.M22 + p.Z * m.M32 + m.M42;
+        float cw = p.X * m.M14 + p.Y * m.M24 + p.Z * m.M34 + m.M44;
+        if (cw <= 1e-5f) { screen = default; return false; }
+        float iw = 1f / cw;
+        screen = new Vector2((cx * iw * 0.5f + 0.5f) * w, (0.5f - cy * iw * 0.5f) * h);
+        return true;
+    }
 
     /// <summary>World units per screen pixel at the target distance.</summary>
     public float PixelSize(float viewportHeight, float atDistance = -1)
@@ -127,5 +147,5 @@ public sealed class Camera
         _ => Kind.ToString(),
     };
 
-    public Camera Clone() => (Camera)MemberwiseClone();
+    public Camera Clone() { var c = (Camera)MemberwiseClone(); c.vpValid = false; return c; }
 }

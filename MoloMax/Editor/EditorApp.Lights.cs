@@ -101,12 +101,12 @@ public sealed partial class EditorApp
             {
                 var h = new HashCode();
                 h.Add(gl.LightDir); h.Add(casters.Count); h.Add(renderer.EditObjectId);
-                foreach (var o in casters) { h.Add(o.Version); h.Add(o.World.Translation); h.Add(o.World.M11); h.Add(o.World.M22); h.Add(o.World.M12); }
+                foreach (var o in casters) { var ow = o.World; h.Add(o.Version); h.Add(ow.Translation); h.Add(ow.M11); h.Add(ow.M22); h.Add(ow.M12); }
                 int hash = h.ToHashCode();
                 if (hash != shadowHash)
                 {
                     var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue);
-                    foreach (var o in casters) { var (a, b) = o.WorldBounds(); mn = Vector3.Min(mn, a); mx = Vector3.Max(mx, b); }
+                    foreach (var o in casters) { var (a, b) = o.FastWorldBounds(); mn = Vector3.Min(mn, a); mx = Vector3.Max(mx, b); }
                     var c = (mn + mx) * 0.5f; float r = MathF.Max((mx - mn).Length() * 0.5f, 1f);
                     if (r > 160) { c = Viewports[ActiveViewport].Camera.Target; r = 160; }
                     var up = MathF.Abs(gl.LightDir.Z) > 0.98f ? Vector3.UnitY : Vector3.UnitZ;

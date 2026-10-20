@@ -82,7 +82,7 @@ public static partial class MeshOps
         return res;
     }
 
-    static void SideUVMetric(PolyMesh m, IEnumerable<int> ring)
+    public static void SideUVMetric(PolyMesh m, IEnumerable<int> ring)
     {
         foreach (var fi in ring)
         {
@@ -97,7 +97,10 @@ public static partial class MeshOps
     /// Extrude polygons (Group: each connected group along its average normal; By Polygon: each face alone).
     /// The extruded faces keep their indices; returns the indices of the new side faces.
     /// </summary>
-    public static List<int> ExtrudeFaces(PolyMesh m, ISet<int> faces, float height, bool byPolygon = false)
+    public static List<int> ExtrudeFaces(PolyMesh m, ISet<int> faces, float height, bool byPolygon = false) => ExtrudeFaces(m, faces, height, byPolygon, null);
+
+    /// <summary>Same, and lists the points that moved with their direction (an interactive drag then only moves them further).</summary>
+    public static List<int> ExtrudeFaces(PolyMesh m, ISet<int> faces, float height, bool byPolygon, List<(int V, Vector3 N)> moved)
     {
         var sides = new List<int>();
         if (faces == null || faces.Count == 0) return sides;
@@ -108,9 +111,9 @@ public static partial class MeshOps
             foreach (var fi in g) n += m.FaceNormal(fi) * MathF.Max(m.FaceArea(m.Faces[fi]), 1e-6f);
             n = n.LengthSquared() > 1e-12f ? Vector3.Normalize(n) : Vector3.UnitZ;
             var (_, ring) = SplitRegion(m, g, true, out _);
-            var moved = new HashSet<int>();
-            foreach (var fi in g) foreach (var v in m.Faces[fi].V) moved.Add(v);
-            foreach (var v in moved) m.Verts[v] += n * height;
+            var mv = new HashSet<int>();
+            foreach (var fi in g) foreach (var v in m.Faces[fi].V) mv.Add(v);
+            foreach (var v in mv) { m.Verts[v] += n * height; moved?.Add((v, n)); }
             SideUVMetric(m, ring);
             sides.AddRange(ring);
         }

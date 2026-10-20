@@ -308,13 +308,27 @@ public sealed class SceneObject
     public void Touch() => Version = System.Threading.Interlocked.Increment(ref versionSeed);
 
     [System.Text.Json.Serialization.JsonIgnore] int statVersion = -1, statTris;
-    [System.Text.Json.Serialization.JsonIgnore] PolyMesh statMesh;
+    [System.Text.Json.Serialization.JsonIgnore] PolyMesh statMesh; long statSig;
+    static long StatSig(PolyMesh m)
+    {
+        long h = m.Faces.Count * 1000003L + m.Verts.Count;
+        int n = m.Faces.Count;
+        for (int i = 0; i < Math.Min(n, 8); i++) h = h * 31 + m.Faces[i].V.Length;
+        for (int i = Math.Max(8, n - 8); i < n; i++) h = h * 31 + m.Faces[i].V.Length;
+        return h;
+    }
     /// <summary>Triangle count, cached until the mesh changes (the viewport shows it every frame).</summary>
     public int TriangleCount
     {
         get
         {
-            if (statVersion != Version || !ReferenceEquals(statMesh, Mesh)) { statTris = Mesh.TriangleCount; statVersion = Version; statMesh = Mesh; }
+            if (statVersion != Version || !ReferenceEquals(statMesh, Mesh))
+            {
+                // points moved (a drag) leave the polygons as they were: same mesh, same counts, same first / last polygons → no recount
+                long sig = StatSig(Mesh);
+                if (!ReferenceEquals(statMesh, Mesh) || sig != statSig) statTris = Mesh.TriangleCount;
+                statVersion = Version; statMesh = Mesh; statSig = sig;
+            }
             return statTris;
         }
     }

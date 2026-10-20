@@ -215,9 +215,10 @@ public sealed partial class EditorApp : IDisposable
         if (apiShotPath != null) { try { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(apiShotPath))); gpu.Capture(apiShotPath); } catch (Exception e) { SetStatus("Screenshot failed: " + e.Message); } apiShotPath = null; }
         bool visible = gpu.Present(true);
         Prof("present");
-        if (!MapMode || collectTick % 30 == 0) renderer.Collect(Scene); // thousands of map entities: freeing unused GPU meshes twice a second is plenty
+        // freeing GPU meshes of deleted objects: when the object count changed, else a few times a second (it scans every object)
+        if (collectTick % (MapMode ? 30 : 10) == 0 || Scene.Objects.Count != collectCount && !MapMode) { renderer.Collect(Scene); collectCount = Scene.Objects.Count; }
         if (++collectTick % (MapMode ? 300 : 30) == 0) wires.Collect(Scene.Objects.Select(o => o.Id).ToHashSet());
-        if (collectTick % 20 == 10 && !ModalActive && !painting) Undo.Prefreeze(Scene); // the next undo step already copied (big imports)
+        if (collectTick % 20 == 10 && !ModalActive && !painting && !transforming) Undo.Prefreeze(Scene); // the next undo step already copied (big imports)
         UpdateTitle();
         Prof("collect");
         if (frameError != null) { var e = frameError; frameError = null; throw new InvalidOperationException(e.Message, e); }
@@ -229,7 +230,7 @@ public sealed partial class EditorApp : IDisposable
     /// <summary>Graphics card time of the 3D views (profiling).</summary>
     MoloMax.Rendering.GpuTimer gpuTimer;
     public double GpuViewMs => gpuTimer?.Ms ?? 0;
-    int collectTick;
+    int collectTick, collectCount = -1;
 
     // ---- frame profile (milliseconds per section, smoothed): self tests and the stats overlay read it
     readonly System.Diagnostics.Stopwatch profSw = new();
@@ -245,7 +246,7 @@ public sealed partial class EditorApp : IDisposable
         profCur[section] = ms;
         if (section == "collect")
         {
-            double t = profCur.Values.Sum();
+            double t = profCur.Values.Sum(); LastFrameCpuMs = t - profCur.GetValueOrDefault("present");
             if (t > WorstFrameMs) { WorstFrameMs = t; worstFrame = profCur.OrderByDescending(kv => kv.Value).Take(5).Select(kv => $"{kv.Key} {kv.Value:0.0}").ToList(); worstFrame.Add($"(of which mesh uploads {renderer.UploadMs - profUp0:0.0}, textures {renderer.Textures.LoadMs - profTex0:0.0}, map culling {profGatherMs:0.0}, GC pause {(GC.GetTotalPauseDuration() - profGc0).TotalMilliseconds:0.0})"); }
             profCur.Clear();
         }
@@ -254,6 +255,8 @@ public sealed partial class EditorApp : IDisposable
     List<string> worstFrame = new();
     /// <summary>Slowest frame since the last reset and where its time went (self tests).</summary>
     public double WorstFrameMs;
+    /// <summary>Processor time of the last frame (all sections, without waiting for the screen).</summary>
+    public double LastFrameCpuMs;
     public void ResetWorstFrame() { WorstFrameMs = 0; worstFrame = new(); }
     public string WorstFrameText() => $"slowest frame {WorstFrameMs:0} ms: " + string.Join(", ", worstFrame);
     public string ProfileText(int n = 6) => string.Join(", ", FrameProfile.OrderByDescending(kv => kv.Value).Take(n).Select(kv => $"{kv.Key} {kv.Value:0.0}")) + $"  [graphics card: views {GpuViewMs:0.0}]";
@@ -345,19 +348,33 @@ public sealed partial class EditorApp : IDisposable
         ctx.OutputMerger.SetDepthStencilState(renderer.DepthDefault);
         ctx.OutputMerger.SetBlendState(renderer.Opaque, blendCol, -1);
         if (MapMode && !wireOnly(vp)) { long g0 = System.Diagnostics.Stopwatch.GetTimestamp(); MapGatherDraws(vp, viewProj); profGatherMs += System.Diagnostics.Stopwatch.GetElapsedTime(g0).TotalMilliseconds; }
-        if (MapMode && !wireOnly(vp)) MapDraw(false);
-        else foreach (var o in Scene.Objects)
+        // what the camera can see (objects outside the view are not sent to the graphics card), worked out once for both passes
+        drawList.Clear();
+        if (!(MapMode && !wireOnly(vp)) && !wireOnly(vp))
         {
-            if (o.Hidden || wireOnly(vp) || IsVolumeOnly(o)) continue;
+            var planes = FrustumPlanes(viewProj);
+            foreach (var o in Scene.Objects)
+            {
+                if (o.Hidden || IsVolumeOnly(o)) continue;
+                if (o.Modifiers is not { Count: > 0 } && o.Mesh != null && o.Mesh.Verts.Count > 0)
+                {
+                    var (bmn, bmx) = o.FastWorldBounds();
+                    if (!BoxVisible(planes, bmn - new Vector3(0.01f), bmx + new Vector3(0.01f))) continue;
+                }
+                drawList.Add(o);
+            }
+        }
+        if (MapMode && !wireOnly(vp)) MapDraw(false);
+        else foreach (var o in drawList)
+        {
             var hl = o.Frozen ? new Vector4(0.55f, 0.55f, 0.6f, 0.6f) : Vector4.Zero;
             renderer.DrawObject(Scene, o, false, hl, BackfaceCull);
         }
         ctx.OutputMerger.SetBlendState(renderer.Alpha, blendCol, -1);
         ctx.OutputMerger.SetDepthStencilState(renderer.DepthRead);
         if (MapMode && !wireOnly(vp)) MapDraw(true);
-        else foreach (var o in Scene.Objects)
+        else foreach (var o in drawList)
         {
-            if (o.Hidden || wireOnly(vp) || IsVolumeOnly(o)) continue;
             renderer.DrawObject(Scene, o, true, Vector4.Zero, BackfaceCull);
         }
 
@@ -391,7 +408,7 @@ public sealed partial class EditorApp : IDisposable
                 var (vb, count) = wires.Get(lines.Device, o.Id, ed, o.Version, () => ed ? (obj.Mesh.Verts, obj.Mesh.DrawEdges()) : (obj.Evaluated().Verts, obj.Evaluated().DrawEdges()));
                 lines.DrawStatic(vb, count, o.World * viewProj, col, 0.0004f);
             }
-            if (Level == SubObject.Object && o.Mesh != null && Selected.Contains(o.Id)) { var (bmn, bmx) = o.Mesh.Bounds(); bracketBoxes.Add((o.World, bmn, bmx)); }
+            if (Level == SubObject.Object && o.Mesh != null && Selected.Contains(o.Id)) { var (bmn, bmx) = o.LocalBounds(); bracketBoxes.Add((o.World, bmn, bmx)); }
         }
         // a selected Drawable node: one box around all its meshes
         if (Level == SubObject.Object)
@@ -411,7 +428,7 @@ public sealed partial class EditorApp : IDisposable
                     }
                     if (mn.X <= mx.X) bracketBoxes.Add((Matrix4x4.Identity, mn, mx));
                 }
-        if (cur != null && Level != SubObject.Object) { SubObjectHighlights(cur); DrawModifierSeams(cur); }
+        if (cur != null && Level != SubObject.Object) { SubObjectHighlightsGpu(cur, viewProj); DrawModifierSeams(cur); }
         // object mode: a clean outline around the selection, no inner edges (Blender style)
         if (outlineItems.Count > 0)
         {
@@ -557,6 +574,8 @@ public sealed partial class EditorApp : IDisposable
         lines.Line(p0, px, col); lines.Line(p0, pz, col); lines.Line(px, pz, col); lines.Line(p0, py, col * new Vector4(1, 1, 1, 0.6f));
     }
 
+    readonly List<SceneObject> drawList = new();
+
     void DrawGrid(Viewport vp)
     {
         var cam = vp.Camera;
@@ -599,39 +618,6 @@ public sealed partial class EditorApp : IDisposable
                 }
     }
 
-    void SubObjectHighlights(SceneObject o)
-    {
-        var w = o.World; var s = SubSel(o); var m = o.Mesh;
-        var red = new Vector4(1f, 0.1f, 0.1f, 1);
-        if (Level is SubObject.Polygon or SubObject.Element)
-        {
-            // seen from the front: bright tint; seen from behind (flipped normal): dark tint
-            var front = new Vector4(SettingColour(Settings.SelFrontColour, new(1f, 0.05f, 0.05f)), 0.45f);
-            var back = new Vector4(SettingColour(Settings.SelBackColour, new(0.32f, 0.02f, 0.02f)), 0.6f);
-            var nrmM = Matrix4x4.Invert(w, out var winv) ? Matrix4x4.Transpose(winv) : w;
-            foreach (var fi in s.Faces)
-            {
-                if (fi >= m.Faces.Count) continue;
-                var f = m.Faces[fi];
-                Vector4 tint = front;
-                if (drawCam != null && f.V.Length >= 3)
-                {
-                    var p0 = Vector3.Transform(m.Verts[f.V[0]], w);
-                    var n = Vector3.TransformNormal(m.FaceNormal(f), nrmM);
-                    var toEye = drawCam.Ortho ? -drawCam.Forward : drawCam.Eye - p0;
-                    if (Vector3.Dot(n, toEye) < 0) tint = back;
-                }
-                foreach (var (a, b, c) in Triangulator.Triangulate(m, f))
-                    lines.Tri(Vector3.Transform(m.Verts[f.V[a]], w), Vector3.Transform(m.Verts[f.V[b]], w), Vector3.Transform(m.Verts[f.V[c]], w), tint);
-                foreach (var e in m.FaceEdges(f)) lines.Line(Vector3.Transform(m.Verts[e.A], w), Vector3.Transform(m.Verts[e.B], w), red);
-            }
-        }
-        if (Level is SubObject.Edge or SubObject.Border)
-            foreach (var e in s.Edges)
-                if (e.A < m.Verts.Count && e.B < m.Verts.Count)
-                    lines.Line(Vector3.Transform(m.Verts[e.A], w), Vector3.Transform(m.Verts[e.B], w), red);
-    }
-
     // ---------------------------------------------------------------- screen-space overlays
 
     void DrawOverlays()
@@ -671,23 +657,48 @@ public sealed partial class EditorApp : IDisposable
         }
     }
 
+    readonly List<int> nearTick = new();
     void VertexTicks(ImDrawListPtr dl, Viewport vp, SceneObject o)
     {
-        var w = o.World; var s = SubSel(o);
+        var s = SubSel(o);
         var blue = ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.35f, 1f, 1));
         var red = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.1f, 0.1f, 1));
-        // big meshes: drawing a tick for every vertex each frame stalls the UI, so only selected ones and the
-        // ones around the mouse get a tick
-        bool big = o.Mesh.Verts.Count > 40000;
-        var mouse = Input.Mouse;
-        for (int i = 0; i < o.Mesh.Verts.Count; i++)
+        // screen positions cached per camera / mesh change (shared with picking); big meshes: only the selected
+        // points and the ones around the mouse get a tick
+        var sc = ScreenVerts(vp, o); var P = sc.P; var Ok = sc.Ok;
+        Prof("ov ticks project");
+        var org = new Vector2(vp.X, vp.Y);
+        int n = P.Length;
+        bool big = n > 40000;
+        var mouse = Input.Mouse - org;
+        var r2 = new Vector2(2f); var r3 = new Vector2(3f);
+        if (!big)
         {
-            bool on = s.Verts.Contains(i);
-            if (!vp.Camera.Project(Vector3.Transform(o.Mesh.Verts[i], w), vp.W, vp.H, out var sp, out _)) continue;
-            var p = vp.ToScreen(sp);
-            if (big && !on && Vector2.DistanceSquared(p, mouse) > 160 * 160) continue;
-            float r = on ? 3f : 2f;
-            dl.AddRectFilled(p - new Vector2(r), p + new Vector2(r), on ? red : blue);
+            for (int i = 0; i < n; i++)
+            {
+                if (!Ok[i]) continue;
+                var p = org + P[i];
+                if (s.Verts.Contains(i)) dl.AddRectFilled(p - r3, p + r3, red); else dl.AddRectFilled(p - r2, p + r2, blue);
+            }
+            return;
+        }
+        // around the mouse; on a very dense mesh only the nearest few thousand (more would be a solid blue patch anyway)
+        float R = 160f * 160f; const int Cap = 3000;
+        int count = 0;
+        for (int i = 0; i < n; i++) if (Ok[i] && Vector2.DistanceSquared(P[i], mouse) <= R) count++;
+        if (count > Cap) R *= (float)Cap / count; // dense: a smaller circle holding about Cap points
+        nearTick.Clear();
+        for (int i = 0; i < n; i++) if (Ok[i] && Vector2.DistanceSquared(P[i], mouse) <= R) nearTick.Add(i);
+        Prof("ov ticks near");
+        foreach (var i in nearTick)
+        {
+            if (s.Verts.Contains(i)) continue;
+            var p = org + P[i]; dl.AddRectFilled(p - r2, p + r2, blue);
+        }
+        foreach (var i in s.Verts)
+        {
+            if (i >= n || !Ok[i]) continue;
+            var p = org + P[i]; dl.AddRectFilled(p - r3, p + r3, red);
         }
     }
 

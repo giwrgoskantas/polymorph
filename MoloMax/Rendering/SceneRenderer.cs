@@ -62,7 +62,13 @@ sealed class GpuMesh : IDisposable
     public int Version = -1;
     public bool Edit;
     public readonly List<(Buffer Vb, Buffer Ib, int Count, int MatId)> Groups = new();
-    public void Dispose() { foreach (var g in Groups) { g.Vb.Dispose(); g.Ib.Dispose(); } Groups.Clear(); }
+    /// <summary>Edited object only: the vertices as sent, and which mesh point each one is, so a drag rewrites positions only.</summary>
+    public List<(RenderVertex[] Cpu, int[] CornerVert, int[] CornerFace)> Cpu;
+    /// <summary>Polygon → its render vertices, per group (built when UVs first change during a drag).</summary>
+    public List<(int[] Start, int[] Idx)> FaceCorners;
+    /// <summary>Mesh point → its render vertices, per group (built at the first drag).</summary>
+    public List<(int[] Start, int[] Idx)> VertCorners;
+    public void Dispose() { foreach (var g in Groups) { g.Vb.Dispose(); g.Ib.Dispose(); } Groups.Clear(); Cpu = null; VertCorners = null; FaceCorners = null; }
 }
 
 /// <summary>Draws scene objects with the GTA basic shader.</summary>
@@ -102,7 +108,7 @@ public sealed class SceneRenderer : IDisposable
     public readonly TextureCache Textures;
     readonly Dictionary<int, GpuMesh> meshes = new();
 
-    public readonly RasterizerState CullBack, CullNone, LinesState;
+    public readonly RasterizerState CullBack, CullNone, LinesState, CullFront;
     public readonly DepthStencilState DepthDefault, DepthRead, DepthOff;
     public readonly BlendState Opaque, Alpha;
 
@@ -168,7 +174,7 @@ public sealed class SceneRenderer : IDisposable
             FillMode = FillMode.Solid, CullMode = c, IsFrontCounterClockwise = true, IsDepthClipEnabled = true,
             IsMultisampleEnabled = true, IsAntialiasedLineEnabled = lines, IsScissorEnabled = true,
         });
-        CullBack = Ras(CullMode.Back); CullNone = Ras(CullMode.None); LinesState = Ras(CullMode.None, true);
+        CullBack = Ras(CullMode.Back); CullNone = Ras(CullMode.None); LinesState = Ras(CullMode.None, true); CullFront = Ras(CullMode.Front);
         DepthDefault = new DepthStencilState(device, new DepthStencilStateDescription { IsDepthEnabled = true, DepthWriteMask = DepthWriteMask.All, DepthComparison = Comparison.LessEqual });
         DepthRead = new DepthStencilState(device, new DepthStencilStateDescription { IsDepthEnabled = true, DepthWriteMask = DepthWriteMask.Zero, DepthComparison = Comparison.LessEqual });
         DepthOff = new DepthStencilState(device, new DepthStencilStateDescription { IsDepthEnabled = false, DepthWriteMask = DepthWriteMask.Zero, DepthComparison = Comparison.Always });
@@ -207,24 +213,125 @@ public sealed class SceneRenderer : IDisposable
         if (o.InstanceKey != null && !edit) { if (!instMeshes.TryGetValue(o.InstanceKey, out gm)) instMeshes[o.InstanceKey] = gm = new GpuMesh(); }
         else if (!meshes.TryGetValue(o.Id, out gm)) meshes[o.Id] = gm = new GpuMesh();
         if (gm.Version == o.Version && gm.Edit == edit && gm.Groups.Count > 0) return gm;
-        Uploads++;
         upSw.Restart();
+        if (edit && TryMovePoints(o, gm)) { UploadMs += upSw.Elapsed.TotalMilliseconds; return gm; }
+        Uploads++;
         gm.Dispose();
         gm.Version = o.Version; gm.Edit = edit;
         var src = o.Evaluated(edit);
         List<RenderGroup> groups;
         if (!edit && Prebuilt.TryGetValue(src, out var pre)) { groups = pre; Prebuilt.Remove(src); }
         else groups = RenderMeshBuilder.Build(src);
+        bool keepCpu = edit && ReferenceEquals(src, o.Mesh) && groups.All(g => g.CornerVert != null && g.CornerFace != null && g.VertexArray != null);
+        if (keepCpu) gm.Cpu = new();
         foreach (var g in groups)
         {
-            if (g.Indices.Count == 0) continue;
+            if (g.IndexCount == 0) continue;
             var verts = g.VertexArray ?? g.Vertices.ToArray(); var idx = g.IndexArray ?? g.Indices.ToArray();
             var vb = Buffer.Create(device, BindFlags.VertexBuffer, verts);
             var ib = Buffer.Create(device, BindFlags.IndexBuffer, idx);
             gm.Groups.Add((vb, ib, idx.Length, g.MaterialId));
+            if (keepCpu) gm.Cpu.Add((verts, g.CornerVert, g.CornerFace));
         }
         UploadMs += upSw.Elapsed.TotalMilliseconds;
         return gm;
+    }
+
+    // ---- points moved without changing the faces (gizmo drags in edit mode): only their positions are rewritten
+    int hintObj = -1, hintFrom, hintTo; int[] hintVerts, hintUvFaces;
+
+    /// <summary>The editor moved these points of the object (version <paramref name="from"/> → <paramref name="to"/>) and changed
+    /// nothing else, except the UVs of <paramref name="uvFaces"/> when given.</summary>
+    public void HintPointsMoved(int objId, int from, int to, int[] verts, int[] uvFaces = null) { hintObj = objId; hintFrom = from; hintTo = to; hintVerts = verts; hintUvFaces = uvFaces; }
+
+    bool[] markBuf = Array.Empty<bool>();
+    bool[] Marks(int n) { if (markBuf.Length < n) markBuf = new bool[n]; return markBuf; }
+
+    /// <summary>Marked ranges between lo and hi (marks cleared), merged across small gaps; too many: one span.</summary>
+    internal static List<(int A, int B)> Runs(bool[] mark, int lo, int hi)
+    {
+        var runs = new List<(int A, int B)>(); int ra = -1, rb = -1;
+        for (int c = lo; c <= hi; c++)
+        {
+            if (!mark[c]) continue;
+            mark[c] = false;
+            if (ra < 0) { ra = rb = c; continue; }
+            if (c - rb <= 64) rb = c; else { runs.Add((ra, rb)); ra = rb = c; }
+        }
+        if (ra >= 0) runs.Add((ra, rb));
+        if (runs.Count > 256) runs = new() { (lo, hi) };
+        return runs;
+    }
+
+    bool TryMovePoints(SceneObject o, GpuMesh gm)
+    {
+        if (hintObj != o.Id || hintTo != o.Version || gm.Version != hintFrom || !gm.Edit || gm.Cpu == null || gm.Cpu.Count != gm.Groups.Count || hintVerts == null) return false;
+        if (o.Modifiers is { Count: > 0 }) return false;
+        var verts = o.Mesh.Verts; int nv = verts.Count;
+        if (gm.VertCorners == null)
+        {
+            // point → render vertices (CSR), once per edit session
+            gm.VertCorners = new();
+            foreach (var (_, cv, _) in gm.Cpu)
+            {
+                var start = new int[nv + 1];
+                foreach (var v in cv) if (v < nv) start[v + 1]++;
+                for (int i = 0; i < nv; i++) start[i + 1] += start[i];
+                var fill = (int[])start.Clone(); var idx = new int[start[nv]];
+                for (int c = 0; c < cv.Length; c++) { int v = cv[c]; if (v < nv) idx[fill[v]++] = c; }
+                gm.VertCorners.Add((start, idx));
+            }
+        }
+        for (int gi = 0; gi < gm.Groups.Count; gi++)
+        {
+            var (cpu, _, cf) = gm.Cpu[gi]; var (start, idx) = gm.VertCorners[gi];
+            if (start.Length != nv + 1) return false;
+            int lo = int.MaxValue, hi = -1;
+            var mark = Marks(cpu.Length);
+            foreach (var v in hintVerts)
+            {
+                if (v < 0 || v >= nv) continue;
+                var p = verts[v];
+                for (int k = start[v]; k < start[v + 1]; k++) { int c = idx[k]; cpu[c].Position = p; mark[c] = true; if (c < lo) lo = c; if (c > hi) hi = c; }
+            }
+            if (hintUvFaces != null && hintUvFaces.Length > 0)
+            {
+                // UVs of a few polygons changed too (extrude sides): their corners, in order
+                var faces = o.Mesh.Faces; int nf = faces.Count;
+                gm.FaceCorners ??= new();
+                while (gm.FaceCorners.Count <= gi) gm.FaceCorners.Add(default);
+                var (fs, fi2) = gm.FaceCorners[gi];
+                if (fs == null || fs.Length != nf + 1)
+                {
+                    fs = new int[nf + 1];
+                    foreach (var f in cf) if (f < nf) fs[f + 1]++;
+                    for (int i = 0; i < nf; i++) fs[i + 1] += fs[i];
+                    var fill = (int[])fs.Clone(); fi2 = new int[fs[nf]];
+                    for (int c = 0; c < cf.Length; c++) { int f = cf[c]; if (f < nf) fi2[fill[f]++] = c; }
+                    gm.FaceCorners[gi] = (fs, fi2);
+                }
+                foreach (var f in hintUvFaces)
+                {
+                    if (f < 0 || f >= nf) continue;
+                    var uv = faces[f].UV;
+                    for (int k = fs[f], j = 0; k < fs[f + 1] && j < uv.Length; k++, j++) { int c = fi2[k]; cpu[c].UV = uv[j]; mark[c] = true; if (c < lo) lo = c; if (c > hi) hi = c; }
+                }
+            }
+            if (hi < 0) continue;
+            var runs = Runs(mark, lo, hi);
+            var vb = gm.Groups[gi].Vb; int sz = RenderVertex.SizeInBytes;
+            unsafe
+            {
+                fixed (RenderVertex* basePtr = cpu)
+                    foreach (var (a, b) in runs)
+                    {
+                        var box = new ResourceRegion(a * sz, 0, 0, (b + 1) * sz, 1, 1);
+                        ctx.UpdateSubresource(new SharpDX.DataBox((IntPtr)(basePtr + a), 0, 0), vb, 0, box);
+                    }
+            }
+        }
+        gm.Version = o.Version;
+        return true;
     }
 
     /// <summary>Frees GPU meshes of objects that left the scene.</summary>
@@ -252,6 +359,7 @@ public sealed class SceneRenderer : IDisposable
 
     public void BeginScene(Matrix4x4 viewProj, Vector3 eye, in GtaGlobalLights l, ShadingMode mode, float exposure, float ambientBoost)
     {
+        lastMat = null;
         var s = new SceneVarsCB
         {
             ViewProj = viewProj, CameraPos = new Vector4(eye, 1),
@@ -364,10 +472,15 @@ public sealed class SceneRenderer : IDisposable
         return t;
     }
 
+    /// <summary>Material bound last (reset each scene): the same material twice in a row is not sent again.</summary>
+    GtaMaterial lastMat;
+
     void SetMaterial(GtaMaterial m)
     {
         var p = m.Preset;
         var mt = matTex.GetValue(m, _ => new MatTex());
+        if (ReferenceEquals(m, lastMat) && !mt.Pending && mt.Epoch == Textures.Epoch) return;
+        lastMat = m;
         bool terrain = m.IsTerrain;
         string lk = terrain ? string.Join("|", Enumerable.Range(0, 4).Select(i => m.Layer(i) + ">" + m.LayerBump(i))) : null;
         if (mt.Pending || mt.Epoch != Textures.Epoch || !ReferenceEquals(mt.P, p) || !ReferenceEquals(mt.D, m.DiffuseTexture) || !ReferenceEquals(mt.B, m.BumpTexture)
@@ -449,6 +562,7 @@ public sealed class SceneRenderer : IDisposable
                 };
                 ctx.UpdateSubresource(ref mv, materialCB);
                 ctx.PixelShader.SetShaderResource(0, Textures.White);
+                lastMat = null;
             }
             ctx.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(g.Vb, RenderVertex.SizeInBytes, 0));
             ctx.InputAssembler.SetIndexBuffer(g.Ib, Format.R32_UInt, 0);

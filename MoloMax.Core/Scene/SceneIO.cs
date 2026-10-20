@@ -13,7 +13,14 @@ public static class SceneIO
 {
     // ---- DTOs keep the file format independent of the runtime classes
     sealed class FaceDto { public int[] V { get; set; } public float[] UV { get; set; } public float[] C { get; set; } public float[] C1 { get; set; } public int M { get; set; } public uint S { get; set; } }
-    sealed class MeshDto { public float[] V { get; set; } public List<FaceDto> F { get; set; } }
+    sealed class MeshDto
+    {
+        // version 1: numbers in the text (slow and big for 500k polygons)
+        public float[] V { get; set; } public List<FaceDto> F { get; set; }
+        // version 2: the same data as raw binary blocks (base64): points, polygon sizes, corners, materials, smoothing, UVs, colours
+        public byte[] Vb { get; set; } public byte[] Nb { get; set; } public byte[] Ib { get; set; } public byte[] Mb { get; set; } public byte[] Sb { get; set; }
+        public byte[] Tb { get; set; } public byte[] Cb { get; set; } public byte[] C1f { get; set; } public byte[] C1b { get; set; }
+    }
     sealed class ObjDto
     {
         public int Id { get; set; } public string Name { get; set; } public float[] Pos { get; set; } public float[] Rot { get; set; } public float[] Scale { get; set; }
@@ -37,7 +44,7 @@ public static class SceneIO
     }
     sealed class SceneDto
     {
-        public string Format { get; set; } = "MoloMax"; public int Version { get; set; } = 1;
+        public string Format { get; set; } = "MoloMax"; public int Version { get; set; } = 2;
         public int NextObjectId { get; set; } public int NextMaterialId { get; set; } public float[] GtaOrigin { get; set; } public List<string> Folders { get; set; } public MoloMax.Core.Tools.RoomPlanData Plan { get; set; }
         public List<MatDto> Materials { get; set; } public List<ObjDto> Objects { get; set; }
         public GtaProjectSettings Gta { get; set; }
@@ -52,7 +59,9 @@ public static class SceneIO
     static Vector3 V3(float[] a) => a == null ? Vector3.Zero : new Vector3(a[0], a[1], a[2]);
     static Vector4 V4(float[] a) => a == null ? Vector4.Zero : new Vector4(a[0], a[1], a[2], a[3]);
 
-    public static string ToJson(Scene s)
+    public static string ToJson(Scene s) => JsonSerializer.Serialize(BuildDto(s), jsonOptions);
+
+    static SceneDto BuildDto(Scene s)
     {
         var firstOfInst = new Dictionary<string, SceneObject>();
         foreach (var o in s.Objects) if (o.InstanceKey != null) firstOfInst.TryAdd(o.InstanceKey, o);
@@ -69,7 +78,7 @@ public static class SceneIO
             }).ToList(),
             Objects = s.Objects.Select(o => ObjOut(o, firstOfInst)).ToList(),
         };
-        return JsonSerializer.Serialize(dto, jsonOptions);
+        return dto;
     }
 
     static ObjDto ObjOut(SceneObject o, Dictionary<string, SceneObject> firstOfInst)
@@ -89,23 +98,14 @@ public static class SceneIO
                 Id = o.Id, Name = o.Name, Pos = A(o.Position), Rot = new[] { o.Rotation.X, o.Rotation.Y, o.Rotation.Z, o.Rotation.W }, Scale = A(o.Scale),
                 Wire = A(o.WireColour), Hidden = o.Hidden, Frozen = o.Frozen, Folder = string.IsNullOrEmpty(o.Folder) ? null : o.Folder, Parent = o.ParentId >= 0 ? o.ParentId : null, Type = o.GtaType.ToString(), Gta = o.Gta, Tripo = o.TripoTaskId, PaintFile = o.PaintFile, Modifiers = o.Modifiers?.Count > 0 ? o.Modifiers : null,
                 Inst = o.InstanceKey,
-                Mesh = new MeshDto
-                {
-                    V = o.Mesh.Verts.SelectMany(v => new[] { v.X, v.Y, v.Z }).ToArray(),
-                    F = o.Mesh.Faces.Select(f => new FaceDto
-                    {
-                        V = f.V, M = f.MatId, S = f.Smooth,
-                        UV = f.UV.SelectMany(u => new[] { u.X, u.Y }).ToArray(),
-                        C = f.Col.SelectMany(c => new[] { c.X, c.Y, c.Z, c.W }).ToArray(),
-                        C1 = f.Col1?.SelectMany(c => new[] { c.X, c.Y, c.Z, c.W }).ToArray(),
-                    }).ToList(),
-                },
+                Mesh = PackMesh(o.Mesh),
             };
     }
 
-    public static Scene FromJson(string json)
+    public static Scene FromJson(string json) => FromDto(JsonSerializer.Deserialize<SceneDto>(json, jsonOptions) ?? throw new InvalidDataException("Empty scene file."));
+
+    static Scene FromDto(SceneDto dto)
     {
-        var dto = JsonSerializer.Deserialize<SceneDto>(json, jsonOptions) ?? throw new InvalidDataException("Empty scene file.");
         if (dto.Format != "MoloMax") throw new InvalidDataException("This is not a MoloMax scene.");
         var s = new Scene { NextObjectId = dto.NextObjectId, NextMaterialId = dto.NextMaterialId, GtaOrigin = V3(dto.GtaOrigin), Gta = dto.Gta ?? new GtaProjectSettings(), Folders = dto.Folders ?? new(), Plan = dto.Plan ?? new(), Anim = dto.Anim ?? new() };
         s.Materials.Clear();
@@ -138,6 +138,9 @@ public static class SceneIO
                 continue;
             }
             var mesh = new PolyMesh();
+            if (o.Mesh.Vb != null) mesh = UnpackMesh(o.Mesh);
+            else
+            {
             for (int i = 0; i + 2 < o.Mesh.V.Length; i += 3) mesh.Verts.Add(new Vector3(o.Mesh.V[i], o.Mesh.V[i + 1], o.Mesh.V[i + 2]));
             foreach (var f in o.Mesh.F)
             {
@@ -149,6 +152,7 @@ public static class SceneIO
                     if (f.C1 != null && f.C1.Length >= 4 * f.V.Length) { face.Col1 ??= new Vector4[f.V.Length]; face.Col1[i] = new Vector4(f.C1[4 * i], f.C1[4 * i + 1], f.C1[4 * i + 2], f.C1[4 * i + 3]); }
                 }
                 mesh.Faces.Add(face);
+            }
             }
             // repair what older versions could leave (a polygon pinched by a weld, a face with a missing vertex) instead of refusing the file
             mesh.Faces.RemoveAll(f => f.V.Length < 3 || f.V.Any(v => v < 0 || v >= mesh.Verts.Count));
@@ -172,8 +176,78 @@ public static class SceneIO
         return s;
     }
 
-    public static void Save(Scene s, string path) => File.WriteAllText(path, ToJson(s));
-    public static Scene Load(string path) => FromJson(File.ReadAllText(path));
+    public static void Save(Scene s, string path)
+    {
+        // written straight to the file (no 300 MB string in memory first)
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20);
+        JsonSerializer.Serialize(fs, BuildDto(s), jsonOptions);
+    }
+    public static Scene Load(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20);
+        var dto = JsonSerializer.Deserialize<SceneDto>(fs, jsonOptions) ?? throw new InvalidDataException("Empty scene file.");
+        return FromDto(dto);
+    }
+
+    // ---- version 2 mesh blocks
+    static byte[] Bytes<T>(T[] a) where T : struct => System.Runtime.InteropServices.MemoryMarshal.AsBytes(a.AsSpan()).ToArray();
+    static T[] Arr<T>(byte[] b) where T : struct => b == null ? Array.Empty<T>() : System.Runtime.InteropServices.MemoryMarshal.Cast<byte, T>(b).ToArray();
+
+    static MeshDto PackMesh(PolyMesh m)
+    {
+        int fc = m.Faces.Count;
+        var off = new int[fc + 1];
+        for (int i = 0; i < fc; i++) off[i + 1] = off[i] + m.Faces[i].V.Length;
+        int nc = off[fc];
+        var n = new int[fc]; var mat = new int[fc]; var sm = new uint[fc]; var idx = new int[nc]; var uv = new Vector2[nc]; var col = new Vector4[nc];
+        var c1f = new byte[fc]; bool anyC1 = false;
+        System.Threading.Tasks.Parallel.For(0, (fc + 8191) / 8192, b =>
+        {
+            for (int i = b * 8192; i < Math.Min(fc, (b + 1) * 8192); i++)
+            {
+                var f = m.Faces[i]; int o = off[i]; n[i] = f.V.Length; mat[i] = f.MatId; sm[i] = f.Smooth;
+                Array.Copy(f.V, 0, idx, o, f.V.Length); Array.Copy(f.UV, 0, uv, o, f.V.Length); Array.Copy(f.Col, 0, col, o, f.V.Length);
+                if (f.Col1 != null && f.Col1.Length == f.V.Length) { c1f[i] = 1; anyC1 = true; }
+            }
+        });
+        byte[] c1b = null;
+        if (anyC1)
+        {
+            var c1 = new List<Vector4>();
+            for (int i = 0; i < fc; i++) if (c1f[i] == 1) c1.AddRange(m.Faces[i].Col1);
+            c1b = Bytes(c1.ToArray());
+        }
+        return new MeshDto
+        {
+            Vb = Bytes(m.Verts.ToArray()), Nb = Bytes(n), Ib = Bytes(idx), Mb = Bytes(mat), Sb = Bytes(sm), Tb = Bytes(uv), Cb = Bytes(col),
+            C1f = anyC1 ? c1f : null, C1b = c1b,
+        };
+    }
+
+    static PolyMesh UnpackMesh(MeshDto d)
+    {
+        var verts = Arr<Vector3>(d.Vb); var n = Arr<int>(d.Nb); var idx = Arr<int>(d.Ib); var mat = Arr<int>(d.Mb); var sm = Arr<uint>(d.Sb);
+        var uv = Arr<Vector2>(d.Tb); var col = Arr<Vector4>(d.Cb); var c1 = Arr<Vector4>(d.C1b); var c1f = d.C1f;
+        int fc = n.Length;
+        var off = new int[fc + 1]; for (int i = 0; i < fc; i++) off[i + 1] = off[i] + n[i];
+        var c1off = new int[fc + 1]; for (int i = 0; i < fc; i++) c1off[i + 1] = c1off[i] + (c1f != null && i < c1f.Length && c1f[i] == 1 ? n[i] : 0);
+        if (off[fc] > idx.Length) throw new InvalidDataException("Damaged mesh in the scene file.");
+        var faces = new Face[fc];
+        System.Threading.Tasks.Parallel.For(0, (fc + 8191) / 8192, b =>
+        {
+            for (int i = b * 8192; i < Math.Min(fc, (b + 1) * 8192); i++)
+            {
+                int o = off[i], k = n[i];
+                var v = new int[k]; Array.Copy(idx, o, v, 0, k);
+                var t = new Vector2[k]; if (o + k <= uv.Length) Array.Copy(uv, o, t, 0, k);
+                var c = new Vector4[k]; if (o + k <= col.Length) Array.Copy(col, o, c, 0, k); else Array.Fill(c, PolyMesh.DefaultColour);
+                Vector4[] cc = null;
+                if (c1off[i + 1] > c1off[i] && c1off[i + 1] <= c1.Length) { cc = new Vector4[k]; Array.Copy(c1, c1off[i], cc, 0, k); }
+                faces[i] = Face.FromArrays(v, t, c, cc, i < mat.Length ? mat[i] : 0, i < sm.Length ? sm[i] : 0);
+            }
+        });
+        return new PolyMesh { Verts = new List<Vector3>(verts), Faces = new List<Face>(faces) };
+    }
 
     /// <summary>
     /// Wavefront OBJ (+ MTL) in Blender's Y-up convention, with vertex colours ("v x y z r g b")

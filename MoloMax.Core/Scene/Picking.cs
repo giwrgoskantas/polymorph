@@ -46,6 +46,30 @@ public static class Picking
 
     /// <summary>Closest face of one object hit by a world ray (back faces count, like Max).</summary>
     /// <param name="cullBack">Skip triangles seen from behind (they are not drawn with backface culling: a click must not land on them).</param>
+    const int ChunkSize = 1024;
+    sealed class Chunks { public int Version; public int Faces, Verts; public Vector3[] Min, Max; }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PolyMesh, Chunks> chunkCache = new();
+
+    /// <summary>Local-space boxes of each run of 1024 polygons, cached per mesh version.</summary>
+    static Chunks ChunkBoxes(SceneObject o, PolyMesh m)
+    {
+        int ver = ReferenceEquals(m, o.Mesh) ? o.Version : -1;
+        if (ver >= 0 && chunkCache.TryGetValue(m, out var c) && c.Version == ver && c.Faces == m.Faces.Count && c.Verts == m.Verts.Count) return c;
+        int fc = m.Faces.Count, n = (fc + ChunkSize - 1) / ChunkSize;
+        c = new Chunks { Version = ver, Faces = fc, Verts = m.Verts.Count, Min = new Vector3[n], Max = new Vector3[n] };
+        var V = m.Verts; var F = m.Faces;
+        System.Threading.Tasks.Parallel.For(0, n, k =>
+        {
+            var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue);
+            for (int i = k * ChunkSize; i < Math.Min(fc, (k + 1) * ChunkSize); i++)
+                foreach (var v in F[i].V) { var p = V[v]; mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); }
+            var pad = (mx - mn) * 1e-4f + new Vector3(1e-4f);
+            c.Min[k] = mn - pad; c.Max[k] = mx + pad;
+        });
+        if (ver >= 0) chunkCache.AddOrUpdate(m, c);
+        return c;
+    }
+
     public static PickHit? PickFace(SceneObject o, in Ray worldRay, bool evaluated = false, bool cullBack = false)
     {
         var m = evaluated && o.Modifiers is { Count: > 0 } ? o.Evaluated() : o.Mesh;
@@ -55,23 +79,50 @@ public static class Picking
             var pad = new Vector3(0.01f);
             if (!RayBox(worldRay, mn - pad, mx + pad, out _)) return null;
         }
+        // the ray goes into the object's own space (same t), so no vertex is transformed and nothing is allocated
         var w = o.World;
-        float best = float.MaxValue; int bestFace = -1;
-        var wv = new Vector3[m.Verts.Count];
-        for (int i = 0; i < wv.Length; i++) wv[i] = Vector3.Transform(m.Verts[i], w);
-        for (int fi = 0; fi < m.Faces.Count; fi++)
+        if (!Matrix4x4.Invert(w, out var inv)) return null;
+        var lr = new Ray(Vector3.Transform(worldRay.Origin, inv), Vector3.TransformNormal(worldRay.Direction, inv));
+        float sign = w.GetDeterminant() < 0 ? -1f : 1f;
+        var V = m.Verts; var F = m.Faces; int fc = F.Count;
+        float Tri(in Ray r, int fi, Vector3 a, Vector3 b, Vector3 c)
         {
-            var f = m.Faces[fi];
-            foreach (var (a, b, c) in Triangulator.Triangulate(m, f))
-            {
-                var p0 = wv[f.V[a]]; var p1 = wv[f.V[b]]; var p2 = wv[f.V[c]];
-                if (cullBack && Vector3.Dot(Vector3.Cross(p1 - p0, p2 - p0), worldRay.Direction) >= 0) continue;
-                float t = RayTriangle(worldRay, p0, p1, p2);
-                if (t > 0 && t < best) { best = t; bestFace = fi; }
-            }
+            if (cullBack && sign * Vector3.Dot(Vector3.Cross(b - a, c - a), r.Direction) >= 0) return -1;
+            return RayTriangle(r, a, b, c);
         }
-        if (bestFace < 0) return null;
-        return new PickHit(o, bestFace, best, worldRay.Origin + worldRay.Direction * best);
+        (float T, int F) Scan(int from, int to)
+        {
+            float bt = float.MaxValue; int bf = -1;
+            for (int fi = from; fi < to; fi++)
+            {
+                var f = F[fi].V;
+                if (f.Length == 3) { float tt = Tri(lr, fi, V[f[0]], V[f[1]], V[f[2]]); if (tt > 0 && tt < bt) { bt = tt; bf = fi; } }
+                else if (f.Length == 4)
+                {
+                    float tt = Tri(lr, fi, V[f[0]], V[f[1]], V[f[2]]); if (tt > 0 && tt < bt) { bt = tt; bf = fi; }
+                    tt = Tri(lr, fi, V[f[0]], V[f[2]], V[f[3]]); if (tt > 0 && tt < bt) { bt = tt; bf = fi; }
+                }
+                else if (f.Length > 4)
+                    foreach (var (a, b, c) in Triangulator.Triangulate(m, F[fi]))
+                    { float tt = Tri(lr, fi, V[f[a]], V[f[b]], V[f[c]]); if (tt > 0 && tt < bt) { bt = tt; bf = fi; } }
+            }
+            return (bt, bf);
+        }
+        (float T, int F) best;
+        if (fc < 20000) best = Scan(0, fc);
+        else
+        {
+            // big mesh: boxes of 1024 polygons (kept while the mesh doesn't change) → only the boxes the ray crosses are tested
+            var cb = ChunkBoxes(o, m);
+            var hitChunks = new List<int>();
+            for (int k = 0; k < cb.Min.Length; k++) if (RayBox(lr, cb.Min[k], cb.Max[k], out _)) hitChunks.Add(k);
+            var res = new (float, int)[hitChunks.Count];
+            System.Threading.Tasks.Parallel.For(0, hitChunks.Count, j => { int k = hitChunks[j]; res[j] = Scan(k * ChunkSize, Math.Min(fc, (k + 1) * ChunkSize)); });
+            best = (float.MaxValue, -1);
+            foreach (var r in res) if (r.Item2 >= 0 && r.Item1 < best.T) best = r;
+        }
+        if (best.F < 0) return null;
+        return new PickHit(o, best.F, best.T, worldRay.Origin + worldRay.Direction * best.T);
     }
 
     /// <summary>

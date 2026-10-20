@@ -26,12 +26,21 @@ public struct RenderVertex
 public sealed class RenderGroup
 {
     public int MaterialId;
-    public List<RenderVertex> Vertices = new();
-    public List<int> Indices = new();
+    // the lists are made from the arrays only when something asks for them (the viewport upload reads the arrays: a
+    // 500k-polygon mesh no longer copies 150 MB into lists it never reads)
+    List<RenderVertex> vl; List<int> il, tl;
+    public List<RenderVertex> Vertices { get => vl ??= VertexArray != null ? new(VertexArray) : new(); set => vl = value; }
+    public List<int> Indices { get => il ??= IndexArray != null ? new(IndexArray) : new(); set => il = value; }
     /// <summary>Source polygon of each triangle (Indices.Count / 3 entries) — used for picking.</summary>
-    public List<int> TriangleFace = new();
+    public List<int> TriangleFace { get => tl ??= TriangleFaceArray != null ? new(TriangleFaceArray) : new(); set => tl = value; }
     /// <summary>Same data as arrays (filled by the builder; avoids a copy when uploading).</summary>
-    public RenderVertex[] VertexArray; public int[] IndexArray;
+    public RenderVertex[] VertexArray; public int[] IndexArray; public int[] TriangleFaceArray;
+    /// <summary>Mesh vertex of each render vertex (builder output): moving points only rewrites their positions.</summary>
+    public int[] CornerVert;
+    /// <summary>Source polygon of each render vertex (builder output).</summary>
+    public int[] CornerFace;
+    /// <summary>Triangle count without building the lists.</summary>
+    public int IndexCount => IndexArray?.Length ?? il?.Count ?? 0;
 }
 
 public static class RenderMeshBuilder
@@ -128,7 +137,7 @@ public static class RenderMeshBuilder
             groups[f.MatId] = (e.G, e.V + f.V.Length, e.T + Math.Max(0, f.V.Length - 2));
         }
         var verts = new Dictionary<RenderGroup, RenderVertex[]>(); var idx = new Dictionary<RenderGroup, int[]>(); var tf = new Dictionary<RenderGroup, int[]>();
-        foreach (var e in groups.Values) { verts[e.G] = new RenderVertex[e.V]; idx[e.G] = new int[e.T * 3]; tf[e.G] = new int[e.T]; }
+        foreach (var e in groups.Values) { verts[e.G] = new RenderVertex[e.V]; idx[e.G] = new int[e.T * 3]; tf[e.G] = new int[e.T]; e.G.CornerVert = new int[e.V]; e.G.CornerFace = new int[e.V]; }
         System.Threading.Tasks.Parallel.For(0, fc, () => new List<(int, int, int)>(8), (fi, st, tr) =>
         {
             var f = m.Faces[fi]; var g = gOf[fi]; int n = f.V.Length;
@@ -161,6 +170,7 @@ public static class RenderMeshBuilder
                 if (t.LengthSquared() < 1e-12f) { Triangulator.Basis(nr, out var bu, out _); t = bu; }
                 t = Vector3.Normalize(t);
                 float w = Vector3.Dot(Vector3.Cross(nr, t), bit) < 0 ? -1f : 1f;
+                g.CornerVert[baseIndex + c] = f.V[c]; g.CornerFace[baseIndex + c] = fi;
                 vArr[baseIndex + c] = new RenderVertex { Position = m.Verts[f.V[c]], Normal = nr, Colour = f.Col[c], UV = f.UV[c], Tangent = new Vector4(t, w), Colour1 = f.Col1 != null && c < f.Col1.Length ? RenderVertex.Pack(f.Col1[c]) : 0u };
             }
             int ti = tOff[fi];
@@ -175,8 +185,7 @@ public static class RenderMeshBuilder
         var res = new List<RenderGroup>();
         foreach (var e in groups.Values.OrderBy(x => x.G.MaterialId))
         {
-            e.G.VertexArray = verts[e.G]; e.G.IndexArray = idx[e.G];
-            e.G.Vertices = new List<RenderVertex>(verts[e.G]); e.G.Indices = new List<int>(idx[e.G]); e.G.TriangleFace = new List<int>(tf[e.G]);
+            e.G.VertexArray = verts[e.G]; e.G.IndexArray = idx[e.G]; e.G.TriangleFaceArray = tf[e.G];
             res.Add(e.G);
         }
         return res;

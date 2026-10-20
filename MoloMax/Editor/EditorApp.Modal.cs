@@ -37,6 +37,8 @@ public sealed partial class EditorApp
         public Vector3 Normal;
         public float LastValue = float.NaN;
         public float D0;
+        // extrude drag: the mesh after the extrude, the points it moved and the new sides (later values only move them)
+        public PolyMesh XMesh; public List<(int V, Vector3 N)> XMoved; public int[] XRing, XVerts; public float XApplied;
         // loop cut preview
         public EdgeKey? Hover;
         public List<(Vector3 A, Vector3 B)> Preview = new();
@@ -122,7 +124,7 @@ public sealed partial class EditorApp
     void StartModalCommon(ModalKind kind, Viewport vp, Vector3 pivot)
     {
         modal.Kind = kind; modal.Vp = vp; modal.MouseStart = Input.Mouse; modal.Pivot = pivot;
-        modal.Axis = -1; modal.Local = false; modal.Plane = false; modal.Num = ""; modal.AngleAcc = 0; modal.LastValue = float.NaN;
+        modal.Axis = -1; modal.Local = false; modal.Plane = false; modal.Num = ""; modal.AngleAcc = 0; modal.LastValue = float.NaN; modal.XMesh = null;
         modal.Hover = null; modal.Preview.Clear(); modal.Header = "";
         ctrlLatch = Input.Ctrl; // Ctrl held from the shortcut (Ctrl+E…) must not flip snapping
         vp.Camera.Project(pivot, vp.W, vp.H, out var ps, out _);
@@ -157,7 +159,7 @@ public sealed partial class EditorApp
             if (d != 0)
             {
                 chamferSegments = Math.Clamp(chamferSegments + d, 1, 32);
-                if (!float.IsNaN(modal.LastValue)) ApplyParametric(modal.LastValue);
+                if (!float.IsNaN(modal.LastValue)) { float v = modal.LastValue; modal.LastValue = float.NaN; ApplyParametric(v); }
             }
         }
         if (modal.Kind is ModalKind.Translate or ModalKind.Rotate or ModalKind.Scale)
@@ -332,12 +334,31 @@ public sealed partial class EditorApp
         if (MathF.Abs(value - modal.LastValue) < 1e-6f) return;
         modal.LastValue = value;
         var o = modal.Obj;
+        float s = (MathF.Abs(o.Scale.X) + MathF.Abs(o.Scale.Y) + MathF.Abs(o.Scale.Z)) / 3f;
+        float local = value / MathF.Max(s, 1e-4f);
+        if (modal.Kind == ModalKind.Extrude && modal.XMesh != null && ReferenceEquals(o.Mesh, modal.XMesh))
+        {
+            // same faces, another height: the extruded points slide along their direction, the side UVs follow
+            float d = local - modal.XApplied;
+            foreach (var (v, n) in modal.XMoved) o.Mesh.Verts[v] += n * d;
+            MeshOps.SideUVMetric(o.Mesh, modal.XRing);
+            modal.XApplied = local;
+            int from = o.Version; o.Touch();
+            renderer.HintPointsMoved(o.Id, from, o.Version, modal.XVerts, modal.XRing);
+            wires.HintPointsMoved(o.Id, from, o.Version, modal.XVerts, o.Mesh.Verts);
+            xfPointsOnly = true;
+            return;
+        }
         o.Mesh = modal.BaseMesh.Clone();
         var sel = modal.BaseSel.Clone();
         subSel[o.Id] = sel;
-        float s = (MathF.Abs(o.Scale.X) + MathF.Abs(o.Scale.Y) + MathF.Abs(o.Scale.Z)) / 3f;
-        float local = value / MathF.Max(s, 1e-4f);
-        if (modal.Kind == ModalKind.Extrude) MeshOps.ExtrudeFaces(o.Mesh, sel.Faces, local);
+        modal.XMesh = null;
+        if (modal.Kind == ModalKind.Extrude)
+        {
+            var moved = new List<(int V, Vector3 N)>();
+            var ring = MeshOps.ExtrudeFaces(o.Mesh, sel.Faces, local, false, moved);
+            modal.XMesh = o.Mesh; modal.XMoved = moved; modal.XRing = ring.ToArray(); modal.XVerts = moved.Select(x => x.V).ToArray(); modal.XApplied = local;
+        }
         else if (modal.Kind == ModalKind.Chamfer) { if (local > 1e-5f) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local, chamferSegments); sel.Edges.Clear(); }
         else MeshOps.InsetFaces(o.Mesh, sel.Faces, local);
         o.Touch();
@@ -441,6 +462,7 @@ public sealed partial class EditorApp
         if (k == ModalKind.Knife) { modal.Kind = ModalKind.None; return; }
         if (k is ModalKind.Extrude or ModalKind.Inset or ModalKind.Chamfer) RememberMeshOp();
         modal.Kind = ModalKind.None;
+        FinishPointsOnly();
         Dirty = true;
         lastAdd = null;
         SetStatus(modal.Header);
@@ -456,6 +478,7 @@ public sealed partial class EditorApp
             case ModalKind.Rotate:
             case ModalKind.Scale:
                 RestoreOriginals();
+                FinishPointsOnly();
                 Undo.DropLast();
                 break;
             case ModalKind.Extrude:

@@ -505,7 +505,7 @@ public sealed partial class EditorApp
     }
 
     IEnumerable<GtaMaterial> SelectedMaterials() =>
-        SelObjects().SelectMany(o => o.Mesh.Faces.Select(f => f.MatId)).Distinct().Select(Scene.Material).Distinct();
+        SelObjects().SelectMany(o => UsedMaterials(o)).Distinct().Select(Scene.Material).Distinct();
 
     void ConvertMaterialsToDds()
     {

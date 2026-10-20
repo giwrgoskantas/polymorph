@@ -380,6 +380,50 @@ Check("scene json round trip keeps geometry, UVs, colours, materials", () =>
         && bo.Mesh.Faces[0].Col[0] == new Vector4(1, 1, 1, 1) && back.Material(mat.Id).DiffuseTexture == "plaster.dds"
         && Vector3.Distance(bo.Position, o.Position) < 1e-5f && MathF.Abs(bo.Rotation.Z - o.Rotation.Z) < 1e-6f;
 });
+Check("scene file v2 (binary blocks) keeps UVs, colour layer 1, smoothing, n-gons; v1 files still open", () =>
+{
+    var s = new Scene();
+    var b = Primitives.Box(2, 3, 4); b.Faces[2].UV[1] = new Vector2(0.25f, 0.75f); b.Faces[3].Col1 = Enumerable.Repeat(new Vector4(0.1f, 0.2f, 0.3f, 0.4f), b.Faces[3].V.Length).ToArray();
+    b.Faces[4].Smooth = 5;
+    s.Add("Box", b, Vector3.Zero);
+    var file = Path.Combine(Path.GetTempPath(), "molo_v2_test.mmx");
+    SceneIO.Save(s, file);
+    var bo = SceneIO.Load(file).Objects[0].Mesh;
+    bool v2 = bo.Faces[2].UV[1] == new Vector2(0.25f, 0.75f) && bo.Faces[3].Col1?[2] == new Vector4(0.1f, 0.2f, 0.3f, 0.4f) && bo.Faces[0].Col1 == null && bo.Faces[4].Smooth == 5 && bo.Verts.Count == b.Verts.Count;
+    // a version-1 file (numbers as text)
+    string v1 = "{\"Format\":\"MoloMax\",\"Version\":1,\"NextObjectId\":2,\"NextMaterialId\":1,\"Materials\":[],\"Objects\":[{\"Id\":1,\"Name\":\"Tri\",\"Pos\":[0,0,0],\"Mesh\":{\"V\":[0,0,0,1,0,0,0,1,0],\"F\":[{\"V\":[0,1,2],\"UV\":[0,0,1,0,0,1],\"M\":0,\"S\":1}]}}]}";
+    var o1 = SceneIO.FromJson(v1).Objects[0].Mesh;
+    return v2 && o1.Faces.Count == 1 && o1.Faces[0].UV[2] == new Vector2(0, 1);
+});
+Check("extrude drag: moving the extruded points further gives the same mesh as extruding at once", () =>
+{
+    var a = Primitives.Plane(4, 4, 4, 4); var b = a.Clone();
+    var sel = new HashSet<int> { 5, 6, 9, 10 };
+    var moved = new List<(int V, Vector3 N)>();
+    var ring = MeshOps.ExtrudeFaces(a, sel, 0.3f, false, moved);
+    foreach (var (v, n) in moved) a.Verts[v] += n * (1.1f - 0.3f);
+    MeshOps.SideUVMetric(a, ring);
+    MeshOps.ExtrudeFaces(b, sel, 1.1f);
+    if (a.Verts.Count != b.Verts.Count || a.Faces.Count != b.Faces.Count) return false;
+    for (int i = 0; i < a.Verts.Count; i++) if (Vector3.Distance(a.Verts[i], b.Verts[i]) > 1e-4f) return false;
+    foreach (var f in ring) for (int k = 0; k < 4; k++) if (Vector2.Distance(a.Faces[f].UV[k], b.Faces[f].UV[k]) > 1e-4f) return false;
+    return true;
+});
+Check("picking a big mesh (boxes of polygons) finds the same face as testing every face", () =>
+{
+    var s = new Scene(); var o = s.Add("Big", Primitives.Plane(20, 20, 200, 200), new Vector3(3, 2, 1));
+    var rnd = new Random(4);
+    for (int k = 0; k < 20; k++)
+    {
+        var target = new Vector3(3 + (float)rnd.NextDouble() * 18 - 9, 2 + (float)rnd.NextDouble() * 18 - 9, 1);
+        var org = target + new Vector3(0.3f, -0.2f, 5);
+        var hit = Picking.PickFace(o, new Ray(org, Vector3.Normalize(target - org)));
+        if (hit == null) return false;
+        var c = o.Mesh.FaceCenter(hit.Value.Face) + o.Position;
+        if (MathF.Abs(c.X - target.X) > 0.11f || MathF.Abs(c.Y - target.Y) > 0.11f) return false;
+    }
+    return true;
+});
 Check("unique names follow Max: Box001, Box002", () => { var s = new Scene(); s.Add("Box", Primitives.Box(1, 1, 1), Vector3.Zero); return s.Add("Box", Primitives.Box(1, 1, 1), Vector3.Zero).Name == "Box002"; });
 Check("ray from above picks the top face of a box", () =>
 {

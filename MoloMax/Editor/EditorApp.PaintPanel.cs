@@ -252,7 +252,7 @@ public sealed partial class EditorApp
     Core.Gta.GtaMaterial TerrainMaterialOf(SceneObject o)
     {
         if (o?.Mesh == null) return null;
-        foreach (var id in o.Mesh.Faces.Select(f => f.MatId).Distinct()) if (Scene.Material(id) is { IsTerrain: true } m) return m;
+        foreach (var id in UsedMaterials(o)) if (Scene.Material(id) is { IsTerrain: true } m) return m;
         return null;
     }
 

@@ -31,8 +31,23 @@ public sealed class PolySelection
     {
         Verts.RemoveWhere(v => v < 0 || v >= m.Verts.Count);
         Faces.RemoveWhere(f => f < 0 || f >= m.Faces.Count);
-        var valid = m.BuildEdgeMap();
-        Edges.RemoveWhere(e => !valid.ContainsKey(e));
+        if (Edges.Count == 0) return;
+        // an edge is still there when one face still has both its points one after the other
+        var (start, idx) = m.BuildVertexFacesPacked(); int nv = m.Verts.Count;
+        Edges.RemoveWhere(e =>
+        {
+            if (e.A < 0 || e.A >= nv || e.B < 0 || e.B >= nv) return true;
+            for (int k = start[e.A]; k < start[e.A + 1]; k++)
+            {
+                var f = m.Faces[idx[k]].V; int n = f.Length;
+                for (int i = 0; i < n; i++)
+                {
+                    int a = f[i], b = f[(i + 1) % n];
+                    if (a == e.A && b == e.B || a == e.B && b == e.A) return false;
+                }
+            }
+            return true;
+        });
     }
 
     /// <summary>The vertices touched by the current selection at a level.</summary>
@@ -79,32 +94,34 @@ public static class MeshSelect
     /// </summary>
     public static HashSet<int> Elements(PolyMesh m, IEnumerable<int> seed, float weld = 1e-4f)
     {
-        // each vertex -> one id per position (grid cells, neighbours checked so points across a cell border still join)
-        int nv = m.Verts.Count; var canon = new int[nv];
-        var cells = new Dictionary<(long, long, long), List<int>>();
+        int nv = m.Verts.Count, fc = m.Faces.Count;
+        // each point -> the first point found at the same place (grid cell of the weld size)
+        var canon = new int[nv];
+        var first = new Dictionary<(int, int, int), int>(nv);
         float inv = 1f / weld;
         for (int v = 0; v < nv; v++)
         {
-            var p = m.Verts[v]; canon[v] = v;
-            long cx = (long)MathF.Floor(p.X * inv), cy = (long)MathF.Floor(p.Y * inv), cz = (long)MathF.Floor(p.Z * inv);
-            bool found = false;
-            for (long dx = -1; dx <= 1 && !found; dx++) for (long dy = -1; dy <= 1 && !found; dy++) for (long dz = -1; dz <= 1 && !found; dz++)
-                if (cells.TryGetValue((cx + dx, cy + dy, cz + dz), out var l))
-                    foreach (var u in l) if (System.Numerics.Vector3.DistanceSquared(m.Verts[u], p) <= weld * weld) { canon[v] = canon[u]; found = true; break; }
-            var key = (cx, cy, cz);
-            if (!cells.TryGetValue(key, out var own)) cells[key] = own = new List<int>();
-            own.Add(v);
+            var p = m.Verts[v];
+            var key = ((int)MathF.Round(p.X * inv), (int)MathF.Round(p.Y * inv), (int)MathF.Round(p.Z * inv));
+            if (first.TryGetValue(key, out int u)) canon[v] = u;
+            else { first[key] = v; canon[v] = v; }
         }
-        var vf = new Dictionary<int, List<int>>();
-        for (int fi = 0; fi < m.Faces.Count; fi++)
-            foreach (var v in m.Faces[fi].V) { int c = v < nv ? canon[v] : v; if (!vf.TryGetValue(c, out var l)) vf[c] = l = new List<int>(); l.Add(fi); }
-        var res = new HashSet<int>(); var st = new Stack<int>();
-        foreach (var f in seed) if (f >= 0 && f < m.Faces.Count && res.Add(f)) st.Push(f);
+        // point -> faces (CSR on the merged points)
+        var start = new int[nv + 1];
+        foreach (var f in m.Faces) foreach (var v in f.V) if (v < nv) start[canon[v] + 1]++;
+        for (int i = 0; i < nv; i++) start[i + 1] += start[i];
+        var fill = (int[])start.Clone(); var idx = new int[start[nv]];
+        for (int fi = 0; fi < fc; fi++) foreach (var v in m.Faces[fi].V) if (v < nv) idx[fill[canon[v]]++] = fi;
+        var seen = new bool[fc]; var res = new HashSet<int>(); var st = new Stack<int>();
+        foreach (var f in seed) if (f >= 0 && f < fc && !seen[f]) { seen[f] = true; res.Add(f); st.Push(f); }
         while (st.Count > 0)
         {
             var f = st.Pop();
             foreach (var v in m.Faces[f].V)
-                if (vf.TryGetValue(v < nv ? canon[v] : v, out var l)) foreach (var g in l) if (res.Add(g)) st.Push(g);
+            {
+                if (v >= nv) continue; int c = canon[v];
+                for (int k = start[c]; k < start[c + 1]; k++) { int g = idx[k]; if (!seen[g]) { seen[g] = true; res.Add(g); st.Push(g); } }
+            }
         }
         return res;
     }

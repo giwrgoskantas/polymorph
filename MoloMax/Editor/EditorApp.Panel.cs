@@ -432,7 +432,7 @@ public sealed partial class EditorApp
         var objs = SelObjects().Where(o => o.Mesh != null).ToList();
         if (objs.Count == 0) return null;
         long key = Level.GetHashCode() * 31L + objs.Count;
-        foreach (var o in objs) key = key * 1000003L + o.Id * 7919L + o.Version + (o == Current ? SubSel(o).Faces.Count * 131L : 0);
+        foreach (var o in objs) key = key * 1000003L + o.Id * 7919L + o.Version + (o == Current ? SetSig(SubSel(o).Faces) : 0);
         if (key == matUsedKey && matUsed != null) return matUsed;
         var res = new HashSet<int>();
         foreach (var o in objs)
@@ -456,7 +456,8 @@ public sealed partial class EditorApp
         int gameMats = 0; foreach (var m in Scene.Materials) if (m.FromGame) gameMats++;
         // materials of the selection (the selected faces in Polygon mode): shown alone, the first one picked
         var used = MaterialsOfSelection();
-        string selKey = string.Join(",", Selected.OrderBy(x => x)) + "|" + Level;
+        long selKeyL = Selected.Count * 1000003L + (long)Level; foreach (var id in Selected) selKeyL += id * 0x9E3779B1L;
+        string selKey = selKeyL.ToString();
         if (selKey != matSelKey)
         {
             matSelKey = selKey;

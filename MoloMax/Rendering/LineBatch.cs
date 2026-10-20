@@ -115,6 +115,21 @@ public sealed class LineBatch : IDisposable
         ctx.Draw(vertexCount, 0);
     }
 
+    /// <summary>Draws a prebuilt triangle-list buffer (object space) with a colour tint.</summary>
+    public void DrawStaticTris(Buffer buffer, int vertexCount, Matrix4x4 worldViewProj, Vector4 tint, float depthBias)
+    {
+        if (buffer == null || vertexCount == 0) return;
+        var vars = new LineVars { ViewProj = worldViewProj, DepthBias = new Vector4(depthBias, 0, 0, 0), Tint = tint };
+        ctx.UpdateSubresource(ref vars, cb);
+        ctx.InputAssembler.InputLayout = layout;
+        ctx.VertexShader.Set(vs); ctx.VertexShader.SetConstantBuffer(0, cb);
+        ctx.PixelShader.Set(ps);
+        ctx.GeometryShader.Set(null);
+        ctx.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
+        ctx.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(buffer, Marshal.SizeOf<LineVertex>(), 0));
+        ctx.Draw(vertexCount, 0);
+    }
+
     public Device Device => device;
 
     public void Dispose() { vb?.Dispose(); cb.Dispose(); layout.Dispose(); ps.Dispose(); vs.Dispose(); }
@@ -126,23 +141,69 @@ public sealed class LineBatch : IDisposable
 /// </summary>
 public sealed class WireCache : IDisposable
 {
-    readonly Dictionary<(int Id, bool Edit), (int Version, Buffer Vb, int Count)> cache = new();
+    sealed class Entry { public int Version; public Buffer Vb; public int Count; public LineVertex[] Cpu; public int[] EndVert; public int[] Start, Idx; }
+    readonly Dictionary<(int Id, bool Edit), Entry> cache = new();
 
     public (Buffer Vb, int Count) Get(Device device, int id, bool edit, int version, Func<(IReadOnlyList<Vector3> Verts, IReadOnlyList<MoloMax.Core.Mesh.EdgeKey> Edges)> source)
     {
         if (cache.TryGetValue((id, edit), out var e) && e.Version == version) return (e.Vb, e.Count);
-        e.Vb?.Dispose();
+        if (e != null && edit && TryMovePoints(device, id, e, version)) return (e.Vb, e.Count);
+        e?.Vb?.Dispose();
         var (verts, edges) = source();
         var data = new LineVertex[edges.Count * 2];
+        var ends = edit ? new int[edges.Count * 2] : null;
         var white = Vector4.One;
         System.Threading.Tasks.Parallel.For(0, edges.Count, i =>
         {
             var k = edges[i];
             data[i * 2] = new LineVertex(verts[k.A], white); data[i * 2 + 1] = new LineVertex(verts[k.B], white);
+            if (ends != null) { ends[i * 2] = k.A; ends[i * 2 + 1] = k.B; }
         });
         Buffer vb = data.Length > 0 ? Buffer.Create(device, BindFlags.VertexBuffer, data) : null;
-        cache[(id, edit)] = (version, vb, data.Length);
+        cache[(id, edit)] = new Entry { Version = version, Vb = vb, Count = data.Length, Cpu = edit ? data : null, EndVert = ends };
         return (vb, data.Length);
+    }
+
+    // ---- edit-mode drags: the edges stay, only the moved points are rewritten
+    int hintObj = -1, hintFrom, hintTo; int[] hintVerts; IReadOnlyList<Vector3> hintPos;
+    public void HintPointsMoved(int objId, int from, int to, int[] verts, IReadOnlyList<Vector3> positions) { hintObj = objId; hintFrom = from; hintTo = to; hintVerts = verts; hintPos = positions; }
+
+    bool[] markBuf = Array.Empty<bool>();
+
+    bool TryMovePoints(Device device, int id, Entry e, int version)
+    {
+        if (hintObj != id || hintTo != version || e.Version != hintFrom || e.Cpu == null || e.Vb == null || hintVerts == null) return false;
+        int nv = hintPos.Count;
+        if (e.Start == null || e.Start.Length != nv + 1)
+        {
+            var start = new int[nv + 1];
+            foreach (var v in e.EndVert) { if (v >= nv) return false; start[v + 1]++; }
+            for (int i = 0; i < nv; i++) start[i + 1] += start[i];
+            var fill = (int[])start.Clone(); var idx = new int[start[nv]];
+            for (int c = 0; c < e.EndVert.Length; c++) idx[fill[e.EndVert[c]]++] = c;
+            e.Start = start; e.Idx = idx;
+        }
+        if (markBuf.Length < e.Cpu.Length) markBuf = new bool[e.Cpu.Length];
+        int lo = int.MaxValue, hi = -1;
+        foreach (var v in hintVerts)
+        {
+            if (v < 0 || v >= nv) continue;
+            var p = hintPos[v];
+            for (int k = e.Start[v]; k < e.Start[v + 1]; k++) { int c = e.Idx[k]; e.Cpu[c].Position = p; markBuf[c] = true; if (c < lo) lo = c; if (c > hi) hi = c; }
+        }
+        if (hi >= 0)
+        {
+            var runs = SceneRenderer.Runs(markBuf, lo, hi);
+            int sz = Marshal.SizeOf<LineVertex>(); var ctx = device.ImmediateContext;
+            unsafe
+            {
+                fixed (LineVertex* bp = e.Cpu)
+                    foreach (var (a, b) in runs)
+                        ctx.UpdateSubresource(new SharpDX.DataBox((IntPtr)(bp + a), 0, 0), e.Vb, 0, new ResourceRegion(a * sz, 0, 0, (b + 1) * sz, 1, 1));
+            }
+        }
+        e.Version = version;
+        return true;
     }
 
     /// <summary>Frees wires of objects that left the scene.</summary>

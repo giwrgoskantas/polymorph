@@ -37,6 +37,16 @@ public sealed class UndoStack
     (string Name, Scene State)[] redoBackup;
 
     readonly Dictionary<int, (int Ver, PolyMesh Live, PolyMesh Frozen)> frozen = new();
+    /// <summary>The same copies by live mesh (thousands of instances of one model find theirs at once).</summary>
+    readonly System.Runtime.CompilerServices.ConditionalWeakTable<PolyMesh, Tuple3> frozenByLiveT = new();
+    sealed class Tuple3 { public (int Ver, PolyMesh Live, PolyMesh Frozen) V; }
+    sealed class ByLive
+    {
+        readonly UndoStack u; public ByLive(UndoStack u) => this.u = u;
+        public bool TryGetValue(PolyMesh m, out (int Ver, PolyMesh Live, PolyMesh Frozen) v) { if (u.frozenByLiveT.TryGetValue(m, out var t)) { v = t.V; return true; } v = default; return false; }
+        public (int Ver, PolyMesh Live, PolyMesh Frozen) this[PolyMesh m] { set { u.frozenByLiveT.AddOrUpdate(m, new Tuple3 { V = value }); } }
+    }
+    ByLive frozenByLiveW; ByLive frozenByLive => frozenByLiveW ??= new ByLive(this);
 
     bool Fresh(SceneObject o) => frozen.TryGetValue(o.Id, out var f) && f.Ver == o.Version && ReferenceEquals(f.Live, o.Mesh)
                                  && f.Frozen.Verts.Count == o.Mesh.Verts.Count && f.Frozen.Faces.Count == o.Mesh.Faces.Count;
@@ -46,12 +56,11 @@ public sealed class UndoStack
         if (Shared(o)) return o.Mesh;
         if (Fresh(o)) return frozen[o.Id].Frozen;
         // instances share one mesh: one frozen copy serves them all
-        if (o.InstanceKey != null)
-            foreach (var f in frozen.Values)
-                if (ReferenceEquals(f.Live, o.Mesh) && f.Ver == o.Version && f.Frozen.Verts.Count == o.Mesh.Verts.Count && f.Frozen.Faces.Count == o.Mesh.Faces.Count)
-                { frozen[o.Id] = f; return f.Frozen; }
+        if (o.InstanceKey != null && frozenByLive.TryGetValue(o.Mesh, out var f)
+            && f.Ver == o.Version && f.Frozen.Verts.Count == o.Mesh.Verts.Count && f.Frozen.Faces.Count == o.Mesh.Faces.Count)
+        { frozen[o.Id] = f; return f.Frozen; }
         var m = o.Mesh.Clone();
-        frozen[o.Id] = (o.Version, o.Mesh, m);
+        frozen[o.Id] = (o.Version, o.Mesh, m); frozenByLive[o.Mesh] = (o.Version, o.Mesh, m);
         return m;
     }
 
@@ -68,9 +77,13 @@ public sealed class UndoStack
         if (stale.Sum(x => (long)x.Mesh.Faces.Count) < minFaces) return;
         prefreeze = System.Threading.Tasks.Task.Run(() =>
         {
-            var res = new (int, int, PolyMesh, PolyMesh)[stale.Count];
-            System.Threading.Tasks.Parallel.For(0, stale.Count, i => { var (id, ver, m) = stale[i]; try { res[i] = (id, ver, m, m.Clone()); } catch { res[i] = (id, ver, m, null); } });
-            return res.ToList();
+            // instances share a mesh: each distinct mesh copied once
+            var distinct = stale.Select(x => x.Mesh).Distinct(ReferenceEqualityComparer.Instance).Cast<PolyMesh>().ToList();
+            var copies = new PolyMesh[distinct.Count];
+            System.Threading.Tasks.Parallel.For(0, distinct.Count, i => { try { copies[i] = distinct[i].Clone(); } catch { copies[i] = null; } });
+            var copyOf = new Dictionary<PolyMesh, PolyMesh>(ReferenceEqualityComparer.Instance);
+            for (int i = 0; i < distinct.Count; i++) copyOf[distinct[i]] = copies[i];
+            return stale.Select(x => (x.Id, x.Version, x.Mesh, copyOf[x.Mesh])).ToList();
         });
     }
 
@@ -82,7 +95,7 @@ public sealed class UndoStack
         try { res = prefreeze.Result; } catch { res = new(); }
         prefreeze = null;
         foreach (var (id, ver, live, copy) in res)
-            if (copy != null && copy.Verts.Count == live.Verts.Count && copy.Faces.Count == live.Faces.Count) frozen[id] = (ver, live, copy);
+            if (copy != null && copy.Verts.Count == live.Verts.Count && copy.Faces.Count == live.Faces.Count) { frozen[id] = (ver, live, copy); frozenByLive[live] = (ver, live, copy); }
     }
 
     Scene Snapshot(Scene s)
@@ -99,7 +112,7 @@ public sealed class UndoStack
             System.Threading.Tasks.Parallel.For(0, distinct.Count, i => copies[i] = distinct[i].Clone());
             var copyOf = new Dictionary<PolyMesh, PolyMesh>(ReferenceEqualityComparer.Instance);
             for (int i = 0; i < distinct.Count; i++) copyOf[distinct[i]] = copies[i];
-            foreach (var o in stale) frozen[o.Id] = (o.Version, o.Mesh, copyOf[o.Mesh]);
+            foreach (var o in stale) { frozen[o.Id] = (o.Version, o.Mesh, copyOf[o.Mesh]); frozenByLive[o.Mesh] = (o.Version, o.Mesh, copyOf[o.Mesh]); }
         }
         return s.Clone(FrozenMesh);
     }
@@ -171,5 +184,5 @@ public sealed class UndoStack
         return Live(s, current);
     }
 
-    public void Clear() { try { prefreeze?.Wait(); } catch { } prefreeze = null; undo.Clear(); undoStamp.Clear(); redo.Clear(); frozen.Clear(); }
+    public void Clear() { try { prefreeze?.Wait(); } catch { } prefreeze = null; undo.Clear(); undoStamp.Clear(); redo.Clear(); frozen.Clear(); frozenByLiveT.Clear(); }
 }

@@ -199,6 +199,7 @@ public sealed partial class EditorApp
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
+        T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("VERTEX SNAP: in vertex mode, grab a selected vertex and drop it on another (square shown)", TutVertexSnap);
         T("GIMS HUB: Molo GTA panel in the GIMS layout (photos)", TutGimsHub);
         T("UI OPEN THEME: open window with bookmarks, toolbar fits, look in preferences (photos)", TutOpenTheme);
@@ -1094,7 +1095,7 @@ public sealed partial class EditorApp
 
     IEnumerable<object> TutVertexSnap()
     {
-        Fresh(); if (MapMode) SetMapMode(false);
+        Fresh(); if (MapMode) SetMapMode(false); paintMode = false; SculptMode = false;
         var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
         var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height;
         P.Width = 2; P.Length = 2; P.Height = 2;

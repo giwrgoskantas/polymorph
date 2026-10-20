@@ -43,6 +43,9 @@ public sealed class Face
 
     Face() { }
 
+    /// <summary>A face from ready arrays (no default fill: file loading builds millions of them).</summary>
+    public static Face FromArrays(int[] v, Vector2[] uv, Vector4[] col, Vector4[] col1, int matId, uint smooth) => new() { V = v, UV = uv, Col = col, Col1 = col1, MatId = matId, Smooth = smooth };
+
     /// <summary>Copy of the corner arrays (3 allocations, no default fill: undo snapshots clone millions of faces).</summary>
     public Face Clone() => new() { V = (int[])V.Clone(), UV = (Vector2[])UV.Clone(), Col = (Vector4[])Col.Clone(), Col1 = (Vector4[])Col1?.Clone(), MatId = MatId, Smooth = Smooth };
 
@@ -328,8 +331,20 @@ public sealed class PolyMesh
             if (f.UV.Length != f.V.Length || f.Col.Length != f.V.Length) throw new InvalidOperationException($"face {fi} attribute count mismatch");
             if (f.Col1 != null && f.Col1.Length != f.V.Length) f.Col1 = null; // an edit that did not carry colour 1: back to layer 0
             foreach (var v in f.V) if (v < 0 || v >= Verts.Count) throw new InvalidOperationException($"face {fi} references vertex {v}");
-            if (f.V.Distinct().Count() != f.V.Length) throw new InvalidOperationException($"face {fi} repeats a vertex");
+            if (RepeatsVertex(f.V)) throw new InvalidOperationException($"face {fi} repeats a vertex");
         }
+    }
+
+    /// <summary>True when a polygon lists the same point twice (no allocation for usual polygons).</summary>
+    static bool RepeatsVertex(int[] v)
+    {
+        int n = v.Length;
+        if (n <= 16)
+        {
+            for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (v[i] == v[j]) return true;
+            return false;
+        }
+        return new HashSet<int>(v).Count != n;
     }
 
     /// <summary>Appends another mesh (already in this mesh's space). Returns the index of its first face.</summary>

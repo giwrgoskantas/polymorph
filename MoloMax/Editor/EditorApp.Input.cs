@@ -49,6 +49,32 @@ public sealed partial class EditorApp
 
     // ---------------------------------------------------------------- pivot / gizmo placement
 
+    (int, int, long) pivotKey; Vector3 pivotLocal;
+    (int Obj, long Topo, SubObject Level, long Sig, int Frame) ptsKey; HashSet<int> ptsCache = new(); long ptsSig;
+    /// <summary>Changes when the polygons change (not when points only move): mesh object, counts, a few polygon sizes.</summary>
+    static long TopoSig(PolyMesh m)
+    {
+        long h = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(m) * 1000003L + m.Faces.Count * 7919L + m.Verts.Count;
+        int n = m.Faces.Count;
+        for (int i = 0; i < Math.Min(n, 8); i++) { var fv = m.Faces[i].V; h = h * 31 + fv.Length + (fv.Length > 0 ? fv[0] * 17L : 0); }
+        for (int i = Math.Max(8, n - 8); i < n; i++) { var fv = m.Faces[i].V; h = h * 31 + fv.Length + (fv.Length > 0 ? fv[0] * 17L : 0); }
+        return h;
+    }
+
+    /// <summary>The points of the edit-mode selection (vertices of the selected edges / faces), worked out once per frame and kept while nothing changes.</summary>
+    HashSet<int> SelectedPoints(SceneObject cur)
+    {
+        int frame = ImGui.GetFrameCount();
+        long topo = TopoSig(cur.Mesh);
+        if (ptsKey.Obj == cur.Id && ptsKey.Frame == frame && ptsKey.Level == Level && ptsKey.Topo == topo) return ptsCache;
+        var s = SubSel(cur);
+        long sig = Level switch { SubObject.Vertex => SetSig(s.Verts), SubObject.Edge or SubObject.Border => SetSig(s.Edges), _ => SetSig(s.Faces) } ^ (long)Level << 56;
+        if (ptsKey.Obj == cur.Id && ptsKey.Topo == topo && ptsKey.Level == Level && ptsKey.Sig == sig) { ptsKey.Frame = frame; return ptsCache; }
+        ptsCache = s.VerticesOf(cur.Mesh, Level);
+        ptsKey = (cur.Id, topo, Level, sig, frame); ptsSig = sig;
+        return ptsCache;
+    }
+
     /// <summary>Median of the selection (objects' origins, or the selected vertices in edit mode).</summary>
     bool SelectionPivot(out Vector3 pivot, out Matrix4x4 orient)
     {
@@ -56,11 +82,18 @@ public sealed partial class EditorApp
         var cur = Current;
         if (Level != SubObject.Object && cur != null)
         {
-            var verts = SubSel(cur).VerticesOf(cur.Mesh, Level);
+            var verts = SelectedPoints(cur);
             if (verts.Count == 0) return false;
-            var w = cur.World; var c = Vector3.Zero;
-            foreach (var v in verts) c += Vector3.Transform(cur.Mesh.Verts[v], w);
-            pivot = c / verts.Count;
+            // cached: the gizmo, the hover and every viewport ask for it several times per frame
+            if (pivotKey == (cur.Id, cur.Version, ptsSig)) pivot = Vector3.Transform(pivotLocal, cur.World);
+            else
+            {
+                var c = Vector3.Zero; int k = 0; var vs = cur.Mesh.Verts;
+                foreach (var v in verts) if (v < vs.Count) { c += vs[v]; k++; }
+                if (k == 0) return false;
+                pivotLocal = c / k; pivotKey = (cur.Id, cur.Version, ptsSig);
+                pivot = Vector3.Transform(pivotLocal, cur.World);
+            }
             if (LocalCoords) orient = Matrix4x4.CreateFromQuaternion(cur.Rotation);
             return true;
         }
@@ -434,10 +467,13 @@ public sealed partial class EditorApp
     {
         var m = o.Mesh; var w = o.World;
         var near = new List<(float D, EdgeKey E, Vector2 A, Vector2 B)>();
+        var sc = ScreenVerts(vp, o); var P = sc.P; var Ok = sc.Ok; int nv = P.Length;
         foreach (var e in candidates ?? Edges(o))
         {
-            if (!vp.Camera.Project(Vector3.Transform(m.Verts[e.A], w), vp.W, vp.H, out var a, out _)) continue;
-            if (!vp.Camera.Project(Vector3.Transform(m.Verts[e.B], w), vp.W, vp.H, out var b, out _)) continue;
+            if (e.A >= nv || e.B >= nv || !Ok[e.A] || !Ok[e.B]) continue;
+            var a = P[e.A]; var b = P[e.B];
+            // quick reject: the mouse is far outside the edge's box
+            if (local.X < MathF.Min(a.X, b.X) - maxPx || local.X > MathF.Max(a.X, b.X) + maxPx || local.Y < MathF.Min(a.Y, b.Y) - maxPx || local.Y > MathF.Max(a.Y, b.Y) + maxPx) continue;
             float d = SegDist(local, a, b);
             if (d < maxPx) near.Add((d, e, a, b));
         }
@@ -455,8 +491,11 @@ public sealed partial class EditorApp
         return null;
     }
 
+    PickHit? clickHit;
+
     void ClickSelect(Viewport vp, Vector2 screen)
     {
+        clickHit = null;
         var local = vp.Local(screen);
         var ray = vp.Camera.ScreenRay(local.X, local.Y, vp.W, vp.H);
         var cur = Current;
@@ -465,6 +504,7 @@ public sealed partial class EditorApp
             // clicking another mesh in a sub-object level goes on editing that mesh, same level
             // (a GTA room is cut in many meshes: the face under the mouse is often not the one being edited)
             var other = PickVisibleFace(ray); // only what is drawn: the hidden back of a one-sided wall doesn't take the click
+            if (other is { } oh && oh.Object == cur && Level is SubObject.Polygon or SubObject.Element) clickHit = oh; // reused below (no second pass over the mesh)
             if (other.HasValue && other.Value.Object != cur && other.Value.Object.Mesh != null && !other.Value.Object.Frozen)
             {
                 var mine = Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
@@ -502,7 +542,8 @@ public sealed partial class EditorApp
                     }
                 default:
                     {
-                        var h = Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
+                        var h = clickHit is { } ch && ch.Object == cur && cur.Modifiers is not { Count: > 0 } ? ch : Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
+                        clickHit = null;
                         ICollection<int> hit = Array.Empty<int>();
                         if (h.HasValue) hit = Level == SubObject.Element ? MeshSelect.Elements(m, new[] { h.Value.Face }) : new[] { h.Value.Face };
                         ApplySelection(s.Faces, hit, true);
@@ -538,13 +579,12 @@ public sealed partial class EditorApp
     /// <summary>Nearest vertex of o on screen (12 px) that is not hidden behind the mesh, or -1.</summary>
     int NearestVisibleVertex(Viewport vp, SceneObject o, Vector2 local)
     {
-        var m = o.Mesh; var w = o.World;
         var near = new List<(float D, int I)>();
-        for (int i = 0; i < m.Verts.Count; i++)
+        var sc = ScreenVerts(vp, o);
+        for (int i = 0; i < sc.P.Length; i++)
         {
-            var wp = Vector3.Transform(m.Verts[i], w);
-            if (!vp.Camera.Project(wp, vp.W, vp.H, out var sp, out _)) continue;
-            float d = Vector2.Distance(sp, local);
+            if (!sc.Ok[i]) continue;
+            float d = Vector2.Distance(sc.P[i], local);
             if (d <= 12f) near.Add((d, i));
         }
         near.Sort((x, y) => x.D.CompareTo(y.D));
@@ -842,7 +882,16 @@ public sealed partial class EditorApp
             Matrix4x4.Invert(cur.World, out var inv);
             foreach (var kv in xfVerts) if (kv.Key < cur.Mesh.Verts.Count) cur.Mesh.Verts[kv.Key] = Vector3.Transform(vertexFn(kv.Value), inv);
             ApplyUvMaps(cur);
+            int from = cur.Version;
             cur.Touch();
+            // only points moved (no new faces, no UV change): the viewport rewrites their positions instead of rebuilding the mesh
+            if (uvMaps.Count == 0)
+            {
+                var moved = xfVerts.Keys.ToArray();
+                renderer.HintPointsMoved(cur.Id, from, cur.Version, moved);
+                wires.HintPointsMoved(cur.Id, from, cur.Version, moved, cur.Mesh.Verts);
+                xfPointsOnly = true;
+            }
         }
         else
         {
@@ -859,9 +908,14 @@ public sealed partial class EditorApp
         ApplyLive(p => p, (pos, rot, sc) => (pos, rot, sc));
     }
 
+    /// <summary>The drag only rewrote point positions on the GPU: shading (normals) is rebuilt once at the end.</summary>
+    bool xfPointsOnly;
+    void FinishPointsOnly() { if (xfPointsOnly) { xfPointsOnly = false; Current?.Touch(); } }
+
     void EndTransform()
     {
         transforming = false; gizmo.Active = GizmoHandle.None; Dirty = true;
+        FinishPointsOnly();
         AutoKeyAfterTransform();
         if (shiftClone)
         {
@@ -876,6 +930,7 @@ public sealed partial class EditorApp
     void CancelTransform()
     {
         RestoreOriginals();
+        FinishPointsOnly();
         Undo.DropLast();
         transforming = false; gizmo.Active = GizmoHandle.None;
         SetStatus("Transform cancelled");

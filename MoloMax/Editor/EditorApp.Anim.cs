@@ -64,7 +64,7 @@ public sealed partial class EditorApp
             if (a.Kind != UvAnimKind.None)
             {
                 // material filter
-                var mats = o.Mesh.Faces.Select(f => f.MatId).Distinct().Select(id => Scene.Material(id)).DistinctBy(m => m.Id).ToList();
+                var mats = UsedMaterials(o).Select(id => Scene.Material(id)).DistinctBy(m => m.Id).ToList();
                 Label("Material");
                 var names = new[] { "All materials that can animate" }.Concat(mats.Select(m => $"{m.Name}  ({m.Shader})")).ToArray();
                 int sel = a.MaterialId < 0 ? 0 : Math.Max(0, mats.FindIndex(m => m.Id == a.MaterialId) + 1);

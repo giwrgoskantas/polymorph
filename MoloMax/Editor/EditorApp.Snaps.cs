@@ -236,10 +236,11 @@ public sealed partial class EditorApp
             var cur = Current; if (cur == null || hv.Camera == null) return;
             var m = cur.Mesh; var w = cur.World; var local = hv.Local(Input.Mouse);
             float best = gizmo.Hover != GizmoHandle.None ? 9f : 12f; int bi = -1;
-            foreach (var vi in SubSel(cur).VerticesOf(m, Level))
+            var sc = ScreenVerts(hv, cur);
+            foreach (var vi in SelectedPoints(cur))
             {
-                if (vi >= m.Verts.Count || !hv.Camera.Project(Vector3.Transform(m.Verts[vi], w), hv.W, hv.H, out var sp, out _)) continue;
-                float d = Vector2.Distance(sp, local);
+                if (vi >= sc.P.Length || !sc.Ok[vi]) continue;
+                float d = Vector2.Distance(sc.P[vi], local);
                 if (d < best) { best = d; bi = vi; }
             }
             if (bi >= 0) { snapHover = Vector3.Transform(m.Verts[bi], w); snapHoverKind = "vertex"; }

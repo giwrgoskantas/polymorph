@@ -530,14 +530,21 @@ public sealed partial class EditorApp
 
     // ------------------------------------------------------------------------------------- Data (mesh)
 
+    (int, int, PolyMesh) evTriKey; int evTris;
+
     void DataProps()
     {
         var o = Current;
         if (o == null) { Ui.TextDisabled("No active object."); return; }
         ObjectHeader(o, "Data");
         var ev = o.Evaluated();
-        Ui.TextDisabled($"Mesh: {o.Mesh.Verts.Count:N0} verts, {o.Mesh.Faces.Count:N0} faces, {o.Mesh.TriangleCount:N0} tris");
-        if (ev != o.Mesh) Ui.TextDisabled($"With modifiers: {ev.Verts.Count:N0} verts, {ev.TriangleCount:N0} tris");
+        // counts cached per version: walking 500k polygons every frame cost ~10 ms
+        Ui.TextDisabled($"Mesh: {o.Mesh.Verts.Count:N0} verts, {o.Mesh.Faces.Count:N0} faces, {o.TriangleCount:N0} tris");
+        if (ev != o.Mesh)
+        {
+            if (evTriKey != (o.Id, o.Version, ev)) { evTris = ev.TriangleCount; evTriKey = (o.Id, o.Version, ev); }
+            Ui.TextDisabled($"With modifiers: {ev.Verts.Count:N0} verts, {evTris:N0} tris");
+        }
 
         if (Level != SubObject.Object)
         {
@@ -629,6 +636,19 @@ public sealed partial class EditorApp
     // ------------------------------------------------------------------------------------- Material
 
     int slotListObj = -1, slotMatId = -1;
+    readonly Dictionary<int, (int Version, PolyMesh Mesh, List<int> Ids)> usedMats = new();
+
+    /// <summary>The material ids an object's polygons use, in first-use order (cached per mesh version: a 500k-polygon
+    /// room was rescanned every frame by the Material and Paint tabs).</summary>
+    List<int> UsedMaterials(SceneObject o)
+    {
+        if (usedMats.TryGetValue(o.Id, out var c) && c.Version == o.Version && ReferenceEquals(c.Mesh, o.Mesh)) return c.Ids;
+        var seen = new HashSet<int>(); var list = new List<int>();
+        foreach (var f in o.Mesh.Faces) if (seen.Add(f.MatId)) list.Add(f.MatId);
+        if (usedMats.Count > 256) usedMats.Clear();
+        usedMats[o.Id] = (o.Version, o.Mesh, list);
+        return list;
+    }
 
     void MaterialProps()
     {
@@ -636,8 +656,7 @@ public sealed partial class EditorApp
         if (o == null) { Ui.TextDisabled("No active object."); return; }
         ObjectHeader(o, "Material");
         // slots: the materials this object uses, in first-use order
-        var slots = new List<int>();
-        foreach (var f in o.Mesh.Faces) if (!slots.Contains(f.MatId)) slots.Add(f.MatId);
+        var slots = new List<int>(UsedMaterials(o));
         if (slots.Count == 0) slots.Add(0);
         // the picked slot follows its material (the list order changes after an assign)
         if (slotMatId >= 0 && slots.IndexOf(slotMatId) is int keep && keep >= 0) materialSlot = keep;
