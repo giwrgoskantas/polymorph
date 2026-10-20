@@ -28,37 +28,61 @@ public static partial class MeshOps
     /// re-points the region's faces at the copies and stitches a ring of quads between old and new.
     /// Returns old→new map for the boundary vertices and the indices of the ring faces.
     /// </summary>
-    static (Dictionary<int, int> Map, List<int> Ring) SplitRegion(PolyMesh m, List<int> faces, bool metricSideUV, out List<(int A, int B, int Face, int Corner)> boundary)
+    static (List<(int Orig, int Copy)> Map, List<int> Ring) SplitRegion(PolyMesh m, List<int> faces, bool metricSideUV, out List<(int A, int B, int Face, int Corner)> boundary)
     {
         boundary = RegionBoundary(m, faces);
-        var map = new Dictionary<int, int>();
-        foreach (var (a, b, _, _) in boundary)
+        var inRegion = new HashSet<int>(faces);
+        // a boundary point gets one copy per "sector" of the region around it: usually one, but where the region touches
+        // itself at a corner (two fans of faces meeting at one point) each fan gets its own copy, else the solid pinches
+        var bverts = new HashSet<int>(); foreach (var (a, b, _, _) in boundary) { bverts.Add(a); bverts.Add(b); }
+        var copyOf = new Dictionary<(int V, int Face), int>();
+        var pairs = new List<(int Orig, int Copy)>();
+        foreach (var v in bverts)
         {
-            if (!map.ContainsKey(a)) map[a] = m.AddVertex(m.Verts[a]);
-            if (!map.ContainsKey(b)) map[b] = m.AddVertex(m.Verts[b]);
+            // region faces around v, joined through edges at v shared by two region faces
+            var around = faces.Where(fi => Array.IndexOf(m.Faces[fi].V, v) >= 0).ToList();
+            var parent = new Dictionary<int, int>(); foreach (var fi in around) parent[fi] = fi;
+            int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+            var byEdge = new Dictionary<int, int>(); // other end of an edge at v -> first region face using it
+            foreach (var fi in around)
+            {
+                var fv = m.Faces[fi].V; int n = fv.Length, c = Array.IndexOf(fv, v);
+                foreach (var o in new[] { fv[(c + 1) % n], fv[(c + n - 1) % n] })
+                {
+                    if (byEdge.TryGetValue(o, out var g)) { int ra = Find(fi), rb = Find(g); if (ra != rb) parent[ra] = rb; }
+                    else byEdge[o] = fi;
+                }
+            }
+            var sectorCopy = new Dictionary<int, int>();
+            foreach (var fi in around)
+            {
+                int r = Find(fi);
+                if (!sectorCopy.TryGetValue(r, out var cp)) { cp = m.AddVertex(m.Verts[v]); sectorCopy[r] = cp; pairs.Add((v, cp)); }
+                copyOf[(v, fi)] = cp;
+            }
         }
         // remember the corner attributes before re-pointing
-        var ringSpecs = new List<(int A, int B, Face Src, int Ca, int Cb)>();
+        var ringSpecs = new List<(int A, int B, Face Src, int Ca, int Cb, int CopyA, int CopyB)>();
         foreach (var (a, b, fi, ci) in boundary)
         {
             var f = m.Faces[fi];
-            ringSpecs.Add((a, b, f, ci, (ci + 1) % f.V.Length));
+            ringSpecs.Add((a, b, f, ci, (ci + 1) % f.V.Length, copyOf[(a, fi)], copyOf[(b, fi)]));
         }
         foreach (var fi in faces)
         {
             var f = m.Faces[fi];
-            for (int i = 0; i < f.V.Length; i++) if (map.TryGetValue(f.V[i], out var nv)) f.V[i] = nv;
+            for (int i = 0; i < f.V.Length; i++) if (copyOf.TryGetValue((f.V[i], fi), out var nv)) f.V[i] = nv;
         }
         var ring = new List<int>();
-        foreach (var (a, b, src, ca, cb) in ringSpecs)
+        foreach (var (a, b, src, ca, cb, na, nb) in ringSpecs)
         {
-            var q = new Face(new[] { a, b, map[b], map[a] }, src.MatId, 0);
+            var q = new Face(new[] { a, b, nb, na }, src.MatId, 0);
             q.Col[0] = src.Col[ca]; q.Col[1] = src.Col[cb]; q.Col[2] = src.Col[cb]; q.Col[3] = src.Col[ca];
             if (!metricSideUV) { q.UV[0] = src.UV[ca]; q.UV[1] = src.UV[cb]; q.UV[2] = src.UV[cb]; q.UV[3] = src.UV[ca]; }
             m.Faces.Add(q);
             ring.Add(m.Faces.Count - 1);
         }
-        return (map, ring);
+        return (pairs, ring);
     }
 
     static List<List<int>> Components(PolyMesh m, IEnumerable<int> faces)
@@ -69,6 +93,7 @@ public static partial class MeshOps
         for (int i = 0; i < list.Count; i++) index[list[i]] = i;
         var parent = new int[list.Count]; for (int i = 0; i < parent.Length; i++) parent[i] = i;
         int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+        // faces sharing an edge are one group (like 3ds Max); groups touching at a single corner stay separate
         var firstOf = new Dictionary<EdgeKey, int>(list.Count * 4);
         for (int i = 0; i < list.Count; i++)
         {
@@ -89,6 +114,9 @@ public static partial class MeshOps
         }
         return groups.Values.ToList();
     }
+
+    /// <summary>Normalised, or <paramref name="fallback"/> for a zero vector (normalising zero gives NaN points).</summary>
+    internal static Vector3 SN(Vector3 v, Vector3 fallback) { float l = v.Length(); return l > 1e-12f && float.IsFinite(l) ? v / l : fallback; }
 
     public static void SideUVMetric(PolyMesh m, IEnumerable<int> ring)
     {
@@ -163,18 +191,18 @@ public static partial class MeshOps
             foreach (var v in outg.Keys)
             {
                 var p = m.Verts[v];
-                var n = Vector3.Normalize(vNormal[v]);
+                var n = SN(vNormal[v], Vector3.UnitZ);
                 if (inc.TryGetValue(v, out var ins) && ins.Count == 1 && outg[v].Count == 1)
                 {
-                    var e1 = Vector3.Normalize(p - m.Verts[ins[0]]);
-                    var e2 = Vector3.Normalize(m.Verts[outg[v][0]] - p);
-                    var l1 = Vector3.Normalize(Vector3.Cross(n, e1));
-                    var l2 = Vector3.Normalize(Vector3.Cross(n, e2));
+                    var e1 = SN(p - m.Verts[ins[0]], Vector3.Zero);
+                    var e2 = SN(m.Verts[outg[v][0]] - p, Vector3.Zero);
+                    var l1 = SN(Vector3.Cross(n, e1), Vector3.Zero);
+                    var l2 = SN(Vector3.Cross(n, e2), Vector3.Zero);
                     var bis = l1 + l2;
-                    if (bis.LengthSquared() < 1e-10f) bis = l1;
-                    bis = Vector3.Normalize(bis);
+                    if (bis.LengthSquared() < 1e-10f) bis = l1.LengthSquared() > 0 ? l1 : l2;
+                    bis = SN(bis, Vector3.Zero);
                     float d = MathF.Max(Vector3.Dot(bis, l1), 0.2f);
-                    target[v] = p + bis * (amount / d);
+                    target[v] = bis == Vector3.Zero ? p : p + bis * (amount / d); // degenerate corner (zero-length edge): stays put
                 }
                 else
                 {
@@ -184,7 +212,7 @@ public static partial class MeshOps
                 }
             }
             var (map, ring) = SplitRegion(m, g, false, out _);
-            foreach (var kv in map) if (target.TryGetValue(kv.Key, out var t)) m.Verts[kv.Value] = t;
+            foreach (var (orig, copy) in map) if (target.TryGetValue(orig, out var t)) m.Verts[copy] = t;
             border.AddRange(ring);
         }
         return border;
@@ -203,15 +231,16 @@ public static partial class MeshOps
             var inc = new Dictionary<int, int>(); var outg = new Dictionary<int, int>();
             foreach (var (a, b, _, _) in bnd) { outg[a] = b; inc[b] = a; }
             var n = Vector3.Zero; foreach (var fi in g) n += m.FaceNormal(fi);
-            n = Vector3.Normalize(n);
+            n = SN(n, Vector3.UnitZ);
             var moves = new Dictionary<int, Vector3>();
             foreach (var v in outg.Keys)
             {
                 if (!inc.ContainsKey(v)) continue;
                 var p = m.Verts[v];
-                var e1 = Vector3.Normalize(p - m.Verts[inc[v]]); var e2 = Vector3.Normalize(m.Verts[outg[v]] - p);
-                var l1 = Vector3.Normalize(Vector3.Cross(n, e1)); var l2 = Vector3.Normalize(Vector3.Cross(n, e2));
-                var bis = l1 + l2; if (bis.LengthSquared() < 1e-10f) bis = l1; bis = Vector3.Normalize(bis);
+                var e1 = SN(p - m.Verts[inc[v]], Vector3.Zero); var e2 = SN(m.Verts[outg[v]] - p, Vector3.Zero);
+                var l1 = SN(Vector3.Cross(n, e1), Vector3.Zero); var l2 = SN(Vector3.Cross(n, e2), Vector3.Zero);
+                var bis = l1 + l2; if (bis.LengthSquared() < 1e-10f) bis = l1.LengthSquared() > 0 ? l1 : l2; bis = SN(bis, Vector3.Zero);
+                if (bis == Vector3.Zero) continue; // degenerate corner: stays put
                 float d = MathF.Max(Vector3.Dot(bis, l1), 0.2f);
                 moves[v] = p - bis * (outline / d);
             }

@@ -23,6 +23,9 @@ public sealed partial class EditorApp
     {
         var o = Current;
         if (o == null) { SetStatus("Select one object first."); return; }
+        // tools that never open a closed solid: if one does on an odd shape, it is cancelled instead of leaving holes
+        bool guard = KeepsSolidsClosed.Contains(name) && o.Mesh.Faces.Count <= 200000 && o.Mesh.IsClosedManifold(out _);
+        bool broke = false;
         Do(name, () =>
         {
             var s = SubSel(o);
@@ -30,8 +33,17 @@ public sealed partial class EditorApp
             o.Mesh.Validate();
             s.Sanitise(o.Mesh);
             o.Touch();
+            broke = guard && !o.Mesh.IsClosedManifold(out _);
         });
+        if (broke && Undo.PopLast(Scene) is { } back)
+        {
+            Scene = back; AfterSceneSwap();
+            SetStatus($"{name} cancelled: on this shape it would have left holes in the mesh. Try it on fewer edges / faces at once.");
+        }
     }
+
+    /// <summary>Tools that keep a closed solid closed (checked after they run, see <see cref="DoMesh"/>).</summary>
+    static readonly HashSet<string> KeepsSolidsClosed = new() { "Extrude", "Inset", "Bevel", "Tessellate", "Connect", "Knife", "Loop Cut", "Chamfer" };
 
     public void DoUndo()
     {

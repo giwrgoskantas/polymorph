@@ -28,6 +28,60 @@ if (args.Length > 0 && args[0] == "chamfer") {
     }
     return 0;
 }
+if (args.Length > 2 && args[0] == "chaosrep") {
+    Chaos.Replay = (int.Parse(args[1]), int.Parse(args[2]));
+    var f = Chaos.Run(1, Chaos.Replay.Step + 1, Console.WriteLine, Chaos.Replay.Seed);
+    if (Chaos.ReplayBefore != null)
+    {
+        var sc = new Scene(); sc.Add("before", Chaos.ReplayBefore, Vector3.Zero); sc.Add("after", Chaos.ReplayAfter, new Vector3(6, 0, 0));
+        SceneIO.Save(sc, "/tmp/chaos_replay.mmx");
+        var A = Chaos.ReplayAfter; var B = Chaos.ReplayBefore;
+        var dir = new Dictionary<(int, int), List<int>>();
+        for (int i = 0; i < A.Faces.Count; i++) { var fv = A.Faces[i].V; for (int k = 0; k < fv.Length; k++) { var key = (fv[k], fv[(k + 1) % fv.Length]); if (!dir.TryGetValue(key, out var l)) dir[key] = l = new(); l.Add(i); } }
+        string P(Vector3 v) => $"({v.X:0.###},{v.Y:0.###},{v.Z:0.###})";
+        foreach (var kv in dir.Where(kv => kv.Value.Count > 1 || !dir.ContainsKey((kv.Key.Item2, kv.Key.Item1))).Take(3))
+        {
+            Console.WriteLine($"  bad edge {kv.Key} {P(A.Verts[kv.Key.Item1])}-{P(A.Verts[kv.Key.Item2])} in faces {string.Join(",", kv.Value)} (twin: {(dir.TryGetValue((kv.Key.Item2, kv.Key.Item1), out var tw) ? string.Join(",", tw) : "none")})");
+            foreach (var fi in kv.Value.Concat(tw ?? new()).Distinct()) Console.WriteLine($"     face {fi}: {string.Join(" ", A.Faces[fi].V.Select(v => v + P(A.Verts[v])))}");
+        }
+        Console.WriteLine($"  before {B.Verts.Count} pts {B.Faces.Count} faces -> after {A.Verts.Count} pts {A.Faces.Count} faces");
+        if (args.Length > 3) for (int i = 0; i < B.Faces.Count; i++) Console.WriteLine($"     before face {i} m{B.Faces[i].MatId} s{B.Faces[i].Smooth}: {string.Join(" ", B.Faces[i].V.Select(v => v + P(B.Verts[v])))}  n={P(B.FaceNormal(i))}");
+    }
+    return 0;
+}
+if (args.Length > 0 && args[0] == "chaos") {
+    int seeds = args.Length > 1 ? int.Parse(args[1]) : 50, steps = args.Length > 2 ? int.Parse(args[2]) : 60;
+    int first = args.Length > 3 ? int.Parse(args[3]) : 1;
+    var fails = Chaos.Run(seeds, steps, Console.WriteLine, first);
+    Console.WriteLine($"chaos: {seeds} x {steps} operations, {fails.Count} problem(s)");
+    foreach (var g in fails.GroupBy(f => f.Op + " | " + (f.What.Length > 60 ? f.What[..60] : f.What)).OrderByDescending(g => g.Count()))
+        Console.WriteLine($"  {g.Count(),4}  {g.Key}   (first: seed {g.First().Seed} step {g.First().Step})");
+    return fails.Count == 0 ? 0 : 1;
+}
+if (args.Length > 0 && args[0] == "chamfercases") {
+    PolyMesh B(int seg) => Primitives.Box(2, 2, 2, seg, seg, seg);
+    var cases = new List<(string, Func<PolyMesh, HashSet<EdgeKey>>, int)>();
+    HashSet<EdgeKey> NearE(PolyMesh m, Func<Vector3, Vector3, bool> keep) { var r = new HashSet<EdgeKey>(); foreach (var f in m.Faces) foreach (var e in m.FaceEdges(f)) if (keep(m.Verts[e.A], m.Verts[e.B])) r.Add(e); return r; }
+    bool Top(Vector3 a) => a.Z > 1.99f; bool X1(Vector3 a) => a.X > 0.99f; bool Y1(Vector3 a) => a.Y > 0.99f;
+    cases.Add(("one edge", m => NearE(m, (a, b) => Top(a) && Top(b) && X1(a) && X1(b)), 1));
+    cases.Add(("L two edges at a corner", m => NearE(m, (a, b) => Top(a) && Top(b) && (X1(a) && X1(b) || Y1(a) && Y1(b))), 1));
+    cases.Add(("three edges at a corner", m => NearE(m, (a, b) => (Top(a) && Top(b) && (X1(a) && X1(b) || Y1(a) && Y1(b))) || (X1(a) && X1(b) && Y1(a) && Y1(b))), 1));
+    cases.Add(("top loop", m => NearE(m, (a, b) => Top(a) && Top(b) && (MathF.Abs(a.X) > 0.99f && MathF.Abs(b.X) > 0.99f && a.X * b.X > 0 || MathF.Abs(a.Y) > 0.99f && MathF.Abs(b.Y) > 0.99f && a.Y * b.Y > 0)), 1));
+    cases.Add(("straight chain across a grid", m => NearE(m, (a, b) => Top(a) && Top(b) && MathF.Abs(a.Y) < 0.01f && MathF.Abs(b.Y) < 0.01f), 2));
+    cases.Add(("chain with a turn on a grid", m => NearE(m, (a, b) => Top(a) && Top(b) && (MathF.Abs(a.Y) < 0.01f && MathF.Abs(b.Y) < 0.01f && a.X <= 0.01f && b.X <= 0.01f || MathF.Abs(a.X) < 0.01f && MathF.Abs(b.X) < 0.01f && a.Y >= -0.01f && b.Y >= -0.01f)), 2));
+    cases.Add(("cross (4 edges at a vertex)", m => NearE(m, (a, b) => Top(a) && Top(b) && (MathF.Abs(a.Y) < 0.01f && MathF.Abs(b.Y) < 0.01f || MathF.Abs(a.X) < 0.01f && MathF.Abs(b.X) < 0.01f)), 2));
+    cases.Add(("T (3 edges at a grid vertex)", m => NearE(m, (a, b) => Top(a) && Top(b) && (MathF.Abs(a.Y) < 0.01f && MathF.Abs(b.Y) < 0.01f || MathF.Abs(a.X) < 0.01f && MathF.Abs(b.X) < 0.01f && a.Y >= -0.01f && b.Y >= -0.01f)), 2));
+    foreach (var (name, pick, seg) in cases)
+        foreach (int segs in new[] { 1, 3 })
+        {
+            var m = B(seg); var e = pick(m);
+            string res;
+            try { MeshOps.ChamferEdges(m, e.ToList(), 0.15f, segs); m.Validate(); res = m.IsClosedManifold(out var why) ? "ok" : "OPEN: " + why; }
+            catch (Exception ex) { res = "threw " + ex.Message; }
+            Console.WriteLine($"  {name,-32} {e.Count} edges, {segs} seg: {res}");
+        }
+    return 0;
+}
 if (args.Length > 0 && args[0] == "opsbench") {
     var sw = System.Diagnostics.Stopwatch.StartNew();
     var m = Primitives.Plane(60, 60, 700, 700); Console.WriteLine($"plane {sw.ElapsedMilliseconds} ms"); sw.Restart();

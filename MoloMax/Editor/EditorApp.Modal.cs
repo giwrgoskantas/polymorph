@@ -39,6 +39,8 @@ public sealed partial class EditorApp
         public float D0;
         // extrude drag: the mesh after the extrude, the points it moved and the new sides (later values only move them)
         public PolyMesh XMesh; public List<(int V, Vector3 N)> XMoved; public int[] XRing, XVerts; public float XApplied;
+        /// <summary>The mesh was a closed solid when the tool started (the result must stay closed).</summary>
+        public bool BaseClosed; public bool Broke;
         // loop cut preview
         public EdgeKey? Hover;
         public List<(Vector3 A, Vector3 B)> Preview = new();
@@ -104,6 +106,7 @@ public sealed partial class EditorApp
                     Undo.Record("Chamfer", Scene);
                     StartModalCommon(kind, vp, pivot);
                     modal.Obj = cur; modal.BaseMesh = cur.Mesh.Clone(); modal.BaseSel = SubSel(cur).Clone();
+                    modal.BaseClosed = cur.Mesh.Faces.Count <= 200000 && cur.Mesh.IsClosedManifold(out _); modal.Broke = false;
                     modal.D0 = Vector2.Distance(Input.Mouse, modal.PivotScreen);
                     break;
                 }
@@ -306,7 +309,8 @@ public sealed partial class EditorApp
                     if (hasNum) amount = num;
                     else if (SnapActive) amount = SnapValue(amount, GridStep * 0.1f);
                     ApplyParametric(amount);
-                    modal.Header = $"Chamfer  {amount:0.000} m  {chamferSegments} segment{(chamferSegments > 1 ? "s" : "")} (wheel / Page Up-Down)  {NumShown()}";
+                    modal.Header = modal.Broke ? "Chamfer: these edges can't be chamfered together without holes (try fewer edges)"
+                        : $"Chamfer  {amount:0.000} m  {chamferSegments} segment{(chamferSegments > 1 ? "s" : "")} (wheel / Page Up-Down)  {NumShown()}";
                     break;
                 }
             case ModalKind.Inset:
@@ -359,7 +363,14 @@ public sealed partial class EditorApp
             var ring = MeshOps.ExtrudeFaces(o.Mesh, sel.Faces, local, false, moved);
             modal.XMesh = o.Mesh; modal.XMoved = moved; modal.XRing = ring.ToArray(); modal.XVerts = moved.Select(x => x.V).ToArray(); modal.XApplied = local;
         }
-        else if (modal.Kind == ModalKind.Chamfer) { if (local > 1e-5f) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local, chamferSegments); sel.Edges.Clear(); }
+        else if (modal.Kind == ModalKind.Chamfer)
+        {
+            if (local > 1e-5f) MeshOps.ChamferEdges(o.Mesh, sel.Edges.ToList(), local, chamferSegments);
+            sel.Edges.Clear();
+            // an odd corner the chamfer can't close: the mesh stays as it was rather than getting holes
+            modal.Broke = modal.BaseClosed && local > 1e-5f && !o.Mesh.IsClosedManifold(out _);
+            if (modal.Broke) { o.Mesh = modal.BaseMesh.Clone(); subSel[o.Id] = modal.BaseSel.Clone(); }
+        }
         else MeshOps.InsetFaces(o.Mesh, sel.Faces, local);
         o.Touch();
     }

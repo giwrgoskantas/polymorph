@@ -36,13 +36,13 @@ public static partial class MeshOps
                 bool sp = sel.Contains(EdgeKey.Make(prev, v)), sn = sel.Contains(EdgeKey.Make(v, next));
                 if (!sp && !sn) continue;
                 var p = m.Verts[v];
-                var a = Vector3.Normalize(m.Verts[prev] - p); var b = Vector3.Normalize(m.Verts[next] - p);
+                var a = SN(m.Verts[prev] - p, Vector3.Zero); var b = SN(m.Verts[next] - p, Vector3.Zero);
                 Vector3 dir;
                 if (sp && sn)
                 {
                     // corner between two chamfered edges: along the bisector so both strips keep their width
                     float s = MathF.Max(0.2f, MathF.Sqrt(MathF.Max(0, (1 - Vector3.Dot(a, b)) * 0.5f)));
-                    dir = Vector3.Normalize(a + b) / s;
+                    dir = SN(a + b, Vector3.Zero) / s; // straight corner (edges in line): no bisector, the copy stays
                 }
                 else dir = sn ? a : b; // slide along this face's edge that is not chamfered
                 float edgeLen = MathF.Min(Vector3.Distance(m.Verts[prev], p), Vector3.Distance(m.Verts[next], p));
@@ -301,41 +301,69 @@ public static partial class MeshOps
     {
         planeNormal = Vector3.Normalize(planeNormal);
         float D(int v) => Vector3.Dot(m.Verts[v] - planePoint, planeNormal);
-        var cut = new Dictionary<EdgeKey, int>();
+        const float eps = 1e-5f;
         var newEdges = new HashSet<EdgeKey>();
         int count = m.Faces.Count;
-        const float eps = 1e-5f;
+        // 1. a point on every edge the plane crosses (faces in scope)
+        var cut = new Dictionary<EdgeKey, (int V, float T, int A)>();
         for (int fi = 0; fi < count; fi++)
         {
             if (faces != null && !faces.Contains(fi)) continue;
             var f = m.Faces[fi]; int n = f.V.Length;
-            var d = f.V.Select(D).ToArray();
-            if (d.All(x => x >= -eps) || d.All(x => x <= eps)) continue;
-            // walk the polygon, inserting a point on each crossing edge
-            var pts = new List<(int V, Vector2 UV, Vector4 Col, float D)>();
+            for (int i = 0; i < n; i++)
+            {
+                int a = f.V[i], b = f.V[(i + 1) % n];
+                float da = D(a), db = D(b);
+                if (!(da > eps && db < -eps || da < -eps && db > eps)) continue;
+                var k = EdgeKey.Make(a, b);
+                if (cut.ContainsKey(k)) continue;
+                float t = da / (da - db);
+                cut[k] = (m.AddVertex(Vector3.Lerp(m.Verts[a], m.Verts[b], t)), t, a);
+            }
+        }
+        if (cut.Count == 0) return newEdges;
+        // 2. every face using a cut edge gets the point in its outline (also faces outside the scope: no crack)
+        for (int fi = 0; fi < count; fi++)
+        {
+            var f = m.Faces[fi]; int n = f.V.Length;
+            bool any = false;
+            for (int i = 0; i < n && !any; i++) any = cut.ContainsKey(EdgeKey.Make(f.V[i], f.V[(i + 1) % n]));
+            if (!any) continue;
+            var v = new List<int>(); var uv = new List<Vector2>(); var col = new List<Vector4>(); var c1 = f.Col1 != null ? new List<Vector4>() : null;
             for (int i = 0; i < n; i++)
             {
                 int j = (i + 1) % n;
-                pts.Add((f.V[i], f.UV[i], f.Col[i], d[i]));
-                if ((d[i] > eps && d[j] < -eps) || (d[i] < -eps && d[j] > eps))
+                v.Add(f.V[i]); uv.Add(f.UV[i]); col.Add(f.Col[i]); c1?.Add(f.Col1[i]);
+                if (cut.TryGetValue(EdgeKey.Make(f.V[i], f.V[j]), out var c))
                 {
-                    float t = d[i] / (d[i] - d[j]);
-                    var k = EdgeKey.Make(f.V[i], f.V[j]);
-                    if (!cut.TryGetValue(k, out var nv)) { nv = m.AddVertex(Vector3.Lerp(m.Verts[f.V[i]], m.Verts[f.V[j]], t)); cut[k] = nv; }
-                    pts.Add((nv, Vector2.Lerp(f.UV[i], f.UV[j], t), Vector4.Lerp(f.Col[i], f.Col[j], t), 0));
+                    float t = c.A == f.V[i] ? c.T : 1 - c.T; // measured from this face's corner i
+                    v.Add(c.V); uv.Add(Vector2.Lerp(f.UV[i], f.UV[j], t)); col.Add(Vector4.Lerp(f.Col[i], f.Col[j], t)); c1?.Add(Vector4.Lerp(f.Col1[i], f.Col1[j], t));
                 }
             }
-            var pos = pts.Where(p => p.D >= -eps).ToList(); var neg = pts.Where(p => p.D <= eps).ToList();
+            f.V = v.ToArray(); f.UV = uv.ToArray(); f.Col = col.ToArray(); if (c1 != null) f.Col1 = c1.ToArray();
+        }
+        // 3. faces in scope crossed once (two points on the plane): split in two. A concave polygon crossed several times keeps
+        //    its new points but is not split (splitting it in two would overlap itself)
+        for (int fi = 0; fi < count; fi++)
+        {
+            if (faces != null && !faces.Contains(fi)) continue;
+            var f = m.Faces[fi]; int n = f.V.Length;
+            var d = new float[n]; for (int i = 0; i < n; i++) d[i] = MathF.Abs(D(f.V[i])) <= eps ? 0 : D(f.V[i]);
+            int signChanges = 0, last = 0, first = 0;
+            for (int i = 0; i < n; i++) { int sg = Math.Sign(d[i]); if (sg == 0) continue; if (first == 0) first = sg; else if (sg != last) signChanges++; last = sg; }
+            if (first != 0 && last != first) signChanges++;
+            if (signChanges != 2) continue;
+            var pos = new List<int>(); var neg = new List<int>();
+            for (int i = 0; i < n; i++) { if (d[i] >= 0) pos.Add(i); if (d[i] <= 0) neg.Add(i); }
             if (pos.Count < 3 || neg.Count < 3) continue;
-            Face Make(List<(int V, Vector2 UV, Vector4 Col, float D)> l)
+            Face Part(List<int> idx) => new(idx.Select(i => f.V[i]).ToArray(), f.MatId, f.Smooth)
             {
-                var nf = new Face(l.Select(p => p.V).ToArray(), f.MatId, f.Smooth) { UV = l.Select(p => p.UV).ToArray(), Col = l.Select(p => p.Col).ToArray() };
-                return nf;
-            }
-            m.Faces[fi] = Make(pos);
-            m.Faces.Add(Make(neg));
-            var onPlane = pts.Where(p => MathF.Abs(p.D) <= eps).Select(p => p.V).Distinct().ToList();
-            if (onPlane.Count == 2) newEdges.Add(EdgeKey.Make(onPlane[0], onPlane[1]));
+                UV = idx.Select(i => f.UV[i]).ToArray(), Col = idx.Select(i => f.Col[i]).ToArray(), Col1 = f.Col1 == null ? null : idx.Select(i => f.Col1[i]).ToArray(),
+            };
+            m.Faces[fi] = Part(pos);
+            m.Faces.Add(Part(neg));
+            var on = Enumerable.Range(0, n).Where(i => d[i] == 0).Select(i => f.V[i]).Distinct().ToList();
+            if (on.Count == 2) newEdges.Add(EdgeKey.Make(on[0], on[1]));
         }
         return newEdges;
     }

@@ -33,6 +33,31 @@ public static class MeshClean
 {
     public static PolyMesh Run(PolyMesh src, CleanOptions o, out CleanReport report)
     {
+        // never worse than before: a closed solid must stay closed and the polygons must stay valid; if a step breaks
+        // that (welding two copies lying on top of each other, a polygon pinched to 2 points), it is done without it
+        bool closed = src.IsClosedManifold(out _);
+        var m = RunOnce(src, o, out report);
+        if (Sound(m, closed)) return m;
+        if (o.Weld > 0)
+        {
+            var o2 = new CleanOptions { Angle = o.Angle, KeepUvSeams = o.KeepUvSeams, KeepSmoothing = o.KeepSmoothing, StraightPoints = o.StraightPoints, Weld = 0, Quads = o.Quads };
+            m = RunOnce(src, o2, out report);
+            if (Sound(m, closed)) return m;
+        }
+        var c = src.Clone();
+        int t = Tris(c);
+        report = new CleanReport(c.Faces.Count, c.Faces.Count, c.Verts.Count, c.Verts.Count, t, t);
+        return c;
+    }
+
+    static bool Sound(PolyMesh m, bool mustBeClosed)
+    {
+        try { m.Validate(); } catch { return false; }
+        return !mustBeClosed || m.IsClosedManifold(out _);
+    }
+
+    static PolyMesh RunOnce(PolyMesh src, CleanOptions o, out CleanReport report)
+    {
         var m = src.Clone();
         int f0 = m.Faces.Count, v0 = m.Verts.Count, t0 = Tris(m);
         if (o.Weld > 0) MeshOps.WeldByDistance(m, o.Weld);

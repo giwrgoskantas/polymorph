@@ -236,7 +236,8 @@ public sealed class PolyMesh
             else map[i] = -1;
         }
         Verts = nv;
-        foreach (var f in Faces) for (int i = 0; i < f.V.Length; i++) f.V[i] = map[f.V[i]];
+        var done = new HashSet<Face>(ReferenceEqualityComparer.Instance);
+        foreach (var f in Faces) { if (!done.Add(f)) continue; for (int i = 0; i < f.V.Length; i++) f.V[i] = map[f.V[i]]; }
         return map;
     }
 
@@ -259,10 +260,13 @@ public sealed class PolyMesh
             while (v.Count > 1 && v[0] == v[^1]) { v.RemoveAt(v.Count - 1); uv.RemoveAt(uv.Count - 1); col.RemoveAt(col.Count - 1); }
             if (v.Distinct().Count() < 3) continue;
             // a corner met twice (a weld pinched the polygon): split it into its loops, each a valid polygon
+            bool usedOriginal = false;
             foreach (var (lv, luv, lcol) in SplitPinched(v, uv, col))
             {
                 if (lv.Count < 3) continue;
-                var nf = keep.Count > 0 && ReferenceEquals(keep[^1], f) ? f.Clone() : f;
+                // the first loop reuses the face object, every other loop gets its own (a face object listed twice
+                // would be renumbered twice later)
+                var nf = usedOriginal ? f.Clone() : f; usedOriginal = true;
                 nf.V = lv.ToArray(); nf.UV = luv.ToArray(); nf.Col = lcol.ToArray(); nf.Col1 = null;
                 keep.Add(nf);
             }
