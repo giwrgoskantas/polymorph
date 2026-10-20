@@ -28,6 +28,21 @@ if (args.Length > 0 && args[0] == "chamfer") {
     }
     return 0;
 }
+if (args.Length > 0 && args[0] == "opsbench") {
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var m = Primitives.Plane(60, 60, 700, 700); Console.WriteLine($"plane {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    var c = m.Clone(); Console.WriteLine($"clone {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    var sel = new HashSet<int>(Enumerable.Range(0, 50000));
+    MeshOps.ExtrudeFaces(c, sel, 0.2f); Console.WriteLine($"extrude {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    c.Validate(); Console.WriteLine($"validate {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    var ps = new PolySelection(); ps.Faces = sel; ps.Sanitise(c); Console.WriteLine($"sanitise {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    var g = RenderMeshBuilder.Build(c); Console.WriteLine($"render build {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    var e = c.DrawEdges(); Console.WriteLine($"draw edges {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    var sc = new Scene(); sc.Add("big", c, Vector3.Zero); var u = new UndoStack();
+    u.Record("a", sc); Console.WriteLine($"undo record {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    sc.Objects[0].Touch(); var back = u.Undo(sc); Console.WriteLine($"undo {sw.ElapsedMilliseconds} ms"); sw.Restart();
+    return 0;
+}
 if (args.Length > 0 && args[0] == "dense") {
     void Rep(string name, PolyMesh before, Func<PolyMesh> run) {
         var sw = System.Diagnostics.Stopwatch.StartNew(); PolyMesh r = null; string err = null;

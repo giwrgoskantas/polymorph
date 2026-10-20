@@ -63,23 +63,31 @@ public static partial class MeshOps
 
     static List<List<int>> Components(PolyMesh m, IEnumerable<int> faces)
     {
-        var set = new HashSet<int>(faces);
-        var em = m.BuildEdgeMap();
-        var seen = new HashSet<int>();
-        var res = new List<List<int>>();
-        foreach (var f in set)
+        // only the selected faces' edges are looked at (the whole mesh's edge map cost ~0.5 s on a 500k-polygon room)
+        var list = faces.Distinct().ToList();
+        var index = new Dictionary<int, int>(list.Count);
+        for (int i = 0; i < list.Count; i++) index[list[i]] = i;
+        var parent = new int[list.Count]; for (int i = 0; i < parent.Length; i++) parent[i] = i;
+        int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+        var firstOf = new Dictionary<EdgeKey, int>(list.Count * 4);
+        for (int i = 0; i < list.Count; i++)
         {
-            if (!seen.Add(f)) continue;
-            var comp = new List<int>(); var st = new Stack<int>(); st.Push(f);
-            while (st.Count > 0)
+            var f = m.Faces[list[i]].V;
+            for (int k = 0; k < f.Length; k++)
             {
-                var x = st.Pop(); comp.Add(x);
-                foreach (var e in m.FaceEdges(m.Faces[x]))
-                    foreach (var y in em[e]) if (set.Contains(y) && seen.Add(y)) st.Push(y);
+                var e = EdgeKey.Make(f[k], f[(k + 1) % f.Length]);
+                if (firstOf.TryGetValue(e, out int j)) { int a = Find(i), b = Find(j); if (a != b) parent[a] = b; }
+                else firstOf[e] = i;
             }
-            res.Add(comp);
         }
-        return res;
+        var groups = new Dictionary<int, List<int>>();
+        for (int i = 0; i < list.Count; i++)
+        {
+            int r = Find(i);
+            if (!groups.TryGetValue(r, out var g)) groups[r] = g = new List<int>();
+            g.Add(list[i]);
+        }
+        return groups.Values.ToList();
     }
 
     public static void SideUVMetric(PolyMesh m, IEnumerable<int> ring)

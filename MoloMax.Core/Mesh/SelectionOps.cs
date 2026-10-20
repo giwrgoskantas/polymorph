@@ -92,7 +92,40 @@ public static class MeshSelect
     /// All faces connected to the seed faces. Points at the same place count as one (game meshes are cut at every
     /// texture seam, the pieces of one element only touch by position).
     /// </summary>
-    public static HashSet<int> Elements(PolyMesh m, IEnumerable<int> seed, float weld = 1e-4f)
+    sealed class ElemTable { public int Version, Verts, Faces; public int[] Canon, Start, Idx; }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PolyMesh, ElemTable> elemCache = new();
+
+    /// <summary>Same, with the point table kept for this mesh <paramref name="version"/> (clicking around a big room).</summary>
+    public static HashSet<int> Elements(PolyMesh m, IEnumerable<int> seed, int version)
+    {
+        if (!elemCache.TryGetValue(m, out var t) || t.Version != version || t.Verts != m.Verts.Count || t.Faces != m.Faces.Count)
+        {
+            t = BuildElemTable(m, 1e-4f); t.Version = version;
+            elemCache.AddOrUpdate(m, t);
+        }
+        return Walk(m, seed, t);
+    }
+
+    public static HashSet<int> Elements(PolyMesh m, IEnumerable<int> seed, float weld = 1e-4f) => Walk(m, seed, BuildElemTable(m, weld));
+
+    static HashSet<int> Walk(PolyMesh m, IEnumerable<int> seed, ElemTable t)
+    {
+        int nv = m.Verts.Count, fc = m.Faces.Count; var canon = t.Canon; var start = t.Start; var idx = t.Idx;
+        var seen = new bool[fc]; var res = new HashSet<int>(); var st = new Stack<int>();
+        foreach (var f in seed) if (f >= 0 && f < fc && !seen[f]) { seen[f] = true; res.Add(f); st.Push(f); }
+        while (st.Count > 0)
+        {
+            var f = st.Pop();
+            foreach (var v in m.Faces[f].V)
+            {
+                if (v >= nv) continue; int c = canon[v];
+                for (int k = start[c]; k < start[c + 1]; k++) { int g = idx[k]; if (!seen[g]) { seen[g] = true; res.Add(g); st.Push(g); } }
+            }
+        }
+        return res;
+    }
+
+    static ElemTable BuildElemTable(PolyMesh m, float weld)
     {
         int nv = m.Verts.Count, fc = m.Faces.Count;
         // each point -> the first point found at the same place (grid cell of the weld size)
@@ -112,18 +145,7 @@ public static class MeshSelect
         for (int i = 0; i < nv; i++) start[i + 1] += start[i];
         var fill = (int[])start.Clone(); var idx = new int[start[nv]];
         for (int fi = 0; fi < fc; fi++) foreach (var v in m.Faces[fi].V) if (v < nv) idx[fill[canon[v]]++] = fi;
-        var seen = new bool[fc]; var res = new HashSet<int>(); var st = new Stack<int>();
-        foreach (var f in seed) if (f >= 0 && f < fc && !seen[f]) { seen[f] = true; res.Add(f); st.Push(f); }
-        while (st.Count > 0)
-        {
-            var f = st.Pop();
-            foreach (var v in m.Faces[f].V)
-            {
-                if (v >= nv) continue; int c = canon[v];
-                for (int k = start[c]; k < start[c + 1]; k++) { int g = idx[k]; if (!seen[g]) { seen[g] = true; res.Add(g); st.Push(g); } }
-            }
-        }
-        return res;
+        return new ElemTable { Verts = nv, Faces = fc, Canon = canon, Start = start, Idx = idx };
     }
 
     public static HashSet<int> GrowFaces(PolyMesh m, ISet<int> faces)

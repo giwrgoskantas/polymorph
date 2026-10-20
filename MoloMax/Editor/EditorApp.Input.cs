@@ -545,7 +545,7 @@ public sealed partial class EditorApp
                         var h = clickHit is { } ch && ch.Object == cur && cur.Modifiers is not { Count: > 0 } ? ch : Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
                         clickHit = null;
                         ICollection<int> hit = Array.Empty<int>();
-                        if (h.HasValue) hit = Level == SubObject.Element ? MeshSelect.Elements(m, new[] { h.Value.Face }) : new[] { h.Value.Face };
+                        if (h.HasValue) hit = Level == SubObject.Element ? MeshSelect.Elements(m, new[] { h.Value.Face }, cur.Version) : new[] { h.Value.Face };
                         ApplySelection(s.Faces, hit, true);
                         break;
                     }
