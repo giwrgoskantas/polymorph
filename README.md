@@ -28,6 +28,10 @@ can be removed at any time, and is applied for good with *Apply*. Works on thick
 (the doorway becomes a portal by itself), even dense walls: only the faces the hole crosses change, your grid stays.
 Undo with Ctrl+Z at every step.
 
+**Texture library from your own game**: Preferences > Texture library > *Build the library from my game*. Polymorph reads every
+interior of your GTA V install and lists each material (shader, diffuse / normal / spec, settings) sorted into floors,
+walls, ceilings... with its textures as .dds (about 15 min, 4-5 GB). Nothing from the game is downloaded or shared.
+
 **Clean Up** (right-click > *Clean up*, or the Clean Up modifier): fewer edges, same shape. Flat areas cut in many
 faces become one polygon, points in the middle of straight edges go. UV seams, colours, materials and smoothing are kept.
 
