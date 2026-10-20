@@ -197,6 +197,7 @@ public sealed partial class EditorApp
         T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
+        T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
@@ -1023,6 +1024,36 @@ public sealed partial class EditorApp
 
     /// <summary>Boolean with the real buttons of the Object panel: a door and a window cut in a wall, union, intersect, undo.</summary>
     /// <summary>Wall Opening with the real mouse: trace on the wall, pull sides, presets, Enter, edit an opening later, Ctrl+Z.</summary>
+    IEnumerable<object> TutDenseOpening()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true; propTab = PropTab.Modifiers; if (TimelineOpen) ToggleTimeline();
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height; int ws = P.WSegs, ls = P.LSegs, hs = P.HSegs;
+        P.Width = 4f; P.Length = 0.3f; P.Height = 3f; P.WSegs = 40; P.LSegs = 3; P.HSegs = 30;
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "dense wall";
+        P.Width = w0; P.Length = l0; P.Height = h0; P.WSegs = ws; P.LSegs = ls; P.HSegs = hs;
+        cam.Frame(new Vector3(-2.3f, -2.3f, -0.2f), new Vector3(2.3f, 2.3f, 3.2f)); cam.Yaw = -1.5708f; cam.Pitch = 0.05f;
+        SelectOnly(wall); yield return Frames(10);
+        yield return Shot("dense_before");
+        var mod = new WallOpeningModifier();
+        mod.Openings.Add(new OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -1.4f, Right = -0.4f, Bottom = 0, Top = 2.1f });
+        mod.Openings.Add(new OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = 0.45f, Right = 1.55f, Bottom = 1.0f, Top = 2.0f });
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        wall.Modifiers.Add(mod); wall.Touch();
+        var m = Scene.Find(wall.Id).Evaluated();
+        Note($"dense wall: {Scene.Find(wall.Id).Mesh.Faces.Count} -> {m.Faces.Count} faces in {sw.ElapsedMilliseconds} ms, closed {m.IsClosedManifold(out _)}, corners [{string.Join(",", m.Faces.GroupBy(f => f.V.Length).OrderBy(g => g.Key).Select(g => g.Key + "x" + g.Count()))}]");
+        Expect(m.IsClosedManifold(out _) && m.Faces.Count > 2000, "dense wall cut, grid kept, closed");
+        yield return Frames(10);
+        yield return Shot("dense_front");
+        cam.Frame(new Vector3(-1.9f, -0.6f, -0.1f), new Vector3(-0.0f, 0.6f, 2.4f)); cam.Yaw = -1.0f; cam.Pitch = 0.25f;
+        yield return Frames(8);
+        yield return Shot("dense_door_close");
+        cam.Frame(new Vector3(0.2f, -0.6f, 0.8f), new Vector3(1.8f, 0.6f, 2.2f)); cam.Yaw = -2.1f; cam.Pitch = -0.2f;
+        yield return Frames(8);
+        yield return Shot("dense_window_close");
+    }
+
     IEnumerable<object> TutWallOpening()
     {
         Fresh(); if (MapMode) SetMapMode(false);
