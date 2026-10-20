@@ -198,6 +198,7 @@ public sealed partial class EditorApp
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
+        T("SHAPES CLEANUP: arch door, round window, segments, clean up (photos)", TutShapesCleanup);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
@@ -1024,6 +1025,87 @@ public sealed partial class EditorApp
 
     /// <summary>Boolean with the real buttons of the Object panel: a door and a window cut in a wall, union, intersect, undo.</summary>
     /// <summary>Wall Opening with the real mouse: trace on the wall, pull sides, presets, Enter, edit an opening later, Ctrl+Z.</summary>
+    IEnumerable<object> TutShapesCleanup()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true; propTab = PropTab.Modifiers; if (TimelineOpen) ToggleTimeline();
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height; int ws = P.WSegs, ls = P.LSegs, hs = P.HSegs;
+        P.Width = 4f; P.Length = 0.3f; P.Height = 3f; P.WSegs = 20; P.LSegs = 2; P.HSegs = 15;
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "wall";
+        P.Width = w0; P.Length = l0; P.Height = h0; P.WSegs = ws; P.LSegs = ls; P.HSegs = hs;
+        cam.Frame(new Vector3(-2.4f, -2.4f, -0.2f), new Vector3(2.4f, 2.4f, 3.2f)); cam.Yaw = -1.5708f; cam.Pitch = 0.05f;
+        SelectOnly(wall); yield return Frames(10);
+        Vector2 W(float x, float z) => ScreenOf(vp, new Vector3(x, -0.15f, z));
+        IEnumerable<object> Key(Keys k) { KeyDownT(k); yield return Frames(3); KeyUpT(k); yield return Frames(6); }
+        WallOpeningModifier Mod() => Scene.Find(wall.Id).Modifiers.OfType<WallOpeningModifier>().FirstOrDefault();
+        string Info() { var m = Scene.Find(wall.Id).Evaluated(); return $"{m.Faces.Count} faces, closed {m.IsClosedManifold(out _)}, volume {Core.Mesh.CsgClean.Volume(m):0.000}"; }
+
+        // 1. arch door: trace, D, Arch button, Enter
+        foreach (var x in ClickAt(TutCentre("tb_opening"), false, 10)) yield return x;
+        foreach (var x in DragTo(W(-1.5f, 0.5f), W(-0.5f, 1.8f), 20)) yield return x;
+        yield return Frames(8);
+        foreach (var x in Key(Keys.D)) yield return x;
+        foreach (var x in ClickAt(TutCentre("op_shape_arch"), false, 10)) yield return x;
+        yield return Frames(8);
+        bool segShown = tutRects.ContainsKey("op_segments");
+        Expect(opRect != null && opRect.Shape == OpeningShape.Arch, $"Arch button picks the arch shape (segments slider shown {segShown})");
+        yield return Shot("arch_preview");
+        foreach (var x in Key(Keys.Enter)) yield return x;
+        yield return Frames(20);
+        Expect(Mod()?.Openings.Count == 1 && Mod().Openings[0].Shape == OpeningShape.Arch && Scene.Find(wall.Id).Evaluated().IsClosedManifold(out _), $"arch door cut: {Info()}");
+
+        // 2. round window: click, W, C, + + (more segments), Cut
+        foreach (var x in ClickAt(TutCentre("tb_opening"), false, 10)) yield return x;
+        foreach (var x in ClickAt(W(1.0f, 1.6f), false, 10)) yield return x;
+        yield return Frames(8);
+        foreach (var x in Key(Keys.W)) yield return x;
+        foreach (var x in Key(Keys.C)) yield return x;
+        foreach (var x in Key(Keys.Oemplus)) yield return x;
+        foreach (var x in Key(Keys.Oemplus)) yield return x;
+        int segs = opRect?.Segments ?? 0;
+        foreach (var x in ClickAt(TutCentre("op_cut"), false, 10)) yield return x;
+        yield return Frames(20);
+        var mod = Mod();
+        Expect(mod?.Openings.Count == 2 && mod.Openings[1].Shape == OpeningShape.Circle && mod.Openings[1].Segments == 20, $"round window with + + = {segs} segments: {Info()}");
+        yield return Frames(10);
+        yield return Shot("arch_round_front");
+        cam.Frame(new Vector3(-1.8f, -0.6f, 0f), new Vector3(1.8f, 0.6f, 2.6f)); cam.Yaw = -1.1f; cam.Pitch = 0.2f;
+        yield return Frames(8);
+        yield return Shot("arch_round_angle");
+
+        // 3. fewer segments on the arch: Edit, - - - , Enter
+        EditOpening(Scene.Find(wall.Id), mod, 0); yield return Frames(10);
+        for (int i = 0; i < 4; i++) foreach (var x in Key(Keys.OemMinus)) yield return x;
+        foreach (var x in Key(Keys.Enter)) yield return x;
+        yield return Frames(20);
+        Expect(Mod().Openings[0].Segments == 8 && Scene.Find(wall.Id).Evaluated().IsClosedManifold(out _), $"arch down to {Mod().Openings[0].Segments} segments: {Info()}");
+        yield return Shot("arch_8_segments");
+
+        // 4. clean up: a box with many segments, triangulated (a messy import)
+        Fresh(); if (MapMode) SetMapMode(false);
+        vp = Viewports[ActiveViewport]; cam = vp.Camera; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        P.WSegs = 8; P.LSegs = 8; P.HSegs = 8; P.Width = 2; P.Length = 2; P.Height = 2;
+        var box = Prim(CreateKind.Box, Vector3.Zero); box.Name = "messy box";
+        P.Width = w0; P.Length = l0; P.Height = h0; P.WSegs = ws; P.LSegs = ls; P.HSegs = hs;
+        Core.Mesh.MeshOps.WeldByDistance(box.Mesh, 1e-5f); box.Mesh.CleanFaces();
+        box.Mesh = new TriangulateModifier().Apply(box.Mesh.Clone(), true); box.Touch();
+        var cyl = Prim(CreateKind.Cylinder, new Vector3(3, 0, 0)); cyl.Name = "messy cylinder";
+        cyl.Mesh = new TriangulateModifier().Apply(cyl.Mesh.Clone(), true); cyl.Touch();
+        cam.Frame(new Vector3(-1.5f, -2f, -0.2f), new Vector3(4.5f, 2f, 2.4f)); cam.Yaw = -1.0f; cam.Pitch = 0.35f;
+        SelectOnly(box, cyl); yield return Frames(10);
+        int fb = box.Evaluated().Faces.Count + cyl.Evaluated().Faces.Count;
+        yield return Shot("cleanup_before");
+        CleanUpSelected(); yield return Frames(15);
+        var eb = Scene.Find(box.Id).Evaluated(); var ec = Scene.Find(cyl.Id).Evaluated();
+        Note($"clean up: {fb} -> {eb.Faces.Count + ec.Faces.Count} faces; box {Scene.Find(box.Id).Modifiers.OfType<CleanUpModifier>().First().LastReport}; cylinder {Scene.Find(cyl.Id).Modifiers.OfType<CleanUpModifier>().First().LastReport}");
+        Expect(eb.Faces.Count == 6 && eb.IsClosedManifold(out _) && ec.IsClosedManifold(out _) && Scene.Find(box.Id).Mesh.Faces.Count > 300, $"Clean Up: box -> {eb.Faces.Count} faces, cylinder -> {ec.Faces.Count}, base meshes untouched");
+        SelectOnly(Scene.Find(box.Id)); yield return Frames(10);
+        yield return Shot("cleanup_after");
+        DoUndo(); yield return Frames(10);
+        Expect(!Scene.Find(box.Id).Modifiers.OfType<CleanUpModifier>().Any(), "undo removes the clean up");
+    }
+
     IEnumerable<object> TutDenseOpening()
     {
         Fresh(); if (MapMode) SetMapMode(false);

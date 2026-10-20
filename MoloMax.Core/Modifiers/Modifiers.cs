@@ -18,6 +18,7 @@ public enum ModifierCategory { Edit, Generate, Deform, Normals }
 [JsonDerivedType(typeof(SolidifyModifier), "solidify")]
 [JsonDerivedType(typeof(SubdivisionModifier), "subsurf")]
 [JsonDerivedType(typeof(WeldModifier), "weld")]
+[JsonDerivedType(typeof(CleanUpModifier), "clean_up")]
 [JsonDerivedType(typeof(TriangulateModifier), "triangulate")]
 [JsonDerivedType(typeof(SmoothModifier), "smooth")]
 [JsonDerivedType(typeof(SmoothByAngleModifier), "smooth_by_angle")]
@@ -47,6 +48,7 @@ public abstract class Modifier
         ("Edit Poly", ModifierCategory.Edit, () => new EditPolyModifier()),
         ("Unwrap UVW", ModifierCategory.Edit, () => new UnwrapUvwModifier()),
         ("Weld", ModifierCategory.Edit, () => new WeldModifier()),
+        ("Clean Up", ModifierCategory.Edit, () => new CleanUpModifier()),
         ("Wall Opening", ModifierCategory.Generate, () => new WallOpeningModifier()),
         ("Array", ModifierCategory.Generate, () => new ArrayModifier()),
         ("Mirror", ModifierCategory.Generate, () => new MirrorModifier()),
@@ -435,6 +437,25 @@ public sealed class WeldModifier : Modifier
         m.CleanFaces();
         m.RemoveUnusedVertices();
         return m;
+    }
+}
+
+/// <summary>Clean Up: fewer edges, same shape. Flat areas cut in many faces become one polygon, points in the middle
+/// of straight edges go, duplicates are joined. UV seams, materials, colours and smoothing are kept.</summary>
+public sealed class CleanUpModifier : Modifier
+{
+    public float Angle = 0.5f;
+    public bool KeepUvSeams = true, StraightPoints = true, Quads;
+    public CleanUpModifier() { Name = "Clean Up"; }
+    public override string TypeName => "Clean Up";
+    public override ModifierCategory Category => ModifierCategory.Edit;
+    [System.Text.Json.Serialization.JsonIgnore] public CleanReport LastReport;
+
+    public override PolyMesh Apply(PolyMesh m, bool render)
+    {
+        var r = MeshClean.Run(m, new CleanOptions { Angle = Angle, KeepUvSeams = KeepUvSeams, StraightPoints = StraightPoints, Quads = Quads }, out var rep);
+        LastReport = rep;
+        return r;
     }
 }
 

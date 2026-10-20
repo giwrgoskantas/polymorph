@@ -5,9 +5,16 @@ using MoloMax.Core.Scenes;
 
 namespace MoloMax.Core.Modifiers;
 
-/// <summary>A rectangular hole traced on a wall: door, window, passage.</summary>
+/// <summary>Shape of an opening inside its rectangle.</summary>
+public enum OpeningShape { Rectangle, Arch, Circle }
+
+/// <summary>A hole traced on a wall: door, window, passage (rectangle, arch or round).</summary>
 public sealed class OpeningRect
 {
+    /// <summary>Rectangle, arch (round top, as wide as the opening) or circle / oval filling the rectangle.</summary>
+    public OpeningShape Shape;
+    /// <summary>Segments on the curved part (arch top or whole circle): more = smoother, more faces.</summary>
+    public int Segments = 16;
     /// <summary>A point on the wall surface, in the object's space.</summary>
     public Vector3 Origin;
     /// <summary>Outward normal of that surface (object space).</summary>
@@ -18,6 +25,39 @@ public sealed class OpeningRect
     public float Depth;
 
     public float Width => Right - Left;
+    public const int MinSegments = 3, MaxSegments = 96;
+
+    /// <summary>The outline in the wall's (right, up) axes, counter-clockwise seen from the front.</summary>
+    public List<Vector2> Outline()
+    {
+        float l = Left, r = Right, b = Bottom, t = Top, cx = (l + r) * 0.5f;
+        int n = Math.Clamp(Segments, MinSegments, MaxSegments);
+        var pts = new List<Vector2>();
+        switch (Shape)
+        {
+            case OpeningShape.Arch:
+            {
+                float rx = (r - l) * 0.5f, ry = MathF.Min(rx, t - b), spring = t - ry;
+                pts.Add(new(l, b)); pts.Add(new(r, b));
+                if (spring > b + 1e-4f) pts.Add(new(r, spring));
+                for (int k = 1; k < n; k++) { float a = MathF.PI * k / n; pts.Add(new(cx + rx * MathF.Cos(a), spring + ry * MathF.Sin(a))); }
+                if (spring > b + 1e-4f) pts.Add(new(l, spring));
+                break;
+            }
+            case OpeningShape.Circle:
+            {
+                float rx = (r - l) * 0.5f, ry = (t - b) * 0.5f, cy = (b + t) * 0.5f;
+                n = Math.Max(n, 6);
+                // start at the bottom so a round window sits straight (a flat-free, symmetric outline)
+                for (int k = 0; k < n; k++) { float a = -MathF.PI * 0.5f + 2 * MathF.PI * k / n; pts.Add(new(cx + rx * MathF.Cos(a), cy + ry * MathF.Sin(a))); }
+                break;
+            }
+            default:
+                pts.Add(new(l, b)); pts.Add(new(r, b)); pts.Add(new(r, t)); pts.Add(new(l, t));
+                break;
+        }
+        return pts;
+    }
     public float Height => Top - Bottom;
     public OpeningRect Copy() => (OpeningRect)MemberwiseClone();
 
@@ -69,19 +109,39 @@ public sealed class WallOpeningModifier : Modifier
         var centre = op.At((op.Left + op.Right) * 0.5f, (op.Bottom + op.Top) * 0.5f);
         float depth = op.Depth > 0 ? op.Depth : Thickness(m, centre, n);
         if (depth <= 0) return Surface(m, op);
-        // a box from just in front of the wall to just behind it, cut out (clean faces by the boolean's own cleaning)
+        // the outline pushed through the wall, from just in front of it to just behind it, cut out (clean faces by the boolean's own cleaning)
         const float margin = 0.02f;
         float len = depth + 2 * margin;
-        var cutter = Primitives.Box(op.Width, len, op.Height);
+        var cutter = Prism(op.Outline(), len);
         var basis = new Matrix4x4(right.X, right.Y, right.Z, 0, -n.X, -n.Y, -n.Z, 0, up.X, up.Y, up.Z, 0, 0, 0, 0, 1);
-        var t = op.At((op.Left + op.Right) * 0.5f, op.Bottom) - n * (len * 0.5f - margin);
-        basis.Translation = t;
+        basis.Translation = op.Origin + n * margin;
         try
         {
             var r = Csg.Apply(m, Matrix4x4.Identity, cutter, basis, Csg.Op.Subtract);
             return r.Faces.Count > 0 ? r : m;
         }
         catch { return m; }
+    }
+
+    /// <summary>A closed prism: the outline (x, z) pushed along +Y from 0 to <paramref name="len"/>.</summary>
+    public static PolyMesh Prism(List<Vector2> outline, float len)
+    {
+        var m = new PolyMesh(); int n = outline.Count;
+        for (int i = 0; i < n; i++) m.AddVertex(new Vector3(outline[i].X, 0, outline[i].Y));
+        for (int i = 0; i < n; i++) m.AddVertex(new Vector3(outline[i].X, len, outline[i].Y));
+        // outline is counter-clockwise seen from -Y (the front): the front cap faces -Y as listed
+        var front = m.AddFace(Enumerable.Range(0, n).ToArray()); front.UV = outline.ToArray();
+        var back = m.AddFace(Enumerable.Range(0, n).Reverse().Select(i => i + n).ToArray()); back.UV = Enumerable.Range(0, n).Reverse().Select(i => outline[i]).ToArray();
+        float u = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int j = (i + 1) % n; float seg = Vector2.Distance(outline[i], outline[j]);
+            var f = m.AddFace(new[] { j, i, i + n, j + n });
+            f.UV = new[] { new Vector2(u + seg, 0), new Vector2(u, 0), new Vector2(u, len), new Vector2(u + seg, len) };
+            u += seg;
+        }
+        if (CsgClean.Volume(m) < 0) foreach (var f in m.Faces) { Array.Reverse(f.V); Array.Reverse(f.UV); }
+        return m;
     }
 
     /// <summary>Distance through the wall: from the surface, the first face behind it that faces the other way.</summary>
@@ -105,6 +165,7 @@ public sealed class WallOpeningModifier : Modifier
     /// <summary>Single surface (MLO room box): the hole goes in the face under the rectangle.</summary>
     static PolyMesh Surface(PolyMesh m, OpeningRect op)
     {
+        if (op.Shape != OpeningShape.Rectangle) return SurfaceShape(m, op);
         var (right, up, n) = op.Axes();
         var c = op.At((op.Left + op.Right) * 0.5f, (op.Bottom + op.Top) * 0.5f);
         for (int fi = 0; fi < m.Faces.Count; fi++)
@@ -124,5 +185,113 @@ public sealed class WallOpeningModifier : Modifier
             return res.Ok ? copy : m;
         }
         return m;
+    }
+
+    /// <summary>Single surface, any shape: every face on the wall plane loses the part inside the outline
+    /// (each face cut into convex pieces around the hole, then pieces of the same face merged back).</summary>
+    static PolyMesh SurfaceShape(PolyMesh m0, OpeningRect op)
+    {
+        var (right, up, n) = op.Axes();
+        var hole = op.Outline();
+        float hx0 = hole.Min(p => p.X), hx1 = hole.Max(p => p.X), hy0 = hole.Min(p => p.Y), hy1 = hole.Max(p => p.Y);
+        Vector2 To2(Vector3 p) => new(Vector3.Dot(p - op.Origin, right), Vector3.Dot(p - op.Origin, up));
+        var m = m0.Clone();
+        var added = new HashSet<Face>(ReferenceEqualityComparer.Instance);
+        var keep = new List<Face>(); bool any = false;
+        foreach (var f in m.Faces)
+        {
+            var fn = m.FaceNormal(f);
+            if (Vector3.Dot(fn, n) < 0.999f || MathF.Abs(Vector3.Dot(m.Verts[f.V[0]] - op.Origin, n)) > 1e-3f) { keep.Add(f); continue; }
+            var p2 = f.V.Select(v => To2(m.Verts[v])).ToList();
+            if (p2.Max(p => p.X) <= hx0 || p2.Min(p => p.X) >= hx1 || p2.Max(p => p.Y) <= hy0 || p2.Min(p => p.Y) >= hy1) { keep.Add(f); continue; }
+            var uvAt = AffineUv(m, f, To2);
+            var polys = new List<List<Vector2>>();
+            if (IsConvex(p2)) polys.Add(p2);
+            else foreach (var (a, b, c) in Triangulator.Triangulate(m, f)) polys.Add(new List<Vector2> { p2[a], p2[b], p2[c] });
+            var pieces = new List<List<Vector2>>();
+            foreach (var poly in polys)
+            {
+                var rest = poly;
+                for (int i = 0; i < hole.Count && rest.Count >= 3; i++)
+                {
+                    var a = hole[i]; var b = hole[(i + 1) % hole.Count];
+                    var outside = Clip(rest, a, b, false);
+                    if (Area(outside) > 1e-7f) pieces.Add(outside);
+                    rest = Clip(rest, a, b, true);
+                }
+                if (Area(rest) < 1e-7f) continue; // whole polygon outside... handled below
+            }
+            any = true;
+            foreach (var pc in pieces)
+            {
+                var idx = pc.Select(q => m.AddVertex(op.Origin + right * q.X + up * q.Y)).ToArray();
+                var nf = new Face(idx, f.MatId, f.Smooth) { UV = pc.Select(uvAt).ToArray(), Col = Enumerable.Repeat(f.Col[0], pc.Count).ToArray() };
+                if (f.Col1 != null) nf.Col1 = Enumerable.Repeat(f.Col1[0], pc.Count).ToArray();
+                keep.Add(nf); added.Add(nf);
+            }
+        }
+        if (!any) return m0;
+        m.Faces = keep;
+        MeshOps.WeldByDistance(m, 1e-5f);
+        Csg.FixTJunctions(m, 1e-5f);
+        Csg.MergeCoplanar(m, f => added.Contains(f));
+        CsgClean.DissolveCollinear(m);
+        m.RemoveUnusedVertices();
+        return m;
+    }
+
+    static List<Vector2> Clip(List<Vector2> poly, Vector2 a, Vector2 b, bool keepLeft)
+    {
+        float Side(Vector2 p) { float s = (b.X - a.X) * (p.Y - a.Y) - (b.Y - a.Y) * (p.X - a.X); return keepLeft ? s : -s; }
+        var res = new List<Vector2>(poly.Count + 2);
+        for (int i = 0; i < poly.Count; i++)
+        {
+            var p = poly[i]; var q = poly[(i + 1) % poly.Count];
+            float sp = Side(p), sq = Side(q);
+            if (sp >= 0) res.Add(p);
+            if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) res.Add(p + (q - p) * (sp / (sp - sq)));
+        }
+        // drop repeated points
+        var clean = new List<Vector2>();
+        foreach (var p in res) if (clean.Count == 0 || Vector2.DistanceSquared(clean[^1], p) > 1e-12f) clean.Add(p);
+        if (clean.Count > 1 && Vector2.DistanceSquared(clean[0], clean[^1]) <= 1e-12f) clean.RemoveAt(clean.Count - 1);
+        return clean;
+    }
+
+    static float Area(List<Vector2> p)
+    {
+        if (p.Count < 3) return 0;
+        float a = 0; for (int i = 0; i < p.Count; i++) { var q = p[(i + 1) % p.Count]; a += p[i].X * q.Y - q.X * p[i].Y; }
+        return a * 0.5f;
+    }
+
+    static bool IsConvex(List<Vector2> p)
+    {
+        for (int i = 0; i < p.Count; i++)
+        {
+            var a = p[i]; var b = p[(i + 1) % p.Count]; var c = p[(i + 2) % p.Count];
+            if ((b.X - a.X) * (c.Y - b.Y) - (b.Y - a.Y) * (c.X - b.X) < -1e-9f) return false;
+        }
+        return Area(p) > 0;
+    }
+
+    /// <summary>The face's UVs as an affine map of the wall plane (exact for flat UVs).</summary>
+    static Func<Vector2, Vector2> AffineUv(PolyMesh m, Face f, Func<Vector3, Vector2> to2)
+    {
+        var p = f.V.Select(v => to2(m.Verts[v])).ToArray();
+        for (int i = 1; i + 1 < p.Length; i++)
+        {
+            var e1 = p[i] - p[0]; var e2 = p[i + 1] - p[0];
+            float det = e1.X * e2.Y - e1.Y * e2.X;
+            if (MathF.Abs(det) < 1e-9f) continue;
+            Vector2 u0 = f.UV[0], du1 = f.UV[i] - u0, du2 = f.UV[i + 1] - u0;
+            return q =>
+            {
+                var d = q - p[0];
+                float s = (d.X * e2.Y - d.Y * e2.X) / det, t = (e1.X * d.Y - e1.Y * d.X) / det;
+                return u0 + du1 * s + du2 * t;
+            };
+        }
+        return _ => f.UV[0];
     }
 }

@@ -54,7 +54,7 @@ public sealed partial class EditorApp
         OpeningHeader();
     }
 
-    void OpeningHeader() => modal.Header = $"Wall Opening {opRect.Width:0.00} x {opRect.Height:0.00} m, sill {opRect.Bottom - opWallBottom:0.00} m: pull the sides or the middle   D door  W window   Enter cut  Esc cancel";
+    void OpeningHeader() => modal.Header = $"Wall Opening {opRect.Width:0.00} x {opRect.Height:0.00} m, sill {opRect.Bottom - opWallBottom:0.00} m: pull the sides or the middle   D door  W window   R A C rect / arch / round   + - segments   Enter cut  Esc cancel";
 
     WallOpeningModifier OpeningModifierOf(SceneObject o) => o.Modifiers.OfType<WallOpeningModifier>().FirstOrDefault();
 
@@ -179,6 +179,25 @@ public sealed partial class EditorApp
         if (ImGui.GetIO().WantTextInput) return;
         if (P(ImGuiKey.D)) OpeningPreset(true);
         if (P(ImGuiKey.W)) OpeningPreset(false);
+        if (P(ImGuiKey.R)) OpeningShapeSet(OpeningShape.Rectangle);
+        if (P(ImGuiKey.A)) OpeningShapeSet(OpeningShape.Arch);
+        if (P(ImGuiKey.C)) OpeningShapeSet(OpeningShape.Circle);
+        if (P(ImGuiKey.KeypadAdd) || P(ImGuiKey.Equal)) OpeningSegments(opRect.Segments + 2);
+        if (P(ImGuiKey.KeypadSubtract) || P(ImGuiKey.Minus)) OpeningSegments(opRect.Segments - 2);
+    }
+
+    void OpeningShapeSet(OpeningShape shape)
+    {
+        opRect.Shape = shape;
+        if (opEditIndex >= 0) opObj.Touch();
+        OpeningHeader();
+    }
+
+    void OpeningSegments(int n)
+    {
+        opRect.Segments = Math.Clamp(n, OpeningRect.MinSegments, OpeningRect.MaxSegments);
+        if (opEditIndex >= 0) opObj.Touch();
+        OpeningHeader();
     }
 
     void OpeningPreset(bool door)
@@ -217,6 +236,7 @@ public sealed partial class EditorApp
         if (opEditIndex >= 0 && opRect != null && opBefore != null)
         {
             opRect.Left = opBefore.Left; opRect.Right = opBefore.Right; opRect.Bottom = opBefore.Bottom; opRect.Top = opBefore.Top;
+            opRect.Shape = opBefore.Shape; opRect.Segments = opBefore.Segments;
             opObj?.Touch();
             Undo.DropLast();
         }
@@ -231,8 +251,15 @@ public sealed partial class EditorApp
         var w = opObj.World;
         Vector3 P(float x, float y) => Vector3.Transform(opRect.At(x, y), w);
         var c = new Vector4(1f, 0.82f, 0.1f, 1);
-        var a = P(opRect.Left, opRect.Bottom); var b = P(opRect.Right, opRect.Bottom); var d = P(opRect.Right, opRect.Top); var e = P(opRect.Left, opRect.Top);
-        lines.Line(a, b, c); lines.Line(b, d, c); lines.Line(d, e, c); lines.Line(e, a, c);
+        var outline = opRect.Outline();
+        for (int i = 0; i < outline.Count; i++) { var p = outline[i]; var q = outline[(i + 1) % outline.Count]; lines.Line(P(p.X, p.Y), P(q.X, q.Y), c); }
+        if (opRect.Shape != OpeningShape.Rectangle)
+        {
+            // the rectangle the shape sits in, dimmed: its sides are the handles
+            var g = new Vector4(1f, 0.82f, 0.1f, 0.35f);
+            var a = P(opRect.Left, opRect.Bottom); var b = P(opRect.Right, opRect.Bottom); var d = P(opRect.Right, opRect.Top); var e = P(opRect.Left, opRect.Top);
+            lines.Line(a, b, g); lines.Line(b, d, g); lines.Line(d, e, g); lines.Line(e, a, g);
+        }
     }
 
     void OpeningOverlay(ImDrawListPtr dl, Viewport vp)
@@ -280,6 +307,26 @@ public sealed partial class EditorApp
         }
         if (ImGui.Button("Door (D)", new Vector2(78, 0))) OpeningPreset(true); ImGui.SameLine();
         if (ImGui.Button("Window (W)", new Vector2(78, 0))) OpeningPreset(false);
+        // shape: rectangle, arch, round
+        (string Label, OpeningShape S, string Key)[] shapes = { ("Rect", OpeningShape.Rectangle, "R"), ("Arch", OpeningShape.Arch, "A"), ("Round", OpeningShape.Circle, "C") };
+        for (int i = 0; i < shapes.Length; i++)
+        {
+            if (i > 0) ImGui.SameLine(0, 4);
+            bool on = opRect.Shape == shapes[i].S;
+            if (on) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ToggleOn);
+            if (ImGui.Button(shapes[i].Label + "##shape", new Vector2(50, 0))) OpeningShapeSet(shapes[i].S);
+            if (on) ImGui.PopStyleColor();
+            Theme.Tip($"{(shapes[i].S == OpeningShape.Rectangle ? "Straight rectangle" : shapes[i].S == OpeningShape.Arch ? "Round top, as wide as the opening" : "Round or oval window filling the rectangle")} ({shapes[i].Key})");
+            TutRect("op_shape_" + shapes[i].Label.ToLowerInvariant());
+        }
+        if (opRect.Shape != OpeningShape.Rectangle)
+        {
+            int seg = opRect.Segments;
+            ImGui.SetNextItemWidth(160);
+            if (ImGui.SliderInt("Segments", ref seg, OpeningRect.MinSegments, OpeningRect.MaxSegments)) OpeningSegments(seg);
+            Theme.Tip("Points on the curve: more = rounder, fewer = lighter for the game (+ / - keys).");
+            TutRect("op_segments");
+        }
         if (ImGui.Button(opEditIndex >= 0 ? "Done (Enter)" : "Cut (Enter)", new Vector2(160, 26))) ConfirmModal();
         TutRect("op_cut");
         ImGui.End();
@@ -290,7 +337,7 @@ public sealed partial class EditorApp
     void WallOpeningFields(SceneObject o, WallOpeningModifier mod)
     {
         if (ImGui.Button("+ Trace a new opening on the wall", new Vector2(-1, 26))) { activeModifier[o.Id] = o.Modifiers.IndexOf(mod); StartOpeningTool(); }
-        Theme.Tip("Drag a rectangle on the wall, pull its sides, Enter cuts. Also: right-click the wall > Cut opening.");
+        Theme.Tip("Drag a rectangle on the wall, pull its sides, pick Rect / Arch / Round, Enter cuts. Also: right-click the wall > Cut opening.");
         if (mod.Openings.Count == 0) { Ui.TextDisabled("No opening yet."); return; }
         int remove = -1;
         for (int i = 0; i < mod.Openings.Count; i++)
@@ -298,7 +345,7 @@ public sealed partial class EditorApp
             var op = mod.Openings[i];
             ImGui.PushID(i);
             ImGui.AlignTextToFramePadding();
-            Ui.Text($"{i + 1}.  {op.Width:0.00} x {op.Height:0.00} m");
+            Ui.Text($"{i + 1}.  {(op.Shape == OpeningShape.Arch ? "Arch " : op.Shape == OpeningShape.Circle ? "Round " : "")}{op.Width:0.00} x {op.Height:0.00} m{(op.Shape != OpeningShape.Rectangle ? $", {op.Segments} seg." : "")}");
             ImGui.SameLine(ImGui.GetContentRegionAvail().X - 96);
             if (ImGui.Button("Edit", new Vector2(50, 0))) EditOpening(o, mod, i);
             Theme.Tip("Shows the rectangle on the wall: pull its sides, Enter when done.");
@@ -308,5 +355,27 @@ public sealed partial class EditorApp
             ImGui.PopID();
         }
         if (remove >= 0) Do("Remove opening", () => { mod.Openings.RemoveAt(remove); o.Touch(); });
+    }
+
+    // ---------------------------------------------------------------- Clean Up (fewer edges, same shape)
+
+    /// <summary>Adds a Clean Up modifier to the selected objects (nothing deleted: remove it to get every edge back).</summary>
+    public void CleanUpSelected()
+    {
+        var objs = SelObjects().Where(o => o.Mesh != null).ToList();
+        if (objs.Count == 0 && Current != null) objs.Add(Current);
+        if (objs.Count == 0) { SetStatus("Select an object to clean up."); return; }
+        int before = 0, after = 0;
+        Do("Clean up", () =>
+        {
+            foreach (var o in objs)
+            {
+                if (!o.Modifiers.OfType<CleanUpModifier>().Any()) { var mod = new CleanUpModifier(); mod.Name = ModifierStack.UniqueName(o.Modifiers, mod.Name); o.Modifiers.Add(mod); }
+                o.Touch();
+            }
+        });
+        foreach (var o in objs) { var mod = o.Modifiers.OfType<CleanUpModifier>().First(); o.Evaluated(); if (mod.LastReport != null) { before += mod.LastReport.FacesBefore; after += mod.LastReport.FacesAfter; } }
+        propTab = PropTab.Modifiers;
+        SetStatus($"Clean up: {before:N0} -> {after:N0} faces, same shape (Clean Up modifier: tune or remove it in the Modifiers tab).");
     }
 }

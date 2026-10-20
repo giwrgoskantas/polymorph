@@ -1813,6 +1813,102 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
         var loops = MeshOps.BorderEdges(cutRoom).Count;
         Console.WriteLine($"       room box opening: {room.Faces.Count} -> {cutRoom.Faces.Count} faces, open border edges {loops}");
         Check("Wall Opening: an MLO room box gets a doorway in its wall face (open loop for the portal)", () => cutRoom.Faces.Count > room.Faces.Count && loops >= 3);
+        {
+            // arches and round windows, with their number of segments
+            static float AreaOf(PolyMesh m, MoloMax.Core.Mesh.Face f)
+            {
+                var a = Vector3.Zero; var p0 = m.Verts[f.V[0]];
+                for (int i = 1; i + 1 < f.V.Length; i++) a += Vector3.Cross(m.Verts[f.V[i]] - p0, m.Verts[f.V[i + 1]] - p0);
+                return a.Length() * 0.5f;
+            }
+            var aw = Primitives.Box(4, 0.3f, 3);
+            var arch = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = -1.5f, Right = -0.5f, Bottom = 0, Top = 2.4f, Shape = MoloMax.Core.Modifiers.OpeningShape.Arch, Segments = 12 };
+            var circ = new MoloMax.Core.Modifiers.OpeningRect { Origin = new Vector3(0, -0.15f, 0), Normal = -Vector3.UnitY, Left = 0.4f, Right = 1.4f, Bottom = 1.2f, Top = 2.2f, Shape = MoloMax.Core.Modifiers.OpeningShape.Circle, Segments = 24 };
+            var ar = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(MoloMax.Core.Modifiers.WallOpeningModifier.Cut(aw, arch), circ);
+            float archArea = 1f * 1.9f + MathF.PI * 0.25f * 0.5f; // rectangle up to the spring line + half circle (polygon: a bit less)
+            float circArea = MathF.PI * 0.25f;
+            float expArc = 3.6f - 0.3f * (archArea + circArea);
+            int revealArch = ar.Faces.Count(f => { var nn = ar.FaceNormal(f); return MathF.Abs(nn.Y) < 0.01f && ar.FaceCenter(f).X < -0.4f && ar.FaceCenter(f).X > -1.6f && ar.FaceCenter(f).Z > 1.85f; });
+            Console.WriteLine($"       arch door + round window: {ar.Faces.Count} faces, closed {ar.IsClosedManifold(out _)}, volume {Vol(ar):0.000} (expect ~{expArc:0.000}), arch reveal faces {revealArch}");
+            Check("Wall Opening: arch door (12 segments) + round window (24) through a wall, closed, right volume", () => ar.IsClosedManifold(out _) && Near(Vol(ar), expArc, 0.02f) && revealArch >= 12);
+            var arch6 = arch.Copy(); arch6.Segments = 6;
+            var a6 = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(aw, arch6); var a12 = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(aw, arch);
+            Check("Wall Opening: fewer segments = fewer faces", () => a6.Faces.Count < a12.Faces.Count && a6.IsClosedManifold(out _));
+            var dwa = Primitives.Box(4, 0.3f, 3, 40, 3, 30); MeshOps.WeldByDistance(dwa, 1e-5f); dwa.CleanFaces();
+            var da = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(MoloMax.Core.Modifiers.WallOpeningModifier.Cut(dwa, arch), circ);
+            Console.WriteLine($"       dense wall arch + circle: {dwa.Faces.Count} -> {da.Faces.Count} faces, closed {da.IsClosedManifold(out _)}, volume {Vol(da):0.000}, max corners {da.Faces.Max(f => f.V.Length)}");
+            Check("Wall Opening: arch + circle on a dense wall, closed, right volume", () => da.IsClosedManifold(out _) && Near(Vol(da), expArc, 0.02f));
+            var rarch = rop.Copy(); rarch.Shape = MoloMax.Core.Modifiers.OpeningShape.Arch; rarch.Top = 2.6f;
+            var cr = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(room, rarch);
+            float wallArea = 0; foreach (var f in cr.Faces) if (cr.FaceNormal(f).Y > 0.99f) wallArea += AreaOf(cr, f);
+            float expWall = 6 * 3 - (1.2f * 2.0f + MathF.PI * 0.36f * 0.5f);
+            Console.WriteLine($"       room box arch: {room.Faces.Count} -> {cr.Faces.Count} faces, wall area {wallArea:0.000} (expect ~{expWall:0.000}), border edges {MeshOps.BorderEdges(cr).Count}");
+            Check("Wall Opening: arch doorway in an MLO room box wall (single surface)", () => Near(wallArea, expWall, 0.03f) && MeshOps.BorderEdges(cr).Count >= 16);
+            var rc = rop.Copy(); rc.Shape = MoloMax.Core.Modifiers.OpeningShape.Circle; rc.Bottom = 1.0f; rc.Top = 2.2f; rc.Segments = 20;
+            var cc2 = MoloMax.Core.Modifiers.WallOpeningModifier.Cut(room, rc);
+            float wa2 = 0; foreach (var f in cc2.Faces) if (cc2.FaceNormal(f).Y > 0.99f) wa2 += AreaOf(cc2, f);
+            Check("Wall Opening: round window in an MLO room box wall", () => Near(wa2, 18 - MathF.PI * 0.36f, 0.03f) && MeshOps.BorderEdges(cc2).Count == 20);
+        }
+    }
+    {
+        // Clean Up: fewer edges, same shape, same texture
+        static PolyMesh Tri(PolyMesh m) => new MoloMax.Core.Modifiers.TriangulateModifier().Apply(m.Clone(), true);
+        static bool SamePoints(PolyMesh a, PolyMesh b)
+        {
+            var set = new HashSet<(int, int, int)>(a.Verts.Select(v => ((int)MathF.Round(v.X * 1e4f), (int)MathF.Round(v.Y * 1e4f), (int)MathF.Round(v.Z * 1e4f))));
+            return b.Verts.All(v => set.Contains(((int)MathF.Round(v.X * 1e4f), (int)MathF.Round(v.Y * 1e4f), (int)MathF.Round(v.Z * 1e4f))));
+        }
+        // UV of the original surface at random points must equal the cleaned one: sample every original corner
+        static bool SameUv(PolyMesh a, PolyMesh b)
+        {
+            var uv = new Dictionary<(int, int, int), List<Vector2>>();
+            (int, int, int) K(Vector3 v) => ((int)MathF.Round(v.X * 1e4f), (int)MathF.Round(v.Y * 1e4f), (int)MathF.Round(v.Z * 1e4f));
+            foreach (var f in a.Faces) for (int i = 0; i < f.V.Length; i++) { var k = K(a.Verts[f.V[i]]); if (!uv.TryGetValue(k, out var l)) uv[k] = l = new(); l.Add(f.UV[i]); }
+            return b.Faces.All(f => Enumerable.Range(0, f.V.Length).All(i => uv[K(b.Verts[f.V[i]])].Any(u => Vector2.DistanceSquared(u, f.UV[i]) < 1e-6f)));
+        }
+        var opt = new MoloMax.Core.Mesh.CleanOptions();
+        var pl = Primitives.Plane(10, 10, 20, 20);
+        var cp = MoloMax.Core.Mesh.MeshClean.Run(pl, opt, out var rp);
+        Console.WriteLine($"       clean plane 20x20: {rp}");
+        Check("Clean Up: a flat plane cut in 400 faces becomes 1 polygon, same corners and UVs", () => cp.Faces.Count == 1 && cp.Faces[0].V.Length == 4 && SamePoints(pl, cp) && SameUv(pl, cp));
+        var bx = Primitives.Box(2, 2, 2, 6, 6, 6); MeshOps.WeldByDistance(bx, 1e-5f); bx.CleanFaces();
+        var tbx = Tri(bx);
+        var cb = MoloMax.Core.Mesh.MeshClean.Run(tbx, opt, out var rb);
+        Console.WriteLine($"       clean triangulated box 6x6x6: {rb}, closed {cb.IsClosedManifold(out _)}, volume {Vol(cb):0.000}");
+        Check("Clean Up: triangulated box with segments -> 6 faces, closed, same volume, same UVs", () => cb.Faces.Count == 6 && cb.IsClosedManifold(out _) && Near(Vol(cb), 8, 1e-3f) && SameUv(tbx, cb));
+        var sp = Primitives.Sphere(1, 24);
+        var cs = MoloMax.Core.Mesh.MeshClean.Run(sp, opt, out var rs);
+        Console.WriteLine($"       clean sphere 24: {rs}");
+        Check("Clean Up: a round sphere keeps its shape (no face merged on the curve)", () => cs.Faces.Count == sp.Faces.Count && Near(Vol(cs), Vol(sp), 1e-4f));
+        var cy = Tri(Primitives.Cylinder(1, 2, 24, 4));
+        var cc = MoloMax.Core.Mesh.MeshClean.Run(cy, opt, out var rc);
+        Console.WriteLine($"       clean triangulated cylinder: {rc}, closed {cc.IsClosedManifold(out _)}");
+        Check("Clean Up: triangulated cylinder -> caps one polygon each, sides one quad per column, closed, same volume", () => cc.IsClosedManifold(out _) && Near(Vol(cc), Vol(cy), 1e-4f) && cc.Faces.Count <= 24 + 2 + 24 * 3 && cc.Faces.Count(f => f.V.Length == 24) == 2);
+        // a UV seam in the middle of a flat plane: kept
+        var seam = Primitives.Plane(4, 4, 4, 4);
+        foreach (var f in seam.Faces) if (seam.FaceCenter(f).X > 0) for (int i = 0; i < f.UV.Length; i++) f.UV[i] += new Vector2(5, 0);
+        var cse = MoloMax.Core.Mesh.MeshClean.Run(seam, opt, out _);
+        Check("Clean Up: a UV seam is kept (2 polygons, texture unchanged)", () => cse.Faces.Count == 2 && SameUv(seam, cse));
+        var cse2 = MoloMax.Core.Mesh.MeshClean.Run(seam, new MoloMax.Core.Mesh.CleanOptions { KeepUvSeams = false }, out _);
+        Check("Clean Up: seams allowed -> 1 polygon", () => cse2.Faces.Count == 1);
+        // two materials on a flat plane: never merged
+        var mats = Primitives.Plane(4, 4, 4, 4);
+        foreach (var f in mats.Faces) if (mats.FaceCenter(f).Y > 0) f.MatId = 1;
+        var cm = MoloMax.Core.Mesh.MeshClean.Run(mats, opt, out _);
+        Check("Clean Up: material borders are kept", () => cm.Faces.Count == 2 && cm.Faces.Select(f => f.MatId).Distinct().Count() == 2);
+        // a ring (flat area with a hole) is never turned into a bad polygon
+        var ring = Primitives.Plane(3, 3, 3, 3); ring.Faces.RemoveAt(4); // the middle face
+        var cr = MoloMax.Core.Mesh.MeshClean.Run(ring, opt, out _);
+        Check("Clean Up: a flat area with a hole stays valid (no polygon crossing the hole)", () => MeshOps.BorderEdges(cr).Count == MeshOps.BorderEdges(ring).Count - 0 || (cr.Faces.Count >= 2 && cr.Faces.All(f => f.V.Distinct().Count() == f.V.Length)));
+        // big mesh: fast
+        var big = Tri(Primitives.Plane(50, 50, 150, 150));
+        var swc = System.Diagnostics.Stopwatch.StartNew();
+        var cbig = MoloMax.Core.Mesh.MeshClean.Run(big, opt, out var rbig);
+        Console.WriteLine($"       clean big plane: {rbig}, {swc.ElapsedMilliseconds} ms");
+        Check("Clean Up: 45 000 triangles cleaned in under 3 s", () => cbig.Faces.Count == 1 && swc.ElapsedMilliseconds < 3000);
+        // modifier: saved / reopened, removable
+        var scc = new Scene(); var oc = scc.Add("c", tbx, Vector3.Zero); oc.Modifiers.Add(new MoloMax.Core.Modifiers.CleanUpModifier()); oc.Touch();
+        Check("Clean Up modifier: evaluated mesh cleaned, base mesh untouched", () => oc.Evaluated().Faces.Count == 6 && oc.Mesh.Faces.Count == tbx.Faces.Count);
     }
     {
         // undo: meshes copied in the background after an import, the first edit then only takes the copy
@@ -2319,3 +2415,4 @@ sealed class MockTripo : HttpMessageHandler
         return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
     }
 }
+

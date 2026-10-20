@@ -490,6 +490,17 @@ public sealed partial class EditorApp
             case WeldModifier m:
                 L("Distance"); c |= ImGui.DragFloat("##wd", ref m.Distance, 0.0005f, 0, 10, "%.4f m");
                 break;
+            case CleanUpModifier m:
+                L("Flat angle"); c |= ImGui.SliderFloat("##ca", ref m.Angle, 0, 10, "%.1f deg");
+                Theme.Tip("Faces this close to flat become one polygon. 0 = only perfectly flat areas. Higher = fewer faces on slightly curved surfaces.");
+                c |= ImGui.Checkbox("Keep UV seams and colours", ref m.KeepUvSeams);
+                Theme.Tip("Never merge across a texture seam or a vertex colour change: the texture stays exactly in place.");
+                c |= ImGui.Checkbox("Remove points on straight edges", ref m.StraightPoints);
+                c |= ImGui.Checkbox("Straight quads on flat areas", ref m.Quads);
+                Theme.Tip("Flat areas rebuilt as rows of quads (closed meshes only, kept only if the shape and texture stay the same).");
+                if (m.LastReport != null) Ui.TextDisabled(m.LastReport.ToString());
+                Ui.TextDisabled("Nothing is deleted: remove the modifier to get every edge back.");
+                break;
             case TriangulateModifier m:
                 L("Minimum Vertices"); c |= ImGui.SliderInt("##mv", ref m.MinVertices, 4, 12);
                 break;

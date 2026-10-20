@@ -75,6 +75,7 @@ public sealed partial class EditorApp
             new("Delete", "Object", DeleteSelection, () => Selected.Count > 0, () => K("X", "Del")),
             new("Join", "Object", JoinSelected, () => Selected.Count > 1, () => K("Ctrl+J", "")),
             new("Wall Opening: cut a door / window (trace it on the wall)", "Object", StartOpeningTool, () => Current != null),
+            new("Clean Up: fewer edges, same shape (flat areas merged, straight points removed)", "Object", CleanUpSelected, () => Current != null),
             new("Hide Selected", "Object", HideSelection, Key: () => K("H", "Ctrl+H")),
             new("Hide Unselected", "Object", HideUnselected, Key: () => "Shift+H"),
             new("Reveal Hidden", "Object", UnhideAll, Key: () => "Alt+H"),
