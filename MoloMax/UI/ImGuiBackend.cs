@@ -74,6 +74,14 @@ float4 PSMain(PS_INPUT i) : SV_Target { return i.col * texture0.Sample(sampler0,
         Ui.HeaderFont = File.Exists(light) ? io.Fonts.AddFontFromFileTTF(light, 34f, null, ranges) : FontBold;
         Ui.SubHeaderFont = File.Exists(light) ? io.Fonts.AddFontFromFileTTF(light, 22f, null, ranges) : FontBold;
         Ui.TileFont = File.Exists(semi) ? io.Fonts.AddFontFromFileTTF(semi, 16f, null, ranges) : io.Fonts.Fonts[0];
+        // tutorial films: big, sharp captions (only loaded while recording / testing)
+        if (MoloMax.Editor.EditorApp.SelfTestDir != null)
+        {
+            string semib = Path.Combine(fonts, "seguisb.ttf");
+            Ui.CaptionFont = File.Exists(semib) ? io.Fonts.AddFontFromFileTTF(semib, 40f, null, ranges) : File.Exists(segoeBold) ? io.Fonts.AddFontFromFileTTF(segoeBold, 40f, null, ranges) : FontBold;
+            Ui.CaptionSubFont = File.Exists(segoe) ? io.Fonts.AddFontFromFileTTF(segoe, 27f, null, ranges) : io.Fonts.Fonts[0];
+            Ui.HasCaptionFont = true;
+        }
     }
     public ImFontPtr FontLabel { get; private set; }
     public ImFontPtr FontBrand { get; private set; }

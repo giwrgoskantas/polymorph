@@ -126,7 +126,8 @@ public sealed partial class EditorApp
         if (shift && !ctrl && P(ImGuiKey.S)) { OpenPopup("snap"); return; }                     // VIEW3D_MT_snap_pie
         if (P(ImGuiKey.Z) && none) { OpenPopup("shading"); return; }                            // VIEW3D_MT_shading_pie
         if (P(ImGuiKey.Z) && alt && !ctrl && !shift) { SelectVisibleOnly = !SelectVisibleOnly; SetStatus(SelectVisibleOnly ? "Visible only: edit-mode selection takes only what you can see" : "Selection goes through the mesh (hidden vertices / faces too)"); return; } // toggle_xray
-        if (P(ImGuiKey.Z) && shift && !ctrl && !alt) { vp.WireframeOnly = !vp.WireframeOnly; return; } // toggle_shading WIREFRAME
+        if (P(ImGuiKey.Z) && shift && !ctrl && !alt) { vp.WireframeOnly = !vp.WireframeOnly; return; }
+        if (P(ImGuiKey.W) && alt && !ctrl && !shift) { vp.WireframeOnly = !vp.WireframeOnly; SetStatus(vp.WireframeOnly ? "Wireframe" : "Shaded"); return; } // Alt+W, like the Industry keys // toggle_shading WIREFRAME
         // select
         if (P(ImGuiKey.A) && !ctrl && !shift) { if (alt) SelectNone(); else SelectAll(); return; }
         if (ctrl && !shift && P(ImGuiKey.I)) { SelectInvert(); return; }

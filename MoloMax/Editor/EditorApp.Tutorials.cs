@@ -142,37 +142,41 @@ public sealed partial class EditorApp
         var font = ImGui.GetFont(); float fs = ImGui.GetFontSize();
         if (!string.IsNullOrEmpty(tutCaption))
         {
-            float big = fs * 1.9f, small = fs * 1.25f;
-            var t1 = ImGui.CalcTextSize(tutCaption) * (big / fs);
-            var t2 = string.IsNullOrEmpty(tutSub) ? Vector2.Zero : ImGui.CalcTextSize(tutSub) * (small / fs);
-            float w = MathF.Max(t1.X, t2.X) + 48, h = t1.Y + (t2.Y > 0 ? t2.Y + 10 : 0) + 30;
-            var p = new Vector2(vp.X + (vp.W - w) / 2, vp.Y + vp.H - h - 34);
-            dl.AddRectFilled(p, p + new Vector2(w, h), 0xE0141414, 10);
-            dl.AddRectFilled(p, p + new Vector2(6, h), ImGui.ColorConvertFloat4ToU32(Theme.Gold), 10, ImDrawFlags.RoundCornersLeft);
-            dl.AddText(font, big, p + new Vector2(24, 14), 0xFFFFFFFF, tutCaption);
-            if (t2.Y > 0) dl.AddText(font, small, p + new Vector2(24, 20 + t1.Y), 0xFFC8C8C8, tutSub);
-            if (tutSteps > 0) dl.AddText(font, fs, p + new Vector2(w - 60, 6), 0xFF909090, $"{tutStep}/{tutSteps}");
+            // big captions: the films are watched small on a web page
+            var cf = Ui.HasCaptionFont ? Ui.CaptionFont : font; var sf = Ui.HasCaptionFont ? Ui.CaptionSubFont : font;
+            float big = Ui.HasCaptionFont ? 40f : fs * 2.4f, small = Ui.HasCaptionFont ? 27f : fs * 1.7f;
+            Vector2 Measure(ImFontPtr f, float size, string t) => f.CalcTextSizeA(size, float.MaxValue, 0, t);
+            var t1 = Measure(cf, big, tutCaption);
+            var t2 = string.IsNullOrEmpty(tutSub) ? Vector2.Zero : Measure(sf, small, tutSub);
+            float w = MathF.Min(MathF.Max(t1.X, t2.X) + 64, vp.W - 40), h = t1.Y + (t2.Y > 0 ? t2.Y + 8 : 0) + 34;
+            var p = new Vector2(vp.X + (vp.W - w) / 2, vp.Y + vp.H - h - 30);
+            dl.AddRectFilled(p, p + new Vector2(w, h), 0xEC121418, 12);
+            dl.AddRectFilled(p, p + new Vector2(8, h), ImGui.ColorConvertFloat4ToU32(Theme.Gold), 12, ImDrawFlags.RoundCornersLeft);
+            dl.AddText(cf, big, p + new Vector2(30, 14), 0xFFFFFFFF, tutCaption);
+            if (t2.Y > 0) dl.AddText(sf, small, p + new Vector2(30, 20 + t1.Y), 0xFFC8C8C8, tutSub);
+            if (tutSteps > 0) dl.AddText(font, fs * 1.2f, p + new Vector2(w - 54, 8), 0xFF909090, $"{tutStep}/{tutSteps}");
         }
         // keys held
         if (tutHeld.Count > 0)
         {
-            var kp = new Vector2(vp.X + 20, vp.Y + vp.H - 70);
+            var kp = new Vector2(vp.X + 20, vp.Y + vp.H - 82);
             foreach (var k in tutHeld)
             {
-                var sz = ImGui.CalcTextSize(k) * 1.4f + new Vector2(24, 14);
-                dl.AddRectFilled(kp, kp + sz, 0xF0303030, 6); dl.AddRect(kp, kp + sz, 0xFFE0E0E0, 6, ImDrawFlags.None, 2);
-                dl.AddText(font, fs * 1.4f, kp + new Vector2(12, 7), 0xFFFFFFFF, k);
+                var kf = Ui.HasCaptionFont ? Ui.CaptionSubFont : font; float ks = Ui.HasCaptionFont ? 27f : fs * 1.7f;
+                var sz = kf.CalcTextSizeA(ks, float.MaxValue, 0, k) + new Vector2(30, 16);
+                dl.AddRectFilled(kp, kp + sz, 0xF0303030, 8); dl.AddRect(kp, kp + sz, 0xFFE0E0E0, 8, ImDrawFlags.None, 2);
+                dl.AddText(kf, ks, kp + new Vector2(15, 8), 0xFFFFFFFF, k);
                 kp.X += sz.X + 10;
             }
         }
         // mouse cursor (the system cursor is not in the capture)
         if (tutHideCursor) return;
         var m = Input.Mouse;
-        if (tutClick > 0) { float r = 10 + (0.35f - tutClick) * 70; dl.AddCircle(m, r, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.85f, 0.3f, tutClick / 0.35f)), 24, 3); tutClick -= 1f / 30; }
+        if (tutClick > 0) { float r = 12 + (0.35f - tutClick) * 90; dl.AddCircle(m, r, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.85f, 0.3f, tutClick / 0.35f)), 32, 4); tutClick -= 1f / 30; }
         bool down = Input.Down(System.Windows.Forms.MouseButtons.Left) || Input.Down(System.Windows.Forms.MouseButtons.Right);
-        var a = m; var b = m + new Vector2(0, 22); var c = m + new Vector2(15, 16);
+        var a = m; var b = m + new Vector2(0, 30); var c = m + new Vector2(21, 22);
         dl.AddTriangleFilled(a, b, c, down ? 0xFF40D0FF : 0xFFFFFFFF);
-        dl.AddTriangle(a, b, c, 0xFF000000, 1.5f);
+        dl.AddTriangle(a, b, c, 0xFF000000, 2f);
         if (Input.Down(System.Windows.Forms.MouseButtons.Right)) dl.AddText(font, fs, m + new Vector2(18, 20), 0xFF40D0FF, "right button");
     }
 
@@ -196,6 +200,7 @@ public sealed partial class EditorApp
         T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
         T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
+        T("TUTO 18 edit mode tricks: vertex onto vertex, pipette, Alt+W", TutEditTricks);
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
@@ -573,22 +578,24 @@ public sealed partial class EditorApp
         SubSel(box).Clear(); SubSel(box).Faces.Add(top); Tool = Tool.Move; yield return Frames(12);
         var g = GizmoGrip(vp, GizmoHandle.Z);
         foreach (var x in MouseTo(g)) yield return x;
+        long st0 = Undo.LastStamp;
         KeyDownT(Keys.ShiftKey); yield return Frames(8);
         foreach (var x in DragTo(g, g - new Vector2(0, 120), 40)) yield return x;
         KeyUpT(Keys.ShiftKey); yield return Frames(30);
-        DoUndo(); SetLevel(SubObject.Object); yield return Frames(10);
+        Expect(Undo.LastStamp != st0, "tour: Shift + drag copied the face");
+        if (Undo.LastStamp != st0) DoUndo();
+        SetLevel(SubObject.Object); yield return Frames(10);
         foreach (var x in Say("3ds Max · Vertex / edge / face snaps", "Corner on corner, exactly", 20)) yield return x;
-        Snap = true; SnapVertexT = SnapEdge = SnapFace = true; SelectOnly(box); Tool = Tool.Move; yield return Frames(10);
+        SnapGrid = true; SnapVertexT = SnapEdge = SnapFace = true; SnapNearest = false; Snap = true; SelectOnly(box); Tool = Tool.Move; yield return Frames(10);
         Vector3 W(SceneObject o, int i) => Vector3.Transform(o.Mesh.Verts[i], o.World);
         int ia = Enumerable.Range(0, box.Mesh.Verts.Count).OrderByDescending(i => W(box, i).X + W(box, i).Z - W(box, i).Y * 0.1f).First();
         int ib = Enumerable.Range(0, box2.Mesh.Verts.Count).OrderBy(i => W(box2, i).X - W(box2, i).Z + W(box2, i).Y * 0.1f).First();
         var cA = ScreenOf(vp, W(box, ia)); var cB = ScreenOf(vp, W(box2, ib));
-        foreach (var x in MouseTo(cA, 30)) yield return x;
-        yield return Frames(25);
-        PostMouse(0x201, cA, 1); tutClick = 0.35f; yield return Frames(6);
-        foreach (var x in MouseTo(cB, 50, 1)) yield return x;
-        yield return Frames(25); PostMouse(0x202, cB, 0); yield return Frames(35);
-        DoUndo(); Snap = false; yield return Frames(10);
+        long st1 = Undo.LastStamp;
+        foreach (var x in SnapDrag(cA, cB, "3ds Max · Vertex / edge / face snaps|Hover a corner: the yellow square is the point you grab", "Drag it onto the other box", "Corner on corner, exactly", null)) yield return x;
+        Expect(Undo.LastStamp != st1, $"tour: the box was carried corner on corner (hover {snapHover != null})");
+        if (Undo.LastStamp != st1) DoUndo();
+        Snap = false; yield return Frames(10);
         foreach (var x in Say("3ds Max · ViewCube", "Drag it to turn, click a face to jump", 15)) yield return x;
         var cube = new Vector2(vp.X + vp.W - 22f * 2.1f - 8, vp.Y + 22f * 2.1f + 8);
         foreach (var x in DragTo(cube, cube + new Vector2(-110, 25), 45)) yield return x;
@@ -1163,6 +1170,88 @@ public sealed partial class EditorApp
         yield return Shot("pipette");
         materialEditorOpen = false;
         SetLevel(SubObject.Object); UI.ImGuiBackend.SyntheticInput = false;
+    }
+
+    /// <summary>Film: the edit-mode tricks — drop a vertex on another one (snap square), the material pipette, Alt+W.</summary>
+    IEnumerable<object> TutEditTricks()
+    {
+        Fresh(); paintMode = false; SculptMode = false;
+        Maximized = true; var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Realistic; vp.EdgedFaces = true;
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height;
+        P.Width = 2; P.Length = 2; P.Height = 2;
+        var b = Prim(CreateKind.Box, Vector3.Zero); b.Name = "block";
+        var b2 = Prim(CreateKind.Box, new Vector3(0, 4, 0)); b2.Name = "red_block";
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        var red = Scene.AddMaterial("brick_red", new Vector3(0.75f, 0.16f, 0.12f)); b2.Mesh.SetAllMaterial(red.Id); b2.Touch();
+        cam.Frame(new Vector3(-1.6f, -1.6f, -0.3f), new Vector3(1.6f, 1.6f, 2.5f)); cam.Yaw = -1.1f; cam.Pitch = 0.5f;
+        SelectOnly(b);
+        foreach (var x in StartFilm("18_edit_tricks", 5)) yield return x;
+        foreach (var x in Say("Edit mode tricks", "Three small things that save hours", 70)) yield return x;
+        // 1. vertex onto vertex
+        foreach (var x in Say("Drop a vertex exactly on another", "Vertex mode, snap on: grab a point, a square shows where it lands")) yield return x;
+        SetLevel(SubObject.Vertex); Tool = Tool.Move; Snap = true; SnapVertexT = true;
+        int ia = b.Mesh.Verts.FindIndex(v => v.X > 0.9f && v.Y < -0.9f && v.Z > 1.9f);
+        int ib = b.Mesh.Verts.FindIndex(v => v.X < -0.9f && v.Y < -0.9f && v.Z > 1.9f);
+        SubSel(b).Clear(); SubSel(b).Verts.Add(ia); yield return Frames(20);
+        var pa = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ia], b.World)) + new Vector2(-6, 6);
+        var pb = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ib], b.World));
+        foreach (var x in MouseTo(pa, 35)) yield return x;
+        yield return Frames(35);
+        PostMouse(0x201, pa, 1); tutClick = 0.35f; yield return Frames(6);
+        foreach (var x in MouseTo(Vector2.Lerp(pa, pb, 0.85f), 60, 1)) yield return x;
+        foreach (var x in MouseTo(pb, 25, 1)) yield return x;
+        yield return Frames(40);
+        PostMouse(0x202, pb, 0); tutClick = 0.35f; yield return Frames(50);
+        // the middle button does the same
+        foreach (var x in Say("Or with the middle button", "Press it on a selected point and carry it")) yield return x;
+        int ic = b.Mesh.Verts.FindIndex(v => v.X > 0.9f && v.Y > 0.9f && v.Z > 1.9f);
+        int id2 = b.Mesh.Verts.FindIndex(v => v.X > 0.9f && v.Y > 0.9f && v.Z < 0.1f);
+        SubSel(b).Clear(); SubSel(b).Verts.Add(ic); yield return Frames(15);
+        var pc = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[ic], b.World)) + new Vector2(-6, 6);
+        var pd = ScreenOf(vp, Vector3.Transform(b.Mesh.Verts[id2], b.World));
+        foreach (var x in MouseTo(pc, 30)) yield return x;
+        yield return Frames(20);
+        PostMouse(0x207, pc, 0x10); tutClick = 0.35f; yield return Frames(6);
+        foreach (var x in MouseTo(pd, 70, 0x10)) yield return x;
+        yield return Frames(35);
+        PostMouse(0x208, pd, 0); tutClick = 0.35f; yield return Frames(50);
+        Snap = false;
+        foreach (var x in Say("Ctrl+Z puts it back", null, 20)) yield return x;
+        KeyDownT(Keys.ControlKey); yield return Frames(4);
+        foreach (var x in Tap(Keys.Z)) yield return x;
+        yield return Frames(10);
+        foreach (var x in Tap(Keys.Z)) yield return x;
+        KeyUpT(Keys.ControlKey); yield return Frames(30);
+        // 2. pipette
+        foreach (var x in Say("The material pipette", "Pick faces, click the pipette, click any face: same material")) yield return x;
+        SetLevel(SubObject.Object); yield return Frames(4);
+        cam.Frame(new Vector3(-1.6f, -1.6f, -0.3f), new Vector3(1.6f, 5.6f, 2.5f)); yield return Frames(20);
+        SelectOnly(b); SetLevel(SubObject.Polygon); Tool = Tool.Select;
+        int top = FaceToward(b, Vector3.UnitZ), side = FaceToward(b, -Vector3.UnitY);
+        foreach (var x in ClickAt(FaceScreen(vp, b, top))) yield return x;
+        SubSel(b).Clear(); SubSel(b).Faces.Add(top); yield return Frames(6);
+        KeyDownT(Keys.ControlKey);
+        foreach (var x in ClickAt(FaceScreen(vp, b, side))) yield return x;
+        KeyUpT(Keys.ControlKey);
+        SubSel(b).Faces.Add(top); SubSel(b).Faces.Add(side); yield return Frames(15);
+        materialEditorOpen = true; yield return Frames(12);
+        foreach (var x in ClickAt(TutCentre("eyedrop_me"))) yield return x;
+        if (!eyedropper) eyedropper = true;
+        yield return Frames(20);
+        int top2 = FaceToward(b2, Vector3.UnitZ);
+        foreach (var x in ClickAt(FaceScreen(vp, b2, top2), moveFrames: 45)) yield return x;
+        yield return Frames(70);
+        materialEditorOpen = false; SetLevel(SubObject.Object); yield return Frames(10);
+        // 3. Alt+W
+        foreach (var x in Say("Alt+W: wireframe on / off", "See through to check your edges")) yield return x;
+        KeyDownT(Keys.Menu); yield return Frames(6);
+        foreach (var x in Tap(Keys.W)) yield return x;
+        KeyUpT(Keys.Menu); yield return Frames(60);
+        KeyDownT(Keys.Menu); yield return Frames(6);
+        foreach (var x in Tap(Keys.W)) yield return x;
+        KeyUpT(Keys.Menu); yield return Frames(30);
+        foreach (var x in EndFilm()) yield return x;
+        Maximized = false; Tool = Tool.Select;
     }
 
     IEnumerable<object> TutGimsHub()

@@ -17,7 +17,7 @@ public sealed partial class EditorApp
     /// <summary>The pipette button (drawn icon). Returns true on the frame it was clicked.</summary>
     bool EyedropperButton(string id, float size = 22)
     {
-        bool clicked = Theme.Toggle("##" + id, eyedropper, new Vector2(size, size));
+        bool clicked = Theme.Toggle("##" + id, eyedropper, new Vector2(size, size)); TutRect(id);
         var mn = ImGui.GetItemRectMin(); var mx = ImGui.GetItemRectMax();
         var dl = ImGui.GetWindowDrawList();
         uint col = ImGui.GetColorU32(ImGuiCol.Text);
