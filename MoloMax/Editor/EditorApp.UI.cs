@@ -58,7 +58,7 @@ public sealed partial class EditorApp
         }
         if (ImGui.BeginMenu("Edit"))
         {
-            if (ImGui.BeginMenu("Look"))
+            if (ImGui.BeginMenu("Look (theme)"))
             {
                 if (ImGui.MenuItem("Standard", null, Settings.Mode == UiMode.Blender)) SetMode(UiMode.Blender);
                 if (ImGui.MenuItem("Classic (4 views)", null, Settings.Mode == UiMode.Max)) SetMode(UiMode.Max);
@@ -157,6 +157,12 @@ public sealed partial class EditorApp
         if (ImGui.BeginMenu("Views"))
         {
             if (ImGui.MenuItem("Maximize Viewport Toggle", K("Ctrl+Alt+Q", "", "Alt+W"), Maximized)) Maximized = !Maximized;
+            if (ImGui.BeginMenu("Look (theme)"))
+            {
+                if (ImGui.MenuItem("Standard", null, Settings.Mode == UiMode.Blender)) SetMode(UiMode.Blender);
+                if (ImGui.MenuItem("Classic (4 views)", null, Settings.Mode == UiMode.Max)) SetMode(UiMode.Max);
+                ImGui.EndMenu();
+            }
             var vp = Viewports[ActiveViewport];
             ImGui.Separator();
             foreach (var k in new[] { ViewKind.Perspective, ViewKind.Top, ViewKind.Bottom, ViewKind.Front, ViewKind.Back, ViewKind.Left, ViewKind.Right })
@@ -274,7 +280,7 @@ public sealed partial class EditorApp
         Theme.Tip("Asset Browser: your models and the game props as thumbnails; double-click or drag into the view");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
         ImGui.AlignTextToFramePadding(); Ui.Text(InteriorLight ? "Interior" : "Sun");
-        ImGui.SameLine(); ImGui.SetNextItemWidth(140);
+        ImGui.SameLine(); ImGui.SetNextItemWidth(gpu.Width < 2100 ? 100 : 140);
         if (!InteriorLight) ImGui.SliderFloat("##tod", ref Hour, 0, 24, "%.1f h"); else ImGui.SliderFloat("##int", ref InteriorLevel, 0, 1.5f, "amb %.2f");
         ImGui.SameLine(); ImGui.Checkbox("Interior", ref InteriorLight);
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
@@ -285,8 +291,12 @@ public sealed partial class EditorApp
         ImGui.PopStyleColor(3);
         Theme.Tip("Molo GTA panel (F10): export the FiveM resource, MLO builder, collision, checks.");
         ImGui.SameLine(); Ui.TextDisabled("|"); ImGui.SameLine();
-        if (ImGui.Button("Search  " + SearchKey, new Vector2(110, sz.Y))) OpenSearch();
-        Theme.Tip("Find any command by name");
+        // the last button always fits the window: shorter label, then just the key, when the toolbar is full
+        float room = ImGui.GetContentRegionAvail().X - 4;
+        string sl = room >= 110 ? "Search  " + SearchKey : room >= 70 ? "Search" : SearchKey;
+        float sw = MathF.Max(32, MathF.Min(110, room));
+        if (room >= 28 && ImGui.Button(sl + "##tbsearch", new Vector2(sw, sz.Y))) OpenSearch();
+        Theme.Tip("Find any command by name (" + SearchKey + ")");
         ImGui.End();
     }
 

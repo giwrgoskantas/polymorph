@@ -29,14 +29,6 @@ public sealed partial class EditorApp
         SetStatus("New scene");
     }
 
-    public void OpenDialog()
-    {
-        if (!ConfirmDiscard()) return;
-        using var d = new OpenFileDialog { Filter = SceneFilter, Title = "Open scene" };
-        if (ShowFileDialog(d) == DialogResult.OK) OpenFile(d.FileName);
-        Input.ReleaseAllKeys();
-    }
-
     public void OpenFile(string path)
     {
         try

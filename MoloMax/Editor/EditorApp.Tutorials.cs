@@ -198,6 +198,7 @@ public sealed partial class EditorApp
         T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
+        T("UI OPEN THEME: open window with bookmarks, toolbar fits, look in preferences (photos)", TutOpenTheme);
         T("SHAPES CLEANUP: arch door, round window, segments, clean up (photos)", TutShapesCleanup);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
         T("TUTO 99 trailer preview", TutTrailerPreview);
@@ -1025,6 +1026,27 @@ public sealed partial class EditorApp
 
     /// <summary>Boolean with the real buttons of the Object panel: a door and a window cut in a wall, union, intersect, undo.</summary>
     /// <summary>Wall Opening with the real mouse: trace on the wall, pull sides, presets, Enter, edit an opening later, Ctrl+Z.</summary>
+    IEnumerable<object> TutOpenTheme()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        var dir = Path.Combine(SelfTestDir, "scenes"); Directory.CreateDirectory(Path.Combine(dir, "sub folder"));
+        var P = Params; var box = Prim(CreateKind.Box, Vector3.Zero);
+        foreach (var n in new[] { "entrepot", "hall_flamingo", "garage" }) SceneIO.Save(Scene, Path.Combine(dir, n + ".mmx"));
+        if (!Settings.Bookmarks.Contains(dir)) Settings.Bookmarks.Add(dir);
+        openFolder = null; OpenDialog(); openFolder = dir; openListedFor = null;
+        yield return Frames(10);
+        Expect(openWin && openFiles.Count == 3 && openDirs.Count == 1, $"Open window: {openFiles.Count} scenes, {openDirs.Count} folder, bookmark listed");
+        yield return Shot("open_window");
+        openWin = false; yield return Frames(4);
+        prefsOpen = true; prefsSection = Array.IndexOf(PrefSections, "Interface");
+        yield return Frames(6);
+        yield return Shot("prefs_look");
+        prefsOpen = false;
+        yield return Frames(4);
+        yield return Shot("toolbar_fits");
+        Settings.Bookmarks.Remove(dir);
+    }
+
     IEnumerable<object> TutShapesCleanup()
     {
         Fresh(); if (MapMode) SetMapMode(false);

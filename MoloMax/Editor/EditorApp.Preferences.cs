@@ -174,6 +174,15 @@ public sealed partial class EditorApp : IAddonHost
 
     void PrefsInterface()
     {
+        Ui.TextColored(Theme.Gold, "Look (theme)");
+        float lw = (ImGui.GetContentRegionAvail().X - 8) / 2;
+        if (Theme.Toggle("Standard##look", Settings.Mode == UiMode.Blender, new Vector2(lw, 28))) SetMode(UiMode.Blender);
+        Theme.Tip("Dark look, one big view.");
+        ImGui.SameLine();
+        if (Theme.Toggle("Classic (4 views)##look", Settings.Mode == UiMode.Max, new Vector2(lw, 28))) SetMode(UiMode.Max);
+        Theme.Tip("Classic grey colours and 4 views. Your keys stay the same.");
+        Ui.TextDisabled("Also in Edit > Look and Views > Look. Only the colours and views change, never the keys.");
+        ImGui.Separator();
         Ui.TextColored(Theme.Gold, "Interface");
         ImGui.Checkbox("Outliner", ref ShowExplorer);
         ImGui.Checkbox("Properties", ref ShowPanel);

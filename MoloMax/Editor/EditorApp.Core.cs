@@ -161,6 +161,7 @@ public sealed partial class EditorApp : IDisposable
             DrawChecker();
             PumpImports();
             DrawGameBrowser();
+            DrawOpenBrowser();
             DrawAssetBrowser();
             AssetDropOnView();
             DrawUvEditor();
