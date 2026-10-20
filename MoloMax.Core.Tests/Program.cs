@@ -1717,6 +1717,19 @@ Console.WriteLine("Modeling tools: chamfer, bridge, slice, booleans");
         Check("boolean subtract with coplanar sphere vertices stays closed (T-junctions fixed)", () => cut.IsClosedManifold(out _) && Vol(cut) < 8f && Vol(cut) > 7f);
     }
     {
+        // far from the origin (GTA map coordinates): used to recurse forever and crash the editor
+        var bx = Primitives.Box(2, 2, 2); var sp = Primitives.Sphere(1.3f, 32);
+        bool allOk = true; string info = "";
+        foreach (var at in new[] { new Vector3(11, 0, 0), new Vector3(3000, -2000, 30), new Vector3(-1200.5f, 4500.25f, 210) })
+        {
+            var r = MoloMax.Core.Mesh.Csg.Apply(bx, Matrix4x4.CreateTranslation(at), sp, Matrix4x4.CreateTranslation(at + new Vector3(0, 0, 1)), MoloMax.Core.Mesh.Csg.Op.Intersect);
+            bool good = r.IsClosedManifold(out _) && r.Faces.Count > 6 && Vol(r) > 4f && Vol(r) < 8f;
+            allOk &= good; info += $"{at}: {r.Faces.Count} faces vol {Vol(r):0.00} {(good ? "ok" : "BAD")}; ";
+        }
+        Console.WriteLine("       " + info);
+        Check("boolean far from the origin (GTA coordinates): no crash, closed, same result", () => allOk);
+    }
+    {
         // undo: meshes copied in the background after an import, the first edit then only takes the copy
         var sc = new Scene(); var big = sc.Add("big", Primitives.Plane(10, 10, 150, 150), Vector3.Zero);
         var us = new UndoStack();

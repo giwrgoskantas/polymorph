@@ -20,6 +20,7 @@ public static class Csg
     }
 
     const float Eps = 1e-5f;
+    const int MaxDepth = 20000; // normal trees can be deep (one polygon per level); 256 MB of stack holds this easily
 
     static void Split(Vector3 n, float w, Poly p, List<Poly> coF, List<Poly> coB, List<Poly> front, List<Poly> back)
     {
@@ -73,14 +74,18 @@ public static class Csg
         }
         public void ClipTo(Node bsp) { polys = bsp.ClipPolygons(polys); front?.ClipTo(bsp); back?.ClipTo(bsp); }
         public List<Poly> All() { var l = new List<Poly>(polys); if (front != null) l.AddRange(front.All()); if (back != null) l.AddRange(back.All()); return l; }
-        public void Build(List<Poly> list)
+        public void Build(List<Poly> list) => Build(list, 0);
+
+        void Build(List<Poly> list, int depth)
         {
             if (list.Count == 0) return;
+            // far too deep = rounding keeps splitting the same slivers: keep them here instead of crashing
+            if (depth > MaxDepth) { polys.AddRange(list); return; }
             if (!hasPlane) { n = list[0].N; w = list[0].W; hasPlane = true; }
             var f = new List<Poly>(); var b = new List<Poly>();
             foreach (var p in list) Split(n, w, p, polys, polys, f, b);
-            if (f.Count > 0) { front ??= new Node(); front.Build(f); }
-            if (b.Count > 0) { back ??= new Node(); back.Build(b); }
+            if (f.Count > 0) { front ??= new Node(); front.Build(f, depth + 1); }
+            if (b.Count > 0) { back ??= new Node(); back.Build(b, depth + 1); }
         }
     }
 
@@ -100,7 +105,26 @@ public static class Csg
     /// <summary>Boolean of mesh A (world matrix wa) with mesh B (wb). The result is in A's local space.</summary>
     public static PolyMesh Apply(PolyMesh a, Matrix4x4 wa, PolyMesh b, Matrix4x4 wb, Op op)
     {
-        var A = new Node(ToPolys(a, wa)); var B = new Node(ToPolys(b, wb));
+        // on its own thread with a big stack: a deep tree can never take the editor down
+        PolyMesh res = null; Exception err = null;
+        var t = new Thread(() => { try { res = ApplyCore(a, wa, b, wb, op); } catch (Exception e) { err = e; } }, 256 * 1024 * 1024);
+        t.Start(); t.Join();
+        if (err != null) throw new InvalidOperationException("Boolean failed: " + err.Message, err);
+        return res;
+    }
+
+    static PolyMesh ApplyCore(PolyMesh a, Matrix4x4 wa, PolyMesh b, Matrix4x4 wb, Op op)
+    {
+        // work around the middle of A: GTA coordinates (thousands of metres) would eat the float precision
+        var centre = Vector3.Zero;
+        if (a.Verts.Count > 0)
+        {
+            var mn = new Vector3(float.MaxValue); var mx = new Vector3(float.MinValue);
+            foreach (var v in a.Verts) { var p = Vector3.Transform(v, wa); mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); }
+            centre = (mn + mx) * 0.5f;
+        }
+        var toLocal = Matrix4x4.CreateTranslation(-centre);
+        var A = new Node(ToPolys(a, wa * toLocal)); var B = new Node(ToPolys(b, wb * toLocal));
         switch (op)
         {
             case Op.Union:
@@ -110,7 +134,8 @@ public static class Csg
             case Op.Intersect:
                 A.Invert(); B.ClipTo(A); B.Invert(); A.ClipTo(B); B.ClipTo(A); A.Build(B.All()); A.Invert(); break;
         }
-        Matrix4x4.Invert(wa, out var inv);
+        Matrix4x4.Invert(wa, out var invA);
+        var inv = Matrix4x4.CreateTranslation(centre) * invA;
         var res = new PolyMesh();
         foreach (var p in A.All())
         {

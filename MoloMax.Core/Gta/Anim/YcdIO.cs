@@ -36,6 +36,12 @@ public static class YcdIO
 {
     public const int Fps = 30;
 
+    /// <summary>A binary .ycd as CodeWalker XML (diagnostics).</summary>
+    public static string BinaryToXml(byte[] data) { var y = new Cw.YcdFile(); Cw.RpfFile.LoadResourceFile(y, data, 46); return Cw.YcdXml.GetXml(y); }
+
+    /// <summary>CodeWalker XML back to a binary .ycd.</summary>
+    public static byte[] XmlToBinary(string xml) { var d = new System.Xml.XmlDocument(); d.LoadXml(xml); return Cw.XmlYcd.GetYcd(d).Save(); }
+
     public static List<YcdClip> Read(byte[] data, string fileName)
     {
         var y = new Cw.YcdFile();

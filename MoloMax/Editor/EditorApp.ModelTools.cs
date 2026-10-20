@@ -47,11 +47,13 @@ public sealed partial class EditorApp
         var a = Current;
         var cutters = SelObjects().Where(o => o != a && o.Mesh.Faces.Count > 0).ToList();
         if (a == null || cutters.Count == 0) { SetStatus("Select the object to keep last (active), with the cutter(s) also selected."); return; }
+        PolyMesh result = a.Mesh;
+        try { foreach (var c in cutters) result = Csg.Apply(result, a.World, c.Mesh, c.World, op); }
+        catch (Exception e) { SetStatus($"Boolean {op} failed: {e.Message} Nothing was changed."); return; }
+        if (result.Faces.Count == 0 && op != Csg.Op.Intersect) { SetStatus($"Boolean {op} gave an empty mesh. Nothing was changed."); return; }
         Do("Boolean " + op, () =>
         {
-            var mesh = a.Mesh;
-            foreach (var c in cutters) mesh = Csg.Apply(mesh, a.World, c.Mesh, c.World, op);
-            a.Mesh = mesh; a.Touch();
+            a.Mesh = result; a.Touch();
             foreach (var c in cutters) c.Hidden = true; // kept (hidden) so you can move them and do it again
         });
         Selected.Clear(); Selected.Add(a.Id); ActiveId = a.Id; SelectionChanged();

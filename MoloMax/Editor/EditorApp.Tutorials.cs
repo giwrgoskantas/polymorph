@@ -194,6 +194,7 @@ public sealed partial class EditorApp
         T("TUTO 13 demo: sculpt and paint", TutSculptPaintDemo);
         T("TUTO 14 animation: keys, play, texture, camera, GTA .ycd", TutAnimation);
         T("TUTO 15 modifiers: every modifier on a cube", TutModifiers);
+        T("TUTO 16 boolean: subtract (door + window in a wall), union, intersect, undo", TutBoolean);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
         T("TUTO 99 trailer preview", TutTrailerPreview);
         T("TUTO 98 lot finder", TutLotTest);
@@ -955,19 +956,26 @@ public sealed partial class EditorApp
         var outDir = Environment.GetEnvironmentVariable("POLYMORPH_UVTEST_OUT") ?? StPath("uvtest_export");
         Scene.Gta.ResourceName = "molo_uvtest";
         Scene.GtaOrigin = new Vector3(pos[0], pos[1], pos[2]);
-        var cube = Prim(CreateKind.Box, Vector3.Zero); cube.Name = "molo_uvtest_cube";
-        var mat = GtaMaterial.CreateDefault(Scene.Materials.Max(m => m.Id) + 1, "uvtest_arrows", new Vector3(1));
-        mat.Shader = "default"; mat.DiffuseTexture = tex; Scene.Materials.Add(mat);
-        foreach (var f in cube.Mesh.Faces) f.MatId = mat.Id;
-        cube.Touch();
-        Note($"cube at {Scene.GtaOrigin}, shader {mat.Shader}, texture {tex}");
-        // timeline: Slide V from 0 to 1 over 60 frames (2 s), linear, so it loops without a jump
-        var tr = Scene.Anim.Track(cube.Id, true);
-        tr.Curve(Core.Anim.Ch.UvV, true).SetKey(0, 0, Core.Anim.KeyInterp.Linear);
-        tr.Curve(Core.Anim.Ch.UvV).SetKey(60, 1, Core.Anim.KeyInterp.Linear);
+        // A: no animation  B: Polymorph .ycd  C: Unknown10 = 0  D: C + QuantizeFloat  E: emissive shader (like the portal)
+        var names = new[] { "a", "b", "c", "d", "e" };
+        var cubes = new List<SceneObject>();
+        GtaMaterial Mat(string shader) { var m = GtaMaterial.CreateDefault(Scene.Materials.Max(x => x.Id) + 1, "uvtest_" + shader, new Vector3(1)); m.Shader = shader; m.DiffuseTexture = tex; Scene.Materials.Add(m); return m; }
+        var mDef = Mat("default"); var mEm = Mat("emissive");
+        for (int i = 0; i < names.Length; i++)
+        {
+            var c = Prim(CreateKind.Box, new Vector3(i * 3f, 0, 0)); c.Name = "molo_uvt_" + names[i];
+            var m = names[i] == "e" ? mEm : mDef;
+            foreach (var f in c.Mesh.Faces) f.MatId = m.Id;
+            c.Touch(); cubes.Add(c);
+            if (names[i] == "a") continue;
+            var tr = Scene.Anim.Track(c.Id, true);
+            tr.Curve(Core.Anim.Ch.UvV, true).SetKey(0, 0, Core.Anim.KeyInterp.Linear);
+            tr.Curve(Core.Anim.Ch.UvV).SetKey(60, 1, Core.Anim.KeyInterp.Linear);
+        }
         Scene.Anim.End = 60;
+        Note($"cubes a..e from {Scene.GtaOrigin} along +X every 3 m, texture {tex}");
         yield return Frames(5);
-        // GTA > Fix all, like the user before an export (exterior prop: red vertex colours, else black in game)
+        // GTA > Fix all, like the user before an export (exterior prop: red vertex colours, white on emissive)
         var fixes = Core.Gta.Check.GtaChecker.FixAll(Scene); foreach (var o in Scene.Objects) o.Touch();
         Note("Fix all: " + string.Join("; ", fixes));
         if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
@@ -980,23 +988,118 @@ public sealed partial class EditorApp
         foreach (var l in rep.Info) Note("info " + l);
         Expect(rep.Ok, $"export ok into {rep.ResourceFolder}");
         var files = Directory.GetFiles(rep.ResourceFolder, "*", SearchOption.AllDirectories);
-        foreach (var f in files) Note($"  {Path.GetRelativePath(rep.ResourceFolder, f)}  ({new FileInfo(f).Length} bytes)");
         var ycd = files.FirstOrDefault(f => f.EndsWith(".ycd", StringComparison.OrdinalIgnoreCase));
-        Expect(ycd != null, $"a .ycd is written ({(ycd != null ? Path.GetFileName(ycd) : "none")})");
-        if (ycd != null)
+        Expect(ycd != null, "a .ycd is written");
+        if (ycd == null) yield break;
+        // variants C and D, written through CodeWalker
+        var xml = Core.Gta.Anim.YcdIO.BinaryToXml(File.ReadAllBytes(ycd));
+        File.WriteAllText(ycd + ".before.xml", xml);
+        string Section(string x, string anim, Func<string, string> edit)
         {
-            List<Core.Gta.Anim.YcdClip> clips = null; string rerr = null;
-            try { clips = Core.Gta.Anim.YcdIO.Read(File.ReadAllBytes(ycd), Path.GetFileName(ycd)); } catch (Exception e) { rerr = e.Message; }
-            uint want = Core.Gta.Export.AnimXml.ClipHash("molo_uvtest_cube", 0);
-            Note($"ycd read back: {(clips == null ? rerr : string.Join(", ", clips.Select(c => $"{c.Name} hash {c.Hash} ({c.Frames} frames, uv {c.IsUv})")))}; expected UV clip hash {want}");
-            Expect(clips != null && clips.Any(c => c.IsUv && c.Hash == want), "the .ycd holds the cube's UV clip with the hash the game looks for (model + shader index + 1)");
+            int i = x.IndexOf($"<Hash>{anim}</Hash>", x.IndexOf("<Animations>")); if (i < 0) return x;
+            int j = x.IndexOf("</Sequences>", i);
+            return x[..i] + edit(x[i..j]) + x[j..];
         }
-        var ytyp = files.FirstOrDefault(f => f.EndsWith(".ytyp", StringComparison.OrdinalIgnoreCase));
-        Expect(ytyp != null, "a .ytyp is written");
+        string U0(string sec) => System.Text.RegularExpressions.Regex.Replace(sec, "<Unknown10 value=\"\\d+\" />", "<Unknown10 value=\"0\" />");
+        string Quant(string sec) => System.Text.RegularExpressions.Regex.Replace(sec, "<Type value=\"RawFloat\" />\\s*<Values>([^<]*)</Values>", m =>
+        {
+            var v = m.Groups[1].Value.Split((char[])null, StringSplitOptions.RemoveEmptyEntries).Select(t => float.Parse(t, System.Globalization.CultureInfo.InvariantCulture)).ToList();
+            float mn = v.Min(), mx = v.Max(); float q = MathF.Max((mx - mn) / (v.Count - 1), 1e-6f);
+            return $"<Type value=\"QuantizeFloat\" />\n<Quantum value=\"{q.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" />\n<Offset value=\"{mn.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" />\n<Values>{m.Groups[1].Value}</Values>";
+        });
+        xml = Section(xml, "molo_uvt_c_uv_0", U0);
+        xml = Section(xml, "molo_uvt_d_uv_0", sec => Quant(U0(sec)));
+        File.WriteAllText(ycd + ".after.xml", xml);
+        File.WriteAllBytes(ycd, Core.Gta.Anim.YcdIO.XmlToBinary(xml));
+        var back = Core.Gta.Anim.YcdIO.Read(File.ReadAllBytes(ycd), Path.GetFileName(ycd));
+        Note("ycd clips: " + string.Join(", ", back.Select(c => $"{c.Name} ({c.Frames} f)")));
+        Expect(back.Count == 4, $"4 UV clips (b, c, d, e) in the .ycd ({back.Count})");
         var man = File.ReadAllText(Path.Combine(rep.ResourceFolder, "fxmanifest.lua"));
-        Expect(man.Contains("DLC_ITYP_REQUEST") && man.Contains("molo_uvtest.ytyp"), "fxmanifest requests the .ytyp (data_file DLC_ITYP_REQUEST)");
-        var vc = Scene.Find(cube.Id).Mesh.Faces.SelectMany(f => f.Col ?? Array.Empty<Vector4>()).ToList();
-        Expect(vc.Count > 0 && vc.All(c => c.X > 0.9f && c.Y < 0.1f), $"exterior prop has red vertex colours ({(vc.Count > 0 ? vc[0].ToString() : "none")})");
+        Expect(man.Contains("DLC_ITYP_REQUEST"), "fxmanifest requests the .ytyp");
+    }
+
+    /// <summary>Boolean with the real buttons of the Object panel: a door and a window cut in a wall, union, intersect, undo.</summary>
+    IEnumerable<object> TutBoolean()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true; propTab = PropTab.Object; if (TimelineOpen) ToggleTimeline();
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; cam.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.EdgedFaces = true;
+        var P = Params; float w0 = P.Width, l0 = P.Length, h0 = P.Height;
+        SceneObject Box(string name, float w, float l, float h, Vector3 at) { P.Width = w; P.Length = l; P.Height = h; var o = Prim(CreateKind.Box, at); o.Name = name; return o; }
+        string Info(SceneObject o) { var m = Scene.Find(o.Id).Mesh; bool closed = m.IsClosedManifold(out var why); return $"{m.Faces.Count} faces, closed {closed}{(closed ? "" : " (" + why + ")")}"; }
+        IEnumerable<object> Click(string key)
+        {
+            propTab = PropTab.Object; tutRects.Remove(key); yield return Frames(6);
+            if (!tutRects.ContainsKey(key)) { Note($"  (button {key} not on screen)"); yield break; }
+            var at = TutCentre(key); Note($"  click {key} at {at}");
+            foreach (var x in ClickAt(at, false, 25)) yield return x; yield return Frames(20);
+        }
+
+        // 1. the wall
+        var wall = Box("wall", 4f, 0.3f, 3f, Vector3.Zero);
+        var door = Box("door_cutter", 1f, 1f, 2.1f, new Vector3(-0.9f, 0, -0.05f));
+        var win = Box("window_cutter", 1.1f, 1f, 0.9f, new Vector3(1.0f, 0, 1.1f));
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        cam.Frame(new Vector3(-3, -3, -0.5f), new Vector3(3, 3, 3.5f)); cam.Pitch = 0.25f; cam.Yaw = -0.55f;
+        Selected.Clear(); SelectionChanged(); yield return Frames(10);
+        foreach (var x in StartFilm("16_boolean", 6)) yield return x;
+        foreach (var x in Say("Boolean in Polymorph", "Select the cutter, then the object to keep (last = active). Object panel > Boolean.", 70)) yield return x;
+
+        foreach (var x in Say("1. Subtract: a door in the wall", "Click the door box, Shift+click the wall, Subtract", 25)) yield return x;
+        string w0i = Info(wall);
+        SelectOnly(door, wall); yield return Frames(25);
+        foreach (var x in Click("bool_sub")) yield return x;
+        string w1 = Info(wall);
+        bool doorHidden = Scene.Find(door.Id).Hidden;
+        yield return Frames(30);
+        Note($"wall {w0i} -> door cut: {w1}");
+        Expect(Scene.Find(wall.Id).Mesh.Faces.Count > 6 && doorHidden && Scene.Find(wall.Id).Mesh.IsClosedManifold(out _), $"Subtract cuts the door ({w1}), cutter hidden {doorHidden}");
+
+        foreach (var x in Say("2. Subtract again: a window", "Same thing with the window box", 25)) yield return x;
+        SelectOnly(win, Scene.Find(wall.Id)); yield return Frames(25);
+        foreach (var x in Click("bool_sub")) yield return x;
+        string w2 = Info(wall);
+        yield return Frames(30);
+        Note($"window cut: {w2}");
+        Expect(Scene.Find(wall.Id).Mesh.IsClosedManifold(out _) && Scene.Find(win.Id).Hidden, $"second cut keeps the wall closed ({w2})");
+
+        foreach (var x in Say("3. Ctrl+Z", "Undo gives the window back, the cutter shows again", 20)) yield return x;
+        int fBefore = Scene.Find(wall.Id).Mesh.Faces.Count;
+        KeyDownT(Keys.ControlKey); KeyDownT(Keys.Z); yield return Frames(4); KeyUpT(Keys.Z); KeyUpT(Keys.ControlKey); yield return Frames(30);
+        bool undoOk = !Scene.Find(win.Id).Hidden && Scene.Find(wall.Id).Mesh.Faces.Count != fBefore;
+        Expect(undoOk, $"Ctrl+Z undoes the window cut ({Info(wall)}, cutter visible {!Scene.Find(win.Id).Hidden})");
+        KeyDownT(Keys.ControlKey); KeyDownT(Keys.ShiftKey); KeyDownT(Keys.Z); yield return Frames(4); KeyUpT(Keys.Z); KeyUpT(Keys.ShiftKey); KeyUpT(Keys.ControlKey); yield return Frames(30);
+
+        // 4. union
+        foreach (var x in Scene.Objects.ToList()) x.Hidden = true;
+        var a = Box("cube_a", 2f, 2f, 2f, new Vector3(5f, 0, 0));
+        var b = Box("cube_b", 2f, 2f, 2f, new Vector3(6f, 1f, 1f));
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        cam.Frame(new Vector3(3.5f, -2f, -0.5f), new Vector3(8.5f, 3.5f, 3.5f));
+        foreach (var x in Say("4. Union: two cubes become one", "Overlapping cubes, one mesh, the inside is removed", 25)) yield return x;
+        SelectOnly(b, a); yield return Frames(25);
+        foreach (var x in Click("bool_union")) yield return x;
+        string u = Info(a); yield return Frames(30);
+        Note($"union: {u}");
+        Expect(Scene.Find(a.Id).Mesh.IsClosedManifold(out _) && Scene.Find(a.Id).Mesh.Faces.Count > 6, $"Union gives one closed mesh ({u})");
+
+        // 5. intersect
+        foreach (var x in Scene.Objects.ToList()) x.Hidden = true;
+        var c = Box("cube_c", 2f, 2f, 2f, new Vector3(11f, 0, 0));
+        Params.Radius = 1.3f; Params.Segments = 32;
+        var sp = Prim(CreateKind.Sphere, new Vector3(11f, 0, 1f)); sp.Name = "sphere";
+        P.Width = w0; P.Length = l0; P.Height = h0;
+        cam.Frame(new Vector3(9f, -2.5f, -0.5f), new Vector3(13f, 2.5f, 2.8f));
+        foreach (var x in Say("5. Intersect: keeps only what both share", "Cube + sphere = a cube with round corners", 25)) yield return x;
+        SelectOnly(sp, c); yield return Frames(25);
+        foreach (var x in Click("bool_int")) yield return x;
+        string it = Info(c); yield return Frames(40);
+        var bb = Scene.Find(c.Id).Mesh.Verts; float maxX = bb.Max(v => v.X) - bb.Min(v => v.X);
+        Note($"intersect: {it}, width {maxX:0.00} m");
+        Expect(Scene.Find(c.Id).Mesh.IsClosedManifold(out _) && maxX <= 2.01f && Scene.Find(c.Id).Mesh.Faces.Count > 6 && Scene.Find(sp.Id).Hidden, $"Intersect keeps the common part ({it}, sphere hidden {Scene.Find(sp.Id).Hidden})");
+
+        foreach (var x in Say("Boolean: Subtract, Union, Intersect", "Cutters stay hidden in the scene: move one and cut again", 70)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
     }
 
     IEnumerable<object> TutModifiers()

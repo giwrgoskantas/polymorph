@@ -205,9 +205,9 @@ public sealed partial class EditorApp
         if (Selected.Count > 1 && Ui.Header("Boolean", Open))
         {
             float w3 = (ImGui.GetContentRegionAvail().X - 8) / 3;
-            if (ImGui.Button("Union", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Union); ImGui.SameLine();
-            if (ImGui.Button("Subtract", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Subtract); ImGui.SameLine();
-            if (ImGui.Button("Intersect", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Intersect);
+            if (ImGui.Button("Union", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Union); TutRect("bool_union"); ImGui.SameLine();
+            if (ImGui.Button("Subtract", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Subtract); TutRect("bool_sub"); ImGui.SameLine();
+            if (ImGui.Button("Intersect", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Intersect); TutRect("bool_int");
             Ui.TextDisabled($"Applies to {o.Name} (active). The other selected objects are the cutters, hidden afterwards.");
         }
         if (Ui.Header("Transform", Open))
