@@ -59,7 +59,11 @@ public static class LibraryBuilder
             }
             // models sharing a texture dictionary one after the other: each dictionary is read once
             work.Sort((x, y) => x.Txd != y.Txd ? x.Txd.CompareTo(y.Txd) : string.CompareOrdinal(x.Asset.Path, y.Asset.Path));
-            var acc = new Dictionary<string, Acc>();
+            var acc = new Dictionary<string, Acc>(); int missing = 0;
+            var logPath = Path.Combine(folder, "data", "build_log.txt");
+            void Log(string line) { try { File.AppendAllText(logPath, line + "\r\n"); } catch { } }
+            try { File.Delete(logPath); } catch { }
+            Log($"{interiors.Count} interiors, {work.Count} models");
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var f in Directory.GetFiles(texDir, "*.dds")) written.Add(Path.GetFileNameWithoutExtension(f));
             uint curTxd = uint.MaxValue;
@@ -83,13 +87,15 @@ public static class LibraryBuilder
                         catch { }
                     }
                 }
+                if (i % 200 == 0) Log($"{DateTime.Now:HH:mm:ss} {i}/{work.Count} models, {acc.Count} materials, {res.Textures} textures, group {groupTex.Count} textures, {missing} refs not found, {res.Failed} failed");
                 if (i % 20 == 0) progress?.Invoke($"{a.Name}{a.Ext}  ({i + 1:N0} / {work.Count:N0} models, {acc.Count:N0} materials)", 0.05f + 0.9f * i / Math.Max(1, work.Count));
                 ImportResult imp;
                 var file = Path.Combine(tmp, "m" + a.Ext);
                 try
                 {
                     File.WriteAllBytes(file, g.ModelBytes(a));
-                    imp = GtaImporter_Import(file, known, tmp);
+                    imp = GtaImporter_Import(file, known, texDir);
+                    foreach (var tw in imp.TexturesWritten) if (written.Add(Path.GetFileNameWithoutExtension(tw))) res.Textures++; // textures inside the model itself
                 }
                 catch { res.Failed++; continue; }
                 finally { try { File.Delete(file); } catch { } }
@@ -120,9 +126,9 @@ public static class LibraryBuilder
                         foreach (var ml in mlos) e.Mlos[ml] = e.Mlos.GetValueOrDefault(ml) + 1;
                         // where it is used and how big the texture is per metre
                         var (area, n, uvArea) = Measure(m, face);
-                        if (area <= 1e-6) continue;
+                        if (!(area > 1e-6) || !double.IsFinite(area)) continue;
                         if (n.Z > 0.7f) e.Floor += area; else if (n.Z < -0.7f) e.Ceil += area; else if (MathF.Abs(n.Z) < 0.3f) e.Wall += area; else e.Other += area;
-                        if (uvArea > 1e-9) { e.TexelSum += Math.Sqrt(uvArea / area) * area; e.TexelW += area; }
+                        if (uvArea > 1e-9 && double.IsFinite(uvArea)) { e.TexelSum += Math.Sqrt(uvArea / area) * area; e.TexelW += area; }
                     }
                 }
                 // the textures this model's materials use, written once
@@ -131,7 +137,7 @@ public static class LibraryBuilder
                     {
                         var n = Tex(t);
                         if (n == null || written.Contains(n)) continue;
-                        if (!groupTex.TryGetValue(n, out var src)) continue;
+                        if (!groupTex.TryGetValue(n, out var src)) { missing++; continue; }
                         try { File.WriteAllBytes(Path.Combine(texDir, n + ".dds"), CodeWalker.Utils.DDSIO.GetDDSFile(src)); written.Add(n); res.Textures++; }
                         catch { }
                     }
@@ -156,12 +162,12 @@ public static class LibraryBuilder
                     T("DiffuseSampler", e.Diffuse); T("BumpSampler", e.Bump); T("SpecSampler", e.Spec); T("DetailSampler", e.Detail);
                     w.WriteEndObject();
                     w.WriteStartObject("par");
-                    foreach (var (k, v) in e.Params) { w.WriteStartArray(k); foreach (var x in v) w.WriteNumberValue(MathF.Round(x, 5)); w.WriteEndArray(); }
+                    foreach (var (k, v) in e.Params) { w.WriteStartArray(k); foreach (var x in v) w.WriteNumberValue(Fin(MathF.Round(x, 5))); w.WriteEndArray(); }
                     w.WriteEndObject();
                     w.WriteStartObject("surf");
-                    w.WriteNumber("floor", Math.Round(e.Floor, 2)); w.WriteNumber("wall", Math.Round(e.Wall, 2)); w.WriteNumber("ceil", Math.Round(e.Ceil, 2)); w.WriteNumber("other", Math.Round(e.Other, 2));
+                    w.WriteNumber("floor", Fin(Math.Round(e.Floor, 2))); w.WriteNumber("wall", Fin(Math.Round(e.Wall, 2))); w.WriteNumber("ceil", Fin(Math.Round(e.Ceil, 2))); w.WriteNumber("other", Fin(Math.Round(e.Other, 2)));
                     w.WriteEndObject();
-                    w.WriteNumber("texel", e.TexelW > 0 ? Math.Round(e.TexelSum / e.TexelW, 4) : 0);
+                    w.WriteNumber("texel", e.TexelW > 0 ? Fin(Math.Round(e.TexelSum / e.TexelW, 4)) : 0);
                     w.WriteNumber("uses", e.Models.Count);
                     w.WriteStartArray("mlos");
                     foreach (var ml in e.Mlos.OrderByDescending(kv => kv.Value).Take(12)) w.WriteStringValue(ml.Key.ToLowerInvariant());
@@ -180,8 +186,11 @@ public static class LibraryBuilder
         finally { try { Directory.Delete(tmp, true); } catch { } }
     }
 
-    static ImportResult GtaImporter_Import(string file, Dictionary<string, string> known, string tmp) =>
-        Import.GtaImporter.Import(file, new ImportOptions { KnownTextures = known, TextureFolder = Path.Combine(tmp, "unused"), WeldVertices = false, AutoSmoothAngle = 0 });
+    static ImportResult GtaImporter_Import(string file, Dictionary<string, string> known, string texDir) =>
+        Import.GtaImporter.Import(file, new ImportOptions { KnownTextures = known, TextureFolder = texDir, WeldVertices = false, AutoSmoothAngle = 0, SkipExistingTextures = true });
+
+    static double Fin(double v) => double.IsFinite(v) ? v : 0;
+    static float Fin(float v) => float.IsFinite(v) ? v : 0;
 
     /// <summary>A texture reference (file path or bare name) as the library's texture name.</summary>
     static string Tex(string t) => string.IsNullOrEmpty(t) ? null : Path.GetFileNameWithoutExtension(t);

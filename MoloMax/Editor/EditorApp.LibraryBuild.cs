@@ -74,7 +74,7 @@ public sealed partial class EditorApp
             if (ImGui.Button(libBuildResult != null ? "Build again" : "Build the library from my game", new Vector2(260, 30))) StartLibraryBuild();
             TutRect("lib_build");
             if (!ok) ImGui.EndDisabled();
-            Ui.TextDisabled($"Goes into {BuiltLibraryFolder}. Takes a few minutes the first time.");
+            Ui.TextDisabled($"Goes into {BuiltLibraryFolder}. Takes about half an hour (every interior of the game is read). You can keep working meanwhile.");
         }
         if (libBuildResult != null) Ui.TextColored(Theme.Gold, "Done: " + libBuildResult);
         if (libBuildError != null) Ui.TextColored(new Vector4(1, 0.45f, 0.4f, 1), libBuildError);

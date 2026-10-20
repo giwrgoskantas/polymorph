@@ -29,6 +29,7 @@ public static class GtaImporter
     {
         public ImportResult Res;
         public string Name, Dir, TexDir;
+        public bool SkipExisting;
         public readonly Dictionary<string, string> TextureFiles = new(StringComparer.OrdinalIgnoreCase);
         public readonly Dictionary<string, int> MaterialKey = new();
         /// <summary>Textures of the parent dictionaries (name.parentN.ytd): written only when a material uses them.</summary>
@@ -39,7 +40,7 @@ public static class GtaImporter
     public static ImportResult Import(string path, ImportOptions opt = null)
     {
         opt ??= new ImportOptions();
-        var c = new Ctx { Res = new ImportResult(), Dir = Path.GetDirectoryName(Path.GetFullPath(path)) };
+        var c = new Ctx { Res = new ImportResult(), Dir = Path.GetDirectoryName(Path.GetFullPath(path)), SkipExisting = opt.SkipExistingTextures };
         var lower = path.ToLowerInvariant();
         bool xml = lower.EndsWith(".xml");
         string ext = Path.GetExtension(xml ? lower[..^4] : lower);
@@ -151,9 +152,10 @@ public static class GtaImporter
             if (t?.Name == null || c.TextureFiles.ContainsKey(t.Name)) continue;
             try
             {
+                var file = Path.Combine(c.TexDir, ModelImporter.SafeName(t.Name, "texture") + ".dds");
+                if (c.SkipExisting && File.Exists(file)) { c.TextureFiles[t.Name] = file; continue; }
                 var dds = CodeWalker.Utils.DDSIO.GetDDSFile(t);
                 Directory.CreateDirectory(c.TexDir);
-                var file = Path.Combine(c.TexDir, ModelImporter.SafeName(t.Name, "texture") + ".dds");
                 File.WriteAllBytes(file, dds);
                 c.TextureFiles[t.Name] = file;
                 c.Res.TexturesWritten.Add(file);

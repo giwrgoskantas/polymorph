@@ -21,6 +21,8 @@ public sealed class ImportOptions
     /// <summary>Texture name -> file already known by the caller: the .ytd next to the model is then not read at all
     /// (the library builder hands the textures of a whole interior in one go).</summary>
     public Dictionary<string, string> KnownTextures;
+    /// <summary>Textures already in the texture folder are not written again (library builder: same textures in many models).</summary>
+    public bool SkipExistingTextures;
 }
 
 /// <summary>A mesh read from a file. Face MatId values index <see cref="ImportResult.Materials"/>.</summary>
