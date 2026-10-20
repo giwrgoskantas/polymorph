@@ -199,6 +199,7 @@ public sealed partial class EditorApp
         T("TUTO 17 wall opening: trace a door and a window on a wall, pull the sides, Enter, edit later", TutWallOpening);
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
+        T("GIMS HUB: Molo GTA panel in the GIMS layout (photos)", TutGimsHub);
         T("UI OPEN THEME: open window with bookmarks, toolbar fits, look in preferences (photos)", TutOpenTheme);
         T("SHAPES CLEANUP: arch door, round window, segments, clean up (photos)", TutShapesCleanup);
         T("GAME UVTEST: a cube whose texture slides (timeline UV keys), exported as a FiveM resource", GameUvTest);
@@ -1050,6 +1051,9 @@ public sealed partial class EditorApp
         int segModal = chamferSegments;
         foreach (var x in Key(Keys.Enter)) yield return x;
         yield return Frames(6);
+        // the width as typed in the Adjust Last Operation panel (the mouse decides it in the live tool)
+        if (lastMeshOp != null) { lastMeshOp.Value = 0.35f; RunMeshOp(lastMeshOp.Kind, lastMeshOp.Obj, lastMeshOp.BaseMesh, lastMeshOp.BaseSel, 0.35f, 1, lastMeshOp.Segments); lastMeshOp.Version = b.Version; }
+        yield return Frames(4);
         Expect(segModal == 5 && b.Mesh.IsClosedManifold(out _) && b.Mesh.Faces.Count == 11, $"bevel with 5 sides from Page Up in the tool: {b.Mesh.Faces.Count} faces, closed {b.Mesh.IsClosedManifold(out _)}");
         Expect(lastMeshOp != null && lastMeshOp.Segments == 5, "Adjust Last Operation keeps the segments");
         // connect: a ring of 4, 3 segments from the panel
@@ -1085,6 +1089,31 @@ public sealed partial class EditorApp
         Expect(selectedMaterial == m2.Id && used.Count == 1, $"material editor shows the wall's material only and picks it ({Scene.Materials.First(x => x.Id == selectedMaterial).Name})");
         yield return Shot("material_editor_selection");
         materialEditorOpen = false;
+    }
+
+    IEnumerable<object> TutGimsHub()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        var b = Prim(CreateKind.Box, Vector3.Zero); SelectOnly(b);
+        HubOpen = true; hubPage = HubPage.Home; hubBack.Clear();
+        yield return Frames(8);
+        yield return Shot("gims_main");
+        Expect(tutRects.Count >= 0, "panel drawn");
+        HubGo(HubPage.GTools); gToolsTab = 1; yield return Frames(6);
+        yield return Shot("gims_tools_game");
+        HubBack(); HubGo(HubPage.Create); gCreateCat = null; yield return Frames(6);
+        yield return Shot("gims_create_categories");
+        gCreateCat = "MLO"; yield return Frames(6);
+        yield return Shot("gims_create_mlo");
+        HubBack();
+        lastReport = new MoloMax.Core.Gta.Export.ExportReport { ResourceFolder = null };
+        lastReport.Warnings.Add("shell001: vertex colours should be green (interior)."); lastReport.Info.Add("MLO 'molo_test': 2 room(s), 2 portal(s).");
+        gResultErrors = false; HubGo(HubPage.Results); yield return Frames(6);
+        yield return Shot("gims_report");
+        Expect(hubPage == HubPage.Results, "pages: tools, create, report");
+        HubBack(); yield return Frames(2);
+        Expect(hubPage == HubPage.Home, "back arrow returns to the main page");
+        HubOpen = false;
     }
 
     IEnumerable<object> TutOpenTheme()

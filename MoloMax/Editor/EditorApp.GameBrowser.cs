@@ -101,7 +101,7 @@ public sealed partial class EditorApp
 
         // ---- results
         ImGui.BeginChild("##glist", new Vector2(300, h), ImGuiChildFlags.Borders | ImGuiChildFlags.ResizeX);
-        if (gameResults.Count == 0) Ui.TextDisabled(gameCat < 0 ? "Type at least 2 letters, or pick a family." : "Nothing in this family with these filters.");
+        if (gameResults.Count == 0) Ui.TextDisabled(gameCat < 0 ? "Type at least 2 letters, or pick a family." : !classified ? "Sorting the models into families, a few seconds..." : "Nothing in this family with these filters.");
         else Ui.TextDisabled($"{gameResults.Count:N0}{(gameResults.Count == 5000 ? "+" : "")} models");
         unsafe
         {
@@ -193,20 +193,24 @@ public sealed partial class EditorApp
     /// <summary>Sorts the game models into families once, in the background (names first, then your own choices).</summary>
     void StartClassify()
     {
-        if (gameClassify != null || game == null) return;
+        if (game == null) return;
+        // a game loaded again (other folder, library build...) is sorted again: the old task sorted the old one
+        if (gameClassify != null && ReferenceEquals(gameClassifiedFor, game)) return;
+        gameClassifiedFor = game; gameClassified = false;
+        var g = game;
         var overrides = new Dictionary<string, long>(Settings.FamilyOverrides);
         // its own thread: the map streaming fills the thread pool, a pooled task waited minutes behind it
         gameClassify = System.Threading.Tasks.Task.Factory.StartNew(() =>
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            foreach (var m in game.Models)
+            foreach (var m in g.Models)
             {
                 try { m.Categories = overrides.TryGetValue(FamilyKey(m), out var o) ? o : GameCategories.Classify(m.Name); }
                 catch { m.Categories = 0; }
             }
-            gameClassified = true;
-            Console.WriteLine($"[families] {game.Models.Count} models sorted in {sw.ElapsedMilliseconds} ms");
-            try { game.BuildTypeIndex((st, _) => gameStatus = st); } catch { }
+            if (ReferenceEquals(g, game)) gameClassified = true;
+            Console.WriteLine($"[families] {g.Models.Count} models sorted in {sw.ElapsedMilliseconds} ms");
+            try { g.BuildTypeIndex((st, _) => gameStatus = st); } catch { }
         }, System.Threading.CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.LongRunning, System.Threading.Tasks.TaskScheduler.Default);
     }
 
@@ -245,6 +249,7 @@ public sealed partial class EditorApp
         SetStatus($"{a.Name}: {(mask == 0 ? "no family" : string.Join(", ", Enumerable.Range(0, GameCategories.All.Length).Where(i => (mask & (1L << i)) != 0).Select(i => GameCategories.All[i].Name)))}");
     }
     System.Threading.Tasks.Task gameClassify;
+    GameFiles gameClassifiedFor;
     /// <summary>The models are sorted into families (the type index may still be building).</summary>
     volatile bool gameClassified;
     PreviewTarget previewRt;
