@@ -244,6 +244,21 @@ except Exception:
 scene.view_settings.exposure = job.get("exposure", 0.0)
 scene.render.filepath = job["output"]
 
+_last = [0.0]
+
+
+def _stats(text, *args):
+    # the engine's status line ("... | Sample 12/128 | ..."), at most 4 times a second
+    now = time.time()
+    if now - _last[0] > 0.25:
+        _last[0] = now
+        say("STATS", str(text))
+
+
+try:
+    bpy.app.handlers.render_stats.append(_stats)
+except Exception:
+    pass
 say("STEP rendering %dx%d, %d samples" % (job["width"], job["height"], job["samples"]))
 bpy.ops.render.render(write_still=True)
 say("DONE %s %.1f" % (job["output"], time.time() - t0))

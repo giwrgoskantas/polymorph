@@ -217,7 +217,8 @@ public sealed partial class EditorApp
             if (t.StartsWith("STEP ")) photoStatus = char.ToUpper(t[5]) + t[6..] + "...";
             else if (t.StartsWith("DEVICE ")) photoDevice = t[7..];
             else if (t.StartsWith("DONE ")) photoDone = true;
-            return;
+            if (!t.StartsWith("STATS ")) return;
+            line = t[6..]; // the engine's status line: samples and time left are read below
         }
         var m = SampleRx.Match(line);
         if (m.Success)
