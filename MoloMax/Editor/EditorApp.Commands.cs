@@ -47,18 +47,20 @@ public sealed partial class EditorApp
 
     public void DoUndo()
     {
+        if (UndoSelection()) return; // the last thing done was a selection change: bring the previous selection back
         var name = Undo.UndoName;
         var s = Undo.Undo(Scene);
         if (s == null) { SetStatus("Nothing to undo"); return; }
-        Scene = s; AfterSceneSwap(); SetStatus("Undo " + name);
+        Scene = s; AfterSceneSwap(); selRedo.Clear(); ResetSelectionBaseline(); SetStatus("Undo " + name);
     }
 
     public void DoRedo()
     {
+        if (RedoSelection()) return;
         var name = Undo.RedoName;
         var s = Undo.Redo(Scene);
         if (s == null) { SetStatus("Nothing to redo"); return; }
-        Scene = s; AfterSceneSwap(); SetStatus("Redo " + name);
+        Scene = s; AfterSceneSwap(); ResetSelectionBaseline(); SetStatus("Redo " + name);
     }
 
     void AfterSceneSwap()

@@ -382,7 +382,8 @@ public sealed partial class EditorApp
     {
         ImGui.PushID(o.Id);
         // the eye / freeze of a selected row act on the whole selection (and on what is under the clicked objects)
-        if (EyeButton(!o.Hidden))
+        bool eyeClick = EyeButton(!o.Hidden); TutRect("eye:" + o.Id);
+        if (eyeClick)
         {
             bool hide = !o.Hidden;
             foreach (var t in RowTargets(o)) t.Hidden = hide;

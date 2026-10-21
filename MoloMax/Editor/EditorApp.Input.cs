@@ -139,6 +139,16 @@ public sealed partial class EditorApp
                 snapFrom = mgrab;
                 xfButton = MouseButtons.Middle;
             }
+            else if (h == GizmoHandle.None && Tool == Tool.Scale)
+            {
+                // Scale tool, middle button anywhere: like S in Blender, the size follows the mouse's distance to the centre
+                ActiveViewport = Array.IndexOf(Viewports, hv);
+                shiftClone = false;
+                BeginTransform(hv, GizmoHandle.View);
+                xfButton = MouseButtons.Middle;
+                xfRadialScale = true;
+                if (SelectionPivot(out var pv, out _)) xfPivotScreen = ScreenOf(hv, pv);
+            }
             else if (h != GizmoHandle.None)
             {
                 ActiveViewport = Array.IndexOf(Viewports, hv);
@@ -544,6 +554,14 @@ public sealed partial class EditorApp
                     {
                         var h = clickHit is { } ch && ch.Object == cur && cur.Modifiers is not { Count: > 0 } ? ch : Picking.PickFace(cur, ray, cullBack: CulledFor(cur));
                         clickHit = null;
+                        // a piece with its faces turned the other way (a camera, a lamp...) is drawn as edges only: a click on it must
+                        // still take it, not the wall behind. Its hidden back face is taken when it is in front of a different piece.
+                        if (CulledFor(cur) && cur.Modifiers is not { Count: > 0 })
+                        {
+                            var hb = Picking.PickFace(cur, ray, cullBack: false);
+                            if (hb is { } b && (!h.HasValue || b.Distance < h.Value.Distance - 1e-3f && !MeshSelect.Elements(m, new[] { h.Value.Face }, cur.Version).Contains(b.Face)))
+                            { h = b; SetStatus("This face is turned inside out (flipped normals): Face Orientation shows it in red, Recalculate Outside fixes it"); }
+                        }
                         ICollection<int> hit = Array.Empty<int>();
                         if (h.HasValue) hit = Level == SubObject.Element ? MeshSelect.Elements(m, new[] { h.Value.Face }, cur.Version) : new[] { h.Value.Face };
                         ApplySelection(s.Faces, hit, true);
@@ -746,10 +764,11 @@ public sealed partial class EditorApp
     // ---------------------------------------------------------------- gizmo transforms (Move / Rotate / Scale tools)
 
     MouseButtons xfButton = MouseButtons.Left;
+    bool xfRadialScale; Vector2 xfPivotScreen;
 
     void BeginTransform(Viewport vp, GizmoHandle h)
     {
-        xfButton = MouseButtons.Left;
+        xfButton = MouseButtons.Left; xfRadialScale = false;
         if (!SelectionPivot(out var pivot, out var orient)) return;
         Undo.Record(Tool == Tool.Move ? "Move" : Tool == Tool.Rotate ? "Rotate" : "Scale", Scene);
         lastAdd = null; ctrlLatch = false;
@@ -843,6 +862,7 @@ public sealed partial class EditorApp
         {
             var dm = Input.Mouse - xfMouseStart;
             float f = MathF.Max(0.001f, 1f + (dm.X - dm.Y) * 0.008f);
+            if (xfRadialScale) f = MathF.Max(0.001f, Vector2.Distance(Input.Mouse, xfPivotScreen) / MathF.Max(4f, Vector2.Distance(xfMouseStart, xfPivotScreen)));
             if (SnapActive) f = MathF.Max(0.1f, MathF.Round(f * 10) / 10);
             var fv = ax switch { 0 => new Vector3(f, 1, 1), 1 => new Vector3(1, f, 1), 2 => new Vector3(1, 1, f), _ => new Vector3(f) };
             ApplyScale(fv, xfPivot, xfAxes);

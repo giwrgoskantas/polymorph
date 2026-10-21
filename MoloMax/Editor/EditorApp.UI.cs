@@ -327,6 +327,7 @@ public sealed partial class EditorApp
         Ui.Text(selText.PadRight(26));
         ImGui.SameLine(200);
         if (cur != null && Level == SubObject.Object) TransformTypeIn(cur);
+        else if (cur != null && cur.Mesh != null && SelectedPoints(cur).Count > 0) SubTypeIn(cur);
         else Ui.TextDisabled("X:          Y:          Z:");
         ImGui.SameLine(); Ui.TextDisabled($"   Grid = {GridStep:0.###} m{(Snap ? "  [Snap]" : "")}");
         var msg = status;
@@ -361,6 +362,86 @@ public sealed partial class EditorApp
         else if (Tool == Tool.Scale) o.Scale = v / 100f;
         else o.Position = v;
         Dirty = true;
+    }
+
+    // ---- viewport lens (Blender's View panel: Focal Length on a 36 mm sensor, fitted on the longer side; Clip Start / End)
+    static float FocalFromFov(float vfov, float aspect)
+    {
+        float t = MathF.Tan(vfov / 2) * (aspect >= 1 ? aspect : 1);
+        return 18f / MathF.Max(t, 1e-4f);
+    }
+
+    /// <summary>Once a frame: the lens settings on every perspective viewport (MAP mode keeps its own adaptive near plane).</summary>
+    void ApplyViewLens()
+    {
+        foreach (var v in Viewports)
+        {
+            var c = v.Camera;
+            if (Settings.ViewFocalMm > 0)
+            {
+                float aspect = MathF.Max(v.W, 1) / MathF.Max(v.H, 1);
+                float half = MathF.Atan(18f / Settings.ViewFocalMm);
+                c.Fov = 2 * (aspect >= 1 ? MathF.Atan(MathF.Tan(half) / aspect) : half);
+            }
+            if (!MapMode) { c.Near = Settings.ViewClipStart; c.Far = Settings.ViewClipEnd; }
+        }
+    }
+
+    // ---- edit mode type-in (3ds Max "offset" mode): type a value, Enter, the selection moves / turns / scales by it
+    Vector3 subTypeIn;
+    Tool subTypeInTool = (Tool)(-1);
+
+    void SubTypeIn(SceneObject o)
+    {
+        if (subTypeInTool != Tool) { subTypeInTool = Tool; subTypeIn = Tool == Tool.Scale ? new Vector3(100) : Vector3.Zero; }
+        string fmt = Tool == Tool.Rotate ? "%.1f°" : Tool == Tool.Scale ? "%.1f%%" : "%.3f m";
+        string[] ax = { "X", "Y", "Z" };
+        for (int i = 0; i < 3; i++)
+        {
+            ImGui.SameLine(); Ui.Text(ax[i] + ":"); ImGui.SameLine(); ImGui.SetNextItemWidth(92);
+            float c = i == 0 ? subTypeIn.X : i == 1 ? subTypeIn.Y : subTypeIn.Z;
+            // (EnterReturnsTrue is not allowed on number fields: the value is applied when the field is left after an edit)
+            if (ImGui.InputFloat("##sti" + i, ref c, 0, 0, fmt)) { if (i == 0) subTypeIn.X = c; else if (i == 1) subTypeIn.Y = c; else subTypeIn.Z = c; }
+            if (ImGui.IsItemDeactivatedAfterEdit())
+            {
+                var rest = Tool == Tool.Scale ? new Vector3(100) : Vector3.Zero;
+                var d = rest;
+                if (i == 0) d.X = c; else if (i == 1) d.Y = c; else d.Z = c;
+                subTypeIn = rest; // the field goes back to 0 (100 %): the next value is again an offset
+                if (d != rest) ApplySubOffset(o, d);
+            }
+            Theme.Tip(Tool == Tool.Rotate ? "Type an angle and press Enter: the selection turns by it around its centre (World / Local axes)"
+                : Tool == Tool.Scale ? "Type a percentage and press Enter: the selection is scaled by it along this axis"
+                : "Type a distance and press Enter: the selection moves by it");
+        }
+    }
+
+    void ApplySubOffset(SceneObject o, Vector3 d)
+    {
+        if (!SelectionPivot(out var pivot, out var orient)) return;
+        var pts = SelectedPoints(o).ToArray();
+        var ax = new[] { Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitX, orient)), Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitY, orient)), Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitZ, orient)) };
+        Matrix4x4 m;
+        if (Tool == Tool.Rotate)
+        {
+            var r = d * (MathF.PI / 180f);
+            var q = Quaternion.CreateFromAxisAngle(ax[2], r.Z) * Quaternion.CreateFromAxisAngle(ax[1], r.Y) * Quaternion.CreateFromAxisAngle(ax[0], r.X);
+            m = Matrix4x4.CreateTranslation(-pivot) * Matrix4x4.CreateFromQuaternion(q) * Matrix4x4.CreateTranslation(pivot);
+        }
+        else if (Tool == Tool.Scale)
+        {
+            var s = d / 100f; Matrix4x4.Invert(orient, out var inv);
+            m = Matrix4x4.CreateTranslation(-pivot) * inv * Matrix4x4.CreateScale(s) * orient * Matrix4x4.CreateTranslation(pivot);
+        }
+        else m = Matrix4x4.CreateTranslation(ax[0] * d.X + ax[1] * d.Y + ax[2] * d.Z);
+        var label = Tool == Tool.Rotate ? $"Rotate {d.X:0.#}/{d.Y:0.#}/{d.Z:0.#}°" : Tool == Tool.Scale ? "Scale" : "Move";
+        DoMesh(label, (oo, mesh, s) =>
+        {
+            Matrix4x4.Invert(oo.World, out var invW);
+            var full = oo.World * m * invW;
+            foreach (var v in pts) if (v < mesh.Verts.Count) mesh.Verts[v] = Vector3.Transform(mesh.Verts[v], full);
+        });
+        SetStatus(label + " applied");
     }
 
     static Vector3 QuatToEulerDeg(Quaternion q)
@@ -407,6 +488,21 @@ public sealed partial class EditorApp
                 if (ImGui.MenuItem("Maximize Viewport", "Alt+W", Maximized)) { Maximized = !Maximized; ActiveViewport = i; }
                 if (ImGui.MenuItem("Show Grid", "G", ShowGrid)) ShowGrid = !ShowGrid;
                 if (ImGui.MenuItem("Statistics", "7", ShowStats)) ShowStats = !ShowStats;
+                ImGui.Separator();
+                Ui.TextDisabled("View (all perspective viewports)");
+                float aspect = MathF.Max(vp.W, 1) / MathF.Max(vp.H, 1);
+                float focal = Settings.ViewFocalMm > 0 ? Settings.ViewFocalMm : FocalFromFov(vp.Camera.Fov, aspect);
+                ImGui.SetNextItemWidth(170);
+                if (ImGui.DragFloat("Focal Length", ref focal, 0.25f, 4f, 300f, "%.0f mm")) { Settings.ViewFocalMm = Math.Clamp(focal, 4f, 300f); ApplyViewLens(); }
+                if (ImGui.IsItemDeactivatedAfterEdit()) Settings.Save();
+                float cs = Settings.ViewClipStart, ce = Settings.ViewClipEnd;
+                ImGui.SetNextItemWidth(170);
+                if (ImGui.DragFloat("Clip Start", ref cs, 0.001f, 0.001f, 100f, "%.3f m", ImGuiSliderFlags.Logarithmic)) { Settings.ViewClipStart = Math.Clamp(cs, 0.001f, MathF.Max(0.002f, ce * 0.5f)); ApplyViewLens(); }
+                if (ImGui.IsItemDeactivatedAfterEdit()) Settings.Save();
+                ImGui.SetNextItemWidth(170);
+                if (ImGui.DragFloat("End", ref ce, 10f, 1f, 100000f, "%.0f m", ImGuiSliderFlags.Logarithmic)) { Settings.ViewClipEnd = Math.Clamp(ce, Settings.ViewClipStart * 2, 100000f); ApplyViewLens(); }
+                if (ImGui.IsItemDeactivatedAfterEdit()) Settings.Save();
+                if (ImGui.SmallButton("Reset lens")) { Settings.ViewFocalMm = 0; Settings.ViewClipStart = 0.05f; Settings.ViewClipEnd = 20000f; foreach (var v in Viewports) v.Camera.Fov = 45f * MathF.PI / 180f; ApplyViewLens(); Settings.Save(); }
                 ImGui.EndPopup();
             }
             if (ImGui.BeginPopup("view"))

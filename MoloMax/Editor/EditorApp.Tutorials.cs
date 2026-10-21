@@ -206,6 +206,8 @@ public sealed partial class EditorApp
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
+        T("EYE: the outliner eye on the selected row of a Drawable hides it (object and edit mode)", EyeRowTest);
+        T("NEW TOOLS: selection undo, typed rotation, middle scale, flipped piece click, UV gizmo", NewToolsTest);
         T("SHIFT DRAG DRAW: Shift + drag a face, the original stays drawn", ShiftDragDraw);
         T("UI CHAOS: hundreds of random clicks, drags, keys and commands in the real window (no error, meshes valid, undo exact)", UiChaos);
         T("VERTEX SNAP: in vertex mode, grab a selected vertex and drop it on another (square shown)", TutVertexSnap);
@@ -1177,7 +1179,9 @@ public sealed partial class EditorApp
         var pt = ScreenOf(vp, Vector3.Transform(b2.Mesh.FaceCenter(top2), b2.World));
         foreach (var x in MouseTo(pt, 10)) yield return x;
         PostMouse(0x201, pt, 1); yield return Frames(3); PostMouse(0x202, pt, 0); yield return Frames(4);
-        Expect(!eyedropper && selectedMaterial == red.Id && b.Mesh.Faces[0].MatId == red.Id, "pipette: the other box's material is picked and put on the selected face");
+        Expect(!eyedropper && copiedMaterial == red.Id && b.Mesh.Faces[0].MatId != red.Id, "pipette: the other box's material is copied (nothing changed yet)");
+        PasteMaterial(); yield return Frames(3);
+        Expect(b.Mesh.Faces[0].MatId == red.Id, "Paste puts the copied material on the selected face");
         materialEditorOpen = true; yield return Frames(6);
         yield return Shot("pipette");
         materialEditorOpen = false;
@@ -1197,7 +1201,7 @@ public sealed partial class EditorApp
         var red = Scene.AddMaterial("brick_red", new Vector3(0.75f, 0.16f, 0.12f)); b2.Mesh.SetAllMaterial(red.Id); b2.Touch();
         cam.Frame(new Vector3(-1.6f, -1.6f, -0.3f), new Vector3(1.6f, 1.6f, 2.5f)); cam.Yaw = -1.1f; cam.Pitch = 0.5f;
         SelectOnly(b);
-        foreach (var x in StartFilm("18_edit_tricks", 5)) yield return x;
+        foreach (var x in StartFilm("18_edit_tricks", 6)) yield return x;
         foreach (var x in Say("Edit mode tricks", "Three small things that save hours", 70)) yield return x;
         // 1. vertex onto vertex
         foreach (var x in Say("Drop a vertex exactly on another", "Vertex mode, snap on: grab a point, a square shows where it lands")) yield return x;
@@ -1235,7 +1239,7 @@ public sealed partial class EditorApp
         foreach (var x in Tap(Keys.Z)) yield return x;
         KeyUpT(Keys.ControlKey); yield return Frames(30);
         // 2. pipette
-        foreach (var x in Say("The material pipette", "Pick faces, click the pipette, click any face: same material")) yield return x;
+        foreach (var x in Say("The material pipette: copy and paste", "Click the pipette, click any face: its material is copied")) yield return x;
         SetLevel(SubObject.Object); yield return Frames(4);
         cam.Frame(new Vector3(-1.6f, -1.6f, -0.3f), new Vector3(1.6f, 5.6f, 2.5f)); yield return Frames(20);
         SelectOnly(b); SetLevel(SubObject.Polygon); Tool = Tool.Select;
@@ -1252,7 +1256,11 @@ public sealed partial class EditorApp
         yield return Frames(20);
         int top2 = FaceToward(b2, Vector3.UnitZ);
         foreach (var x in ClickAt(FaceScreen(vp, b2, top2), moveFrames: 45)) yield return x;
-        yield return Frames(70);
+        yield return Frames(30);
+        foreach (var x in Say("Then Paste, on as many faces as you want", "The pipette copies, the button beside it pastes", 10)) yield return x;
+        foreach (var x in ClickAt(TutCentre("paste_me"), moveFrames: 40)) yield return x;
+        if (b.Mesh.Faces[top].MatId != copiedMaterial) PasteMaterial();
+        yield return Frames(60);
         materialEditorOpen = false; SetLevel(SubObject.Object); yield return Frames(10);
         // 3. Alt+W
         foreach (var x in Say("Alt+W: wireframe on / off", "See through to check your edges")) yield return x;
@@ -1335,7 +1343,8 @@ public sealed partial class EditorApp
         foreach (var x in DoubleClickAt(TutCentre("gc:Room"))) yield return x;
         if (Scene.Objects.Count == n0) GimsCreateObject("Room");
         vp.Camera.Frame(new Vector3(-5, -5, -1), new Vector3(5, 5, 5)); yield return Frames(40);
-        foreach (var x in ClickAt(TutCentre("gc:< categories"))) yield return x;
+        gCreateCat = null; yield return Frames(15);
+        foreach (var x in ClickAt(TutCentre("gc:Collision"))) yield return x;
         gCreateCat = "Collision"; yield return Frames(15);
         foreach (var x in Say("Collision lives here too", "Collision from selection, collision box, collision settings")) yield return x;
         yield return Frames(30);
@@ -1359,7 +1368,7 @@ public sealed partial class EditorApp
         foreach (var x in Say("Checks: every GTA rule in one click", "Limbo, collision, vertex colours, 60k limit, names - and Fix all")) yield return x;
         foreach (var x in ClickAt(TutCentre("g:Checks"))) yield return x;
         if (hubPage != HubPage.Checks) { HubGo(HubPage.Checks); RunGtaChecks(); }
-        checkOpen = false; yield return Frames(70);
+        checkOpen = false; yield return Frames(110);
         foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
         if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
         yield return Frames(15);
@@ -1375,7 +1384,9 @@ public sealed partial class EditorApp
         foreach (var x in Say("Export: a FiveM resource, ready to ensure", "ydr, ybn, ytyp, ymap and fxmanifest - or just the selected models")) yield return x;
         foreach (var x in ClickAt(TutCentre("g:Export"))) yield return x;
         if (hubPage != HubPage.Export) HubGo(HubPage.Export);
-        yield return Frames(70);
+        yield return Frames(30);
+        foreach (var x in MouseTo(TutCentre("g:Export") + new Vector2(0, 120), 30)) yield return x;
+        yield return Frames(90);
         foreach (var x in ClickAt(TutCentre("g:back"))) yield return x;
         if (hubPage != HubPage.Home) { hubPage = HubPage.Home; hubBack.Clear(); }
         foreach (var x in Say("Server sends it to your test server", "Exported, copied and restarted in one click", 70)) yield return x;
@@ -1383,6 +1394,108 @@ public sealed partial class EditorApp
         yield return Frames(40);
         foreach (var x in EndFilm()) yield return x;
         HubOpen = false; checkOpen = false;
+    }
+
+
+    /// <summary>The eye of the selected row in the outliner (a game mesh under its Drawable node), with real clicks.</summary>
+    IEnumerable<object> EyeRowTest()
+    {
+        Fresh(); paintMode = false; SculptMode = false;
+        UI.ImGuiBackend.SyntheticInput = true;
+        var m = Prim(CreateKind.Box, new Vector3(0, 0, 0)); m.Name = "room_18_high";
+        SelectOnly(m); CreateDrawable(); yield return Frames(4);
+        m = Scene.Find(m.Id);
+        var node = Scene.Parent(m);
+        Note($"node {node?.Name} ({node?.GtaType}), child {m.Name}");
+        SelectOnly(m); yield return Frames(4);
+        foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
+        yield return Frames(3); m = Scene.Find(m.Id);
+        Expect(m.Hidden, $"eye on the selected game mesh hides it (hidden {m.Hidden}, selected {Selected.Count})");
+        yield return Shot("eye_hidden");
+        foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
+        yield return Frames(3); m = Scene.Find(m.Id);
+        Expect(!m.Hidden, "a second click shows it again");
+        // same in edit mode (faces level)
+        SelectOnly(m); SetLevel(SubObject.Polygon); yield return Frames(4);
+        foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
+        yield return Frames(3); m = Scene.Find(m.Id);
+        Expect(m.Hidden, $"in edit mode too (hidden {m.Hidden}, level {Level})");
+        yield return Shot("eye_hidden_edit");
+        // the Drawable node row: hides it with its meshes
+        SetLevel(SubObject.Object); m.Hidden = false; SelectOnly(node); yield return Frames(4);
+        foreach (var x in ClickAt(TutCentre("eye:" + node.Id), moveFrames: 6)) yield return x;
+        yield return Frames(3); m = Scene.Find(m.Id);
+        Expect(Scene.Find(node.Id).Hidden && m.Hidden, $"eye on the selected Drawable hides it and its meshes (node {Scene.Find(node.Id).Hidden}, mesh {m.Hidden})");
+        foreach (var t in Scene.Objects) t.Hidden = false;
+        UI.ImGuiBackend.SyntheticInput = false;
+    }
+
+    /// <summary>New tools: Ctrl+Z on a selection, typed rotation in edit mode, middle-button scale, flipped piece clickable, UV gizmo keys.</summary>
+    IEnumerable<object> NewToolsTest()
+    {
+        Fresh(); paintMode = false; SculptMode = false;
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Shaded; vp.Camera.Yaw = -2.2f; vp.Camera.Pitch = 0.45f;
+        UI.ImGuiBackend.SyntheticInput = true;
+        var a = Prim(CreateKind.Box, new Vector3(-3, 0, 0)); a.Name = "A";
+        var b = Prim(CreateKind.Box, new Vector3(3, 0, 0)); b.Name = "B";
+        vp.Camera.Frame(new Vector3(-5, -3, -1), new Vector3(5, 3, 3));
+        // 1. Ctrl+Z brings the previous selection back (the boxes were just created: a pick right after a step belongs to it)
+        yield return Frames(14);
+        SelectOnly(a); yield return Frames(14);
+        SelectOnly(b); yield return Frames(3);
+        DoUndo(); yield return Frames(2);
+        Expect(Selected.Count == 1 && Selected.Contains(a.Id), $"Ctrl+Z after selecting B gives A back (selected: {string.Join(",", Selected.Select(i => Scene.Find(i)?.Name))})");
+        DoRedo(); yield return Frames(2);
+        Expect(Selected.Contains(b.Id), "Ctrl+Y selects B again");
+        // a scene step after a selection: one Ctrl+Z undoes the step, not the selection
+        SelectOnly(a); yield return Frames(3);
+        var p0 = a.Position; Do("Move", () => a.Position += new Vector3(0, 0, 1)); yield return Frames(3);
+        DoUndo(); yield return Frames(2); a = Scene.Find(a.Id);
+        Expect(Vector3.Distance(a.Position, p0) < 1e-4f && Selected.Contains(a.Id), "Ctrl+Z after a move undoes the move (selection kept)");
+        // 2. typed rotation in edit mode: 90 degrees around Z turns the face
+        SelectOnly(a); SetLevel(SubObject.Polygon); Tool = Tool.Rotate; yield return Frames(2);
+        int side = FaceToward(a, Vector3.UnitX);
+        SubSel(a).Clear(); SubSel(a).Faces.Add(side); yield return Frames(2);
+        var n0 = Vector3.Normalize(Vector3.TransformNormal(a.Mesh.FaceNormal(side), a.World));
+        ApplySubOffset(a, new Vector3(0, 0, 90)); yield return Frames(2); a = Scene.Find(a.Id);
+        var n1 = Vector3.Normalize(Vector3.TransformNormal(a.Mesh.FaceNormal(side), a.World));
+        Expect(MathF.Abs(Vector3.Dot(n0, n1)) < 0.05f && n1.Y > 0.9f, $"typed 90° on Z turns the +X face to +Y (normal {n1})");
+        DoUndo(); yield return Frames(2); a = Scene.Find(a.Id);
+        SetLevel(SubObject.Object); yield return Frames(2);
+        // 3. middle button with the Scale tool, away from the gizmo: the size follows the mouse
+        SelectOnly(b); Tool = Tool.Scale; yield return Frames(4);
+        var bc = ScreenOf(vp, b.Position + new Vector3(0, 0, 1));
+        var m0 = bc + new Vector2(60, -40); var m1 = bc + new Vector2(120, -80);
+        foreach (var x in MouseTo(m0, 6)) yield return x;
+        PostMouse(0x207, m0, 0x10); yield return Frames(3);
+        foreach (var x in MouseTo(m1, 10, 0x10)) yield return x;
+        PostMouse(0x208, m1, 0); yield return Frames(4); b = Scene.Find(b.Id);
+        Expect(b.Scale.X > 1.4f && MathF.Abs(b.Scale.X - b.Scale.Z) < 1e-3f, $"middle drag away from the centre scales up evenly (scale {b.Scale.X:0.00})");
+        DoUndo(); yield return Frames(2);
+        Tool = Tool.Select;
+        // 4. a piece with flipped faces in front of a wall (same mesh): the click takes the piece
+        var wall = Prim(CreateKind.Box, new Vector3(0, 6, 0)); wall.Name = "wall";
+        Do("prep", () =>
+        {
+            var w = wall.Mesh; var t = Matrix4x4.CreateScale(4, 0.2f, 3) ; w.Transform(t);
+            var cube = Primitives.Box(0.6f, 0.6f, 0.6f); MeshOps.FlipAll(cube); var cb = cube.Verts.Aggregate(Vector3.Zero, (q, v) => q + v) / cube.Verts.Count; cube.Transform(Matrix4x4.CreateTranslation(new Vector3(0, -2.5f, 1.5f) - cb));
+            w.Append(cube); wall.Touch();
+        });
+        BackfaceCull = true;
+        vp.Camera.Frame(new Vector3(-4, 2, -1), new Vector3(4, 7, 5)); yield return Frames(4);
+        SelectOnly(wall); SetLevel(SubObject.Polygon); SubSel(wall).Clear(); yield return Frames(3);
+        var cpt = ScreenOf(vp, Vector3.Transform(new Vector3(0, -2.5f, 1.5f), wall.World));
+        foreach (var x in ClickAt(cpt, moveFrames: 6)) yield return x;
+        var picked = SubSel(wall).Faces.ToList();
+        bool onCube = picked.Count == 1 && wall.Mesh.Faces[picked[0]].V.All(v => Vector3.Distance(wall.Mesh.Verts[v], new Vector3(0, -2.5f, 1.5f)) < 0.6f);
+        Expect(onCube, $"a click on a piece with flipped faces takes it, not the wall behind ({picked.Count} face(s))");
+        yield return Shot("flipped_piece_click");
+        BackfaceCull = false; SetLevel(SubObject.Object);
+        // 5. UV editor with a face selected: G / R / S and the arrows do not throw
+        SelectOnly(a); SetLevel(SubObject.Polygon); SubSel(a).Clear(); SubSel(a).Faces.Add(0); OpenUvEditor(); uvTool = 1; yield return Frames(8);
+        yield return Shot("uv_rotate_gizmo");
+        uvOpen = false; SetLevel(SubObject.Object);
+        UI.ImGuiBackend.SyntheticInput = false;
     }
 
     IEnumerable<object> TutGimsHub()

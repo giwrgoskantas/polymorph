@@ -181,6 +181,8 @@ public sealed partial class EditorApp : IDisposable
             SetStatus("Error: " + e.Message);
             frameError = e;
         }
+        TrackSelection();      // selection changes are steps for Ctrl+Z
+        ApplyViewLens();       // focal length, clip start / end
         ModEditGuard();        // an Edit Poly / Unwrap edit ends when its object leaves edit mode
         // an edit on one instance reaches the others before drawing (MAP mode: the game models share one mesh already;
         // checking tens of thousands of streamed entities each frame costs more than it brings, every 10th frame is enough)

@@ -51,7 +51,8 @@ public sealed partial class EditorApp
         if (!HubOpen) return;
         float y0 = menuH + toolbarH;
         float right = gpu.Width - (ShowPanel ? panelW : 0);
-        ImGui.SetNextWindowPos(new Vector2(right - 470, y0 + 8), ImGuiCond.FirstUseEver);
+        // while a tutorial film records, the panel stays put (a click near the header must not drag it)
+        ImGui.SetNextWindowPos(new Vector2(right - 470, y0 + 8), recordDir != null ? ImGuiCond.Always : ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSize(new Vector2(456, MathF.Min(608, gpu.Height - y0 - statusH - 16)), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(380, 420), new Vector2(1000, 2000));
         ImGui.PushStyleColor(ImGuiCol.WindowBg, GBlack);

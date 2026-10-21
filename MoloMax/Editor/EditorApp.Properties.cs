@@ -700,6 +700,7 @@ public sealed partial class EditorApp
         if (ImGui.Button("L", new Vector2(22, 22))) OpenLibrary(LibraryAction.Assign);
         Theme.Tip("Molo Materials: pick a GTA material from your texture library");
         EyedropperButton("eyedrop_tab");
+        PasteMaterialButton("paste_tab");
         ImGui.EndGroup();
 
         var slotMat = Scene.Material(slots[materialSlot]);

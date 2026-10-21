@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="https://molossen.github.io/polymorph/Polymorph-1.0.0-win-x64.zip"><b>⬇ Download for Windows (free)</b></a>
+  <a href="https://molossen.github.io/polymorph/Polymorph-Setup-1.0.0.exe"><b>⬇ Download for Windows (free)</b></a>
   &nbsp;·&nbsp;
   <a href="https://molossen.github.io/polymorph/">Website</a>
   &nbsp;·&nbsp;
-  <a href="https://molossen.github.io/polymorph/#tutorials">17 video tutorials</a>
+  <a href="https://molossen.github.io/polymorph/#tutorials">18 video tutorials</a>
   &nbsp;·&nbsp;
   <a href="https://discord.com/invite/molomodding">Discord</a>
 </p>
@@ -31,7 +31,7 @@ then export a FiveM resource that is ready to `ensure` — in one free program, 
 | ![MLO Room Builder](docs/img/mlo.jpg) **MLO Room Builder** — draw the plan, closed rooms, portals and door frames follow | ![Paint](docs/img/paint.jpg) **Sculpt & Paint** — smart materials, wear and dust, export to GTA textures |
 | ![Wall Opening](docs/img/wop.jpg) **Wall Opening** — trace a door or a window on any wall, no boolean | ![Vehicle Forge](docs/img/vehicle.jpg) **Vehicle Forge** — any car model becomes a FiveM vehicle |
 
-## Learn it — 17 short videos
+## Learn it — 18 short videos
 
 Recorded in the app itself, real clicks and keys. Watch the tour, then go part by part.
 
@@ -41,7 +41,7 @@ Recorded in the app itself, real clicks and keys. Watch the tour, then go part b
 | **2 · The basics** | [02 Navigation](https://molossen.github.io/polymorph/tuto/02_navigation.mp4) · [03 Modeling](https://molossen.github.io/polymorph/tuto/03_modeling.mp4) · [04 Snaps](https://molossen.github.io/polymorph/tuto/04_snaps.mp4) · [05 Edit mode tricks](https://molossen.github.io/polymorph/tuto/05_edit_mode_tricks.mp4) |
 | **3 · Shape faster** | [06 Boolean](https://molossen.github.io/polymorph/tuto/06_boolean.mp4) · [07 Wall Opening](https://molossen.github.io/polymorph/tuto/07_wall_opening.mp4) · [08 Modifiers](https://molossen.github.io/polymorph/tuto/08_modifiers.mp4) |
 | **4 · Surface** | [09 Materials & UVs](https://molossen.github.io/polymorph/tuto/09_materials_uvs.mp4) · [10 Sculpt & Paint](https://molossen.github.io/polymorph/tuto/10_sculpt_paint.mp4) · [11 Animation](https://molossen.github.io/polymorph/tuto/11_animation.mp4) |
-| **5 · GTA V & FiveM** | [12 GTA lights](https://molossen.github.io/polymorph/tuto/12_gta_lights.mp4) · [13 MLO Room Builder](https://molossen.github.io/polymorph/tuto/13_mlo_room_builder.mp4) · [14 MAP mode](https://molossen.github.io/polymorph/tuto/14_map_mode.mp4) · [15 Modeling on the map](https://molossen.github.io/polymorph/tuto/15_modeling_on_the_map.mp4) · [16 Weapon Forge](https://molossen.github.io/polymorph/tuto/16_weapon_forge.mp4) · [17 Vehicle Forge](https://molossen.github.io/polymorph/tuto/17_vehicle_forge.mp4) |
+| **5 · GTA V & FiveM** | [12 GTA lights](https://molossen.github.io/polymorph/tuto/12_gta_lights.mp4) · [13 MLO Room Builder](https://molossen.github.io/polymorph/tuto/13_mlo_room_builder.mp4) · [14 MAP mode](https://molossen.github.io/polymorph/tuto/14_map_mode.mp4) · [15 Modeling on the map](https://molossen.github.io/polymorph/tuto/15_modeling_on_the_map.mp4) · [16 Weapon Forge](https://molossen.github.io/polymorph/tuto/16_weapon_forge.mp4) · [17 Vehicle Forge](https://molossen.github.io/polymorph/tuto/17_vehicle_forge.mp4) · [18 The GTA panel](https://molossen.github.io/polymorph/tuto/18_the_gta_panel.mp4) |
 
 All of them, with chapters, on the [website](https://molossen.github.io/polymorph/#tutorials).
 
@@ -80,8 +80,10 @@ Get Tripo here: https://tripo.pxf.io/0G7AVP (signing up with this link supports 
 
 ## Install
 
-1. [Download the zip](https://molossen.github.io/polymorph/Polymorph-1.0.0-win-x64.zip) and unzip it anywhere.
-2. Run `Polymorph.exe`. Nothing else to install.
+1. [Download the installer](https://molossen.github.io/polymorph/Polymorph-Setup-1.0.0.exe) and run it (no admin rights needed).
+2. Start Polymorph from the Start menu or the desktop shortcut. Updates install over it and keep your settings.
+
+Prefer no installer? The same app as a [zip](https://molossen.github.io/polymorph/Polymorph-1.0.0-win-x64.zip): unzip anywhere and run `Polymorph.exe`.
 
 Needs Windows 10 / 11 64-bit and a DirectX 11 graphics card. For the game files, your own copy of GTA V:
 Polymorph reads your install and ships no game file.
@@ -95,6 +97,7 @@ Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 ```
 build.bat      :: core tests, build into out\ and start out\Polymorph.exe
 release.bat    :: self-contained zip in release\
+installer\    :: NSIS script for the setup .exe (makensis installer\polymorph.nsi)
 ```
 
 Scripting: a Python API and an MCP server let Claude drive Polymorph (see `python/README.md`).

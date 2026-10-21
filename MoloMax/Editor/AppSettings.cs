@@ -25,6 +25,10 @@ public sealed class AppSettings
     public bool PreserveUVs { get; set; }
     /// <summary>The yellow drag arrow on selected polygons (extrude). Off by default: E or the Extrude button do it.</summary>
     public bool ExtrudeArrow { get; set; }
+    /// <summary>Viewport lens like Blender's View panel: focal length in mm (0 = the default 45° view), clip start / end in metres.</summary>
+    public float ViewFocalMm { get; set; }
+    public float ViewClipStart { get; set; } = 0.05f;
+    public float ViewClipEnd { get; set; } = 20000f;
     public string LastFolder { get; set; }
     public string LibraryFolder { get; set; }
     /// <summary>Tripo API key, encrypted for this Windows user (DPAPI), base64.</summary>

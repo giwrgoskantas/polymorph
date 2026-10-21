@@ -552,6 +552,8 @@ public sealed partial class EditorApp
         ImGui.SameLine();
         EyedropperButton("eyedrop_me", ImGui.GetFrameHeight());
         ImGui.SameLine();
+        PasteMaterialButton("paste_me", ImGui.GetFrameHeight());
+        ImGui.SameLine();
         if (Theme.Toggle("Assign Material to Selection", true, new Vector2(-1, 0))) AssignMaterial(mat.Id);
         ImGui.End();
     }
