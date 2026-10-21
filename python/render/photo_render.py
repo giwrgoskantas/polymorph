@@ -135,6 +135,10 @@ for i, L in enumerate(job.get("lights", [])):
         data.spot_size = math.radians(min(179.0, 2 * L["cone"]))
         data.spot_blend = L.get("blend", 0.3)
     ob = bpy.data.objects.new("lamp_%d" % i, data)
+    try:
+        ob.visible_camera = False  # the bulb itself is not a white disc in the picture (the fitting is the model's job)
+    except Exception:
+        pass
     ob.location = L["pos"]
     d = Vector(L["dir"])
     ob.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
