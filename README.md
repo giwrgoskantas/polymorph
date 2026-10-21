@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://molossen.github.io/polymorph/Polymorph-Setup-1.4.0.exe"><b>⬇ Download for Windows (free)</b></a>
+  <a href="https://molossen.github.io/polymorph/Polymorph-Setup-1.4.1.exe"><b>⬇ Download for Windows (free)</b></a>
   &nbsp;·&nbsp;
   <a href="https://molossen.github.io/polymorph/">Website</a>
   &nbsp;·&nbsp;
@@ -80,12 +80,12 @@ Get Tripo here: https://tripo.pxf.io/0G7AVP (signing up with this link supports 
 
 ## Install
 
-1. [Download the installer](https://molossen.github.io/polymorph/Polymorph-Setup-1.4.0.exe) and run it (no admin rights needed).
+1. [Download the installer](https://molossen.github.io/polymorph/Polymorph-Setup-1.4.1.exe) and run it (no admin rights needed).
 2. Start Polymorph from the Start menu or the desktop shortcut.
 3. Updates: when a new version is out, a green **Update** button shows in the menu bar. One click downloads it,
    installs it over your copy and restarts Polymorph — your settings, keys and library are kept (Help > Check for updates).
 
-Prefer no installer? The same app as a [zip](https://molossen.github.io/polymorph/Polymorph-1.4.0-win-x64.zip): unzip anywhere and run `Polymorph.exe`.
+Prefer no installer? The same app as a [zip](https://molossen.github.io/polymorph/Polymorph-1.4.1-win-x64.zip): unzip anywhere and run `Polymorph.exe`.
 
 Needs Windows 10 / 11 64-bit and a DirectX 11 graphics card. For the game files, your own copy of GTA V:
 Polymorph reads your install and ships no game file.
