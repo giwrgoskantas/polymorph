@@ -206,6 +206,8 @@ public sealed partial class EditorApp
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
+        T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
+        T("UPDATE: version compare, the green Update button and its window", UpdateUiTest);
         T("EYE: the outliner eye on the selected row of a Drawable hides it (object and edit mode), the whole selection, slide down the eyes", EyeRowTest);
         T("NEW TOOLS: selection undo, typed rotation, middle scale, flipped piece click, UV gizmo", NewToolsTest);
         T("SHIFT DRAG DRAW: Shift + drag a face, the original stays drawn", ShiftDragDraw);
@@ -1396,6 +1398,49 @@ public sealed partial class EditorApp
         HubOpen = false; checkOpen = false;
     }
 
+
+    /// <summary>The update button: versions compared right, the button shows for a newer version, the window opens.</summary>
+    IEnumerable<object> UpdateUiTest()
+    {
+        Expect(CompareVersions("1.10.0", "1.9.3") > 0 && CompareVersions("1.1.0", "1.1") == 0 && CompareVersions("v1.2.0", "1.1.9") > 0 && CompareVersions("1.0.0", "1.1.0") < 0,
+            "versions compare by number (1.10 > 1.9, 1.1 = 1.1.0)");
+        updateAvail = new UpdateInfo { Version = "99.0.0", Setup = "https://example.invalid/setup.exe", Size = 55000000, Notes = "Test notes: new tools." };
+        updateState = null; tutRects.Remove("update_btn");
+        yield return Frames(3);
+        Expect(tutRects.ContainsKey("update_btn"), "a newer version shows the green Update button in the menu bar");
+        UI.ImGuiBackend.SyntheticInput = true;
+        foreach (var x in ClickAt(TutCentre("update_btn"), moveFrames: 6)) yield return x;
+        yield return Frames(3);
+        yield return Shot("update_window");
+        Expect(ImGui.IsPopupOpen("Update Polymorph", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel), "a click opens the update window");
+        foreach (var x in ClickAt(TutCentre("upd_later"), moveFrames: 6)) yield return x;
+        yield return Frames(3);
+        Expect(!ImGui.IsPopupOpen("Update Polymorph", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel), "Later closes it");
+        updateAvail = null; yield return Frames(3);
+        Expect(!InstalledDirLooksWrong(), "an unzipped copy is not taken for an installed one");
+        UI.ImGuiBackend.SyntheticInput = false;
+    }
+    /// <summary>The whole update, for real, on an installed test copy: feed, download, checksum, silent install, restart.</summary>
+    IEnumerable<object> UpdateE2E()
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("POLYMORPH_UPDATE_FEED"))) { Note("no test feed: skipped"); yield break; }
+        Note("installed in: " + (InstalledDir() ?? "(not an installed copy)"));
+        Dirty = false;
+        CheckUpdates(byHand: true);
+        yield return Until(() => updateState == null || updateState.StartsWith("error"), 30);
+        Expect(updateAvail != null, $"the feed offers a newer version ({updateAvail?.Version}, state {updateState})");
+        if (updateAvail == null) yield break;
+        yield return Shot("e2e_offer");
+        updateInstallWhenReady = false; DownloadUpdate();
+        yield return Until(() => updateState == "ready" || updateState?.StartsWith("error") == true, 300);
+        Expect(updateState == "ready", $"downloaded and checksum ok ({updateState}, {updateFile})");
+        if (updateState != "ready") yield break;
+        Note("installing and restarting now");
+        InstallUpdate();
+        yield return Frames(30);
+    }
+
+    static bool InstalledDirLooksWrong() => InstalledDir() != null && !File.Exists(Path.Combine(InstalledDir(), "Uninstall Polymorph.exe"));
 
     /// <summary>The eye of the selected row in the outliner (a game mesh under its Drawable node), with real clicks.</summary>
     IEnumerable<object> EyeRowTest()

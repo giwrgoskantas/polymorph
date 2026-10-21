@@ -192,6 +192,7 @@ public sealed partial class EditorApp
         {
             if (ImGui.MenuItem("Keyboard Shortcuts")) shortcutsOpen = true;
             if (ImGui.MenuItem("About Polymorph")) aboutOpen = true;
+            if (ImGui.MenuItem("Check for updates...")) CheckUpdates(byHand: true);
             ImGui.Separator();
             if (ImGui.MenuItem("Video tutorials (website)")) OpenUrl("https://molossen.github.io/polymorph/#tutorials");
             if (ImGui.MenuItem("Report a bug (GitHub)")) OpenUrl("https://github.com/molossen/polymorph/issues");
@@ -201,6 +202,7 @@ public sealed partial class EditorApp
             ImGui.EndMenu();
         }
         ModeTabs();
+        UpdateMenuButton();
         ImGui.EndMainMenuBar();
     }
 
@@ -543,6 +545,7 @@ public sealed partial class EditorApp
             ImGui.EndPopup();
         }
 
+        DrawUpdateWindow();
         if (aboutOpen) { ImGui.OpenPopup("About Polymorph"); aboutOpen = false; }
         bool aopen = true;
         if (ImGui.BeginPopupModal("About Polymorph", ref aopen, ImGuiWindowFlags.AlwaysAutoResize))

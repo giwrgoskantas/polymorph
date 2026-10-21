@@ -38,6 +38,13 @@ public sealed class AppSettings
     public List<string> DisabledAddons { get; set; } = new();
     /// <summary>Minutes between automatic saves (0 = off).</summary>
     public int AutosaveMinutes { get; set; } = 3;
+    /// <summary>Look for a new version at start (once a day).</summary>
+    public bool CheckUpdates { get; set; } = true;
+    public DateTime LastUpdateCheck { get; set; }
+    /// <summary>The newer version found by the last check (offered again after a restart).</summary>
+    public string KnownUpdateJson { get; set; }
+    /// <summary>"Skip this version": not offered again until a newer one or a manual check.</summary>
+    public string SkippedVersion { get; set; }
     /// <summary>Scripting API for Python and the MCP server (127.0.0.1 only, token protected).</summary>
     public bool ApiEnabled { get; set; } = true;
     /// <summary>Widths of the Scene Explorer and of the right panel (dragged by their borders).</summary>

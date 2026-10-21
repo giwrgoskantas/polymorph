@@ -106,7 +106,7 @@ public sealed class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (app != null && !app.ConfirmDiscard()) { e.Cancel = true; return; }
+        if (app != null && !app.ClosingForUpdate && !app.ConfirmDiscard()) { e.Cancel = true; return; }
         app?.EndSession();
         base.OnFormClosing(e);
     }

@@ -5,9 +5,10 @@
 
 Unicode true
 !include "MUI2.nsh"
+!include "FileFunc.nsh"
 
 !ifndef VERSION
-  !define VERSION "1.0.0"
+  !define VERSION "1.1.0"
 !endif
 !define APPNAME "Polymorph"
 !define PUBLISHER "Molo Modding"
@@ -71,13 +72,20 @@ Function .onVerifyInstDir
   Abort
 FunctionEnd
 
-; Polymorph must be closed: its files can't be replaced while it runs
+; Polymorph must be closed: its files can't be replaced while it runs. An update started from Polymorph closes it
+; right after: wait for it quietly (up to 30 s) before asking.
 !macro WaitClosed
+  StrCpy $2 0
   retry:
   ClearErrors
   IfFileExists "$INSTDIR\Polymorph.exe" 0 free
   FileOpen $0 "$INSTDIR\Polymorph.exe" a
   IfErrors 0 opened
+  IntOp $2 $2 + 1
+  IntCmp $2 60 ask 0 ask
+  Sleep 500
+  Goto retry
+  ask:
   MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "$(Running)" IDOK retry
   Abort
   opened:
@@ -108,8 +116,23 @@ Section "$(SecApp)" SecMain
 SectionEnd
 
 Section "$(SecDesk)" SecDesktop
+  ; a silent update keeps the desktop as it is (no shortcut put back if it was removed)
+  IfSilent 0 +2
+  IfFileExists "$DESKTOP\Polymorph.lnk" 0 nodesk
   CreateShortcut "$DESKTOP\Polymorph.lnk" "$INSTDIR\Polymorph.exe" "" "$INSTDIR\Polymorph.exe" 0
+  nodesk:
 SectionEnd
+
+; the update button in Polymorph runs the installer with /S /RELAUNCH: the new version opens by itself when done
+Function .onInstSuccess
+  IfSilent 0 done
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/RELAUNCH" $R1
+  IfErrors done
+  Exec '"$INSTDIR\Polymorph.exe"'
+  done:
+FunctionEnd
 
 Section "Uninstall"
   !insertmacro WaitClosed
