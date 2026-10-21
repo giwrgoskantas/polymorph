@@ -183,7 +183,7 @@ public sealed partial class EditorApp : IDisposable
         }
         TrackSelection();      // selection changes are steps for Ctrl+Z
         UpdateTick();
-        if (!updateStarted) { updateStarted = true; AutoCheckUpdates(); }
+        if (!updateStarted) { updateStarted = true; AutoCheckUpdates(); StartupAddons(); }
         ApplyViewLens();       // focal length, clip start / end
         ModEditGuard();        // an Edit Poly / Unwrap edit ends when its object leaves edit mode
         // an edit on one instance reaches the others before drawing (MAP mode: the game models share one mesh already;

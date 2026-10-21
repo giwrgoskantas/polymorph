@@ -2,7 +2,9 @@
 rem Polymorph release: tests, self-contained build (nothing to install for users), zip.
 setlocal
 cd /d "%~dp0"
-set VER=1.2.0
+rem the embedded Python (scripts and add-ons run inside Polymorph)
+if not exist pyembed\python312.dll powershell -NoProfile -ExecutionPolicy Bypass -File tools\get_python.ps1 || goto :fail
+set VER=1.3.0
 set NAME=Polymorph-%VER%-win-x64
 set DST=release\%NAME%
 

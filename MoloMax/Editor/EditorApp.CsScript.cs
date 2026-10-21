@@ -136,12 +136,16 @@ public sealed partial class EditorApp
             var k = Enum.GetValues<CreateKind>().FirstOrDefault(x => string.Equals(x.ToString(), kind.Replace("_", ""), StringComparison.OrdinalIgnoreCase));
             if (k == CreateKind.None) throw new ArgumentException("Unknown kind: " + kind + " (" + string.Join(", ", Enum.GetNames<CreateKind>().Skip(1)) + ")");
             var o = a.Prim(k, at);
-            if (name != null) o.Name = name;
+            if (name != null) o.Name = a.Scene.Objects.Any(x => x != o && x.Name == name) ? o.Name : name;
             return o;
         }
         /// <summary>Adds an object from a mesh you built (Primitives.Box(...), new PolyMesh(), MeshOps...).</summary>
         public SceneObject Add(string name, PolyMesh mesh, Vector3 at = default, GtaObjectType type = GtaObjectType.Drawable)
-            => a.Scene.Add(name, mesh, at, type);
+        {
+            var o = a.Scene.Add(name, mesh, at, type);
+            if (o.Name != name && !a.Scene.Objects.Any(x => x != o && x.Name == name)) o.Name = name; // the name asked for when it is free
+            return o;
+        }
         public void Delete(SceneObject o) { if (o != null) { var ids = a.Scene.Descendants(o).Select(d => d.Id).Append(o.Id).ToHashSet(); a.Scene.RemoveObjects(x => ids.Contains(x.Id)); a.Selected.RemoveWhere(ids.Contains); } }
 
         // ---- selection
@@ -173,9 +177,13 @@ public sealed partial class EditorApp
         // ---- GTA
         public SceneObject AddLight(string kind = "point", Vector3? at = null)
         {
+            var keep = a.Cursor3D;
             if (at is { } p) a.Cursor3D = p;
             a.AddLight(Enum.Parse<GtaLightKind>(kind, true));
-            return a.Current;
+            var l = a.Current;
+            if (at is { } q && l != null) l.Position = q; // exactly where asked (the menu puts it above the cursor)
+            a.Cursor3D = keep;
+            return l;
         }
 
         // ---- view

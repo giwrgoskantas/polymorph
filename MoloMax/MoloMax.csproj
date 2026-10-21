@@ -15,8 +15,8 @@
     <Product>Polymorph</Product>
     <Company>Molo Modding</Company>
     <ApplicationIcon>Assets\polymorph.ico</ApplicationIcon>
-    <Version>1.2.0</Version>
-    <InformationalVersion>1.2.0</InformationalVersion>
+    <Version>1.3.0</Version>
+    <InformationalVersion>1.3.0</InformationalVersion>
     <NoWarn>$(NoWarn);CS0618;CA1416</NoWarn>
   </PropertyGroup>
 
@@ -29,6 +29,7 @@
     <PackageReference Include="SharpDX.D3DCompiler" Version="4.2.0" />
     <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+    <PackageReference Include="pythonnet" Version="3.0.4" />
   </ItemGroup>
 
   <!-- Offline build (-p:OfflineLibs=path): reference the same assemblies from a folder. -->
@@ -47,6 +48,8 @@
     <None Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\LICENSE;..\THIRD-PARTY-NOTICES.txt;..\CHANGELOG.md;..\LISEZ-MOI.txt" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
     <!-- Python API + MCP server, shipped next to the exe -->
+    <!-- the embedded Python (python.org "embeddable package", 3.12 x64): scripts and add-ons run inside Polymorph -->
+    <None Include="..\pyembed\**\*" Exclude="..\pyembed\_ok.txt" Link="pyembed\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\python\**\*.py;..\python\**\*.md" Exclude="..\python\**\__pycache__\**" Link="python\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

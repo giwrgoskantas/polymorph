@@ -22,30 +22,35 @@ pm.export("C:/FiveM/resources")
 Every call is one undo step. `pm.call("method", ...)` reaches any method; `pm.Polymorph().methods()` lists them.
 Scripts can also be run from inside Polymorph: **Tools > Run Python Script** (output in the Python window).
 
-## Scripting inside Polymorph (like bpy)
+## Python inside Polymorph (like bpy)
 
-`script.run` (Python: `pm.run(code)`, MCP tool: `script_run`) runs **C# code inside Polymorph**, with the scene, the mesh tools
-and the editor at hand, like Python in Blender. One run is one undo step; it returns what `print()` wrote and the last value.
+Polymorph carries its own Python 3.12 (nothing to install). Scripts and add-ons run **inside** the app, with the scene,
+the mesh tools and the editor at hand, like `bpy` in Blender. One run is one undo step.
+
+- **Add-ons > Python Script Editor**: write, then Run (Ctrl+Enter). `print()` and errors show below.
+- **Add-ons**: a `.py` file with `register()` in the add-ons folder (Add-ons > Open add-ons folder, `%APPDATA%\Polymorph\addons`).
+  `poly.register_menu("My tool", func)` puts `func` in the Add-ons menu. See `python/addons/molo_basics.py`.
+- From outside: `pm.run(code)` (this package), the API method `script.run`, or the MCP tool `script_run` (Claude).
 
 ```python
-pm.run('''
-var floor = Create("box", new Vector3(0, 0, 0), "room_floor");
-var m = Primitives.Box(6, 4, 3);
-MeshOps.FlipAll(m);                          // a room: faces inward
-var room = Add("room_01", m, new Vector3(10, 0, 0));
-SetMaterial(room, NewMaterial("wall_paint", "molo_wall_01"));
-AddLight("spot", new Vector3(10, 0, 2.5f));
-print(scene.Objects.Count);
-''')
+import poly
+
+box = poly.create("box", (0, 0, 0), "room_floor")
+room = poly.add("room_01", poly.Primitives.Box(6, 4, 3), (10, 0, 0))
+poly.MeshOps.FlipAll(room.Mesh); room.Touch()          # a room: faces inward
+poly.set_material(room, poly.new_material("wall_paint", "molo_wall_01"))
+poly.add_light("spot", (10, 0, 2.5))
+print(len(poly.objects()), "objects")
 ```
 
-Globals: `app` (the editor), `scene`, `sel`, `active`, `cursor`, `print(...)`, `Find(name)`, `FindAll(text)`, `Create(kind, at, name)`,
-`Add(name, PolyMesh, at)`, `Delete(o)`, `Select(...)`, `Level("edge")`, `Sub(o)` (faces / edges / points selected),
-`Import(path)`, `Open(path)`, `SaveAs(path)`, `Material(name)`, `NewMaterial(name, diffuse, shader)`, `SetMaterial(o, m, faces)`,
-`AddLight(kind, at)`, `Frame()`, `Call(apiMethod, args)`, and for anything else in the editor (private members too)
-`Invoke(method, args...)`, `Get(member)`, `Set(member, value)`, `Members(text)`.
-Imported namespaces: `System.Linq`, `System.Numerics`, `MoloMax.Core.Mesh` (PolyMesh, Primitives, MeshOps, UvUnwrap...),
-`MoloMax.Core.Scenes`, `MoloMax.Core.Gta`.
+`poly`: `context` (`scene`, `selected`, `active`, `cursor`), `create(kind, at, name)`, `add(name, PolyMesh, at)`, `delete(o)`,
+`find(name)`, `find_all(text)`, `objects()`, `select(*objs)`, `level("edge")`, `sub(o)` (faces / edges / points selected),
+`import_file(path)`, `open_file(path)`, `save_as(path)`, `material(name)`, `new_material(name, diffuse, shader)`,
+`set_material(o, m, faces)`, `add_light(kind, at)`, `frame()`, `call(api_method, **args)`, and for anything else in the editor
+(private members too) `invoke(method, *args)`, `get(member)`, `set(member, value)`, `members(text)`.
+Mesh tools: `poly.Primitives`, `poly.MeshOps`, `poly.PolyMesh`, `poly.UvUnwrap`, `poly.Vector3` (the .NET classes, through pythonnet).
+
+C# also works (`script.run_cs`), same helpers, for heavy loops.
 
 ## MCP (Claude)
 

@@ -140,3 +140,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+----------------------------------------------------------------------
+Python 3.12 (embeddable package, folder pyembed)
+Copyright (c) 2001-2024 Python Software Foundation. All rights reserved.
+Python Software Foundation License Version 2 - see pyembed/LICENSE.txt.
+
+----------------------------------------------------------------------
+pythonnet (Python.Runtime) - MIT License
+Copyright (c) 2006-2024 the contributors of the Python.NET project.
+
+----------------------------------------------------------------------
+Roslyn (Microsoft.CodeAnalysis C# scripting) - MIT License
+Copyright (c) .NET Foundation and Contributors.

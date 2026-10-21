@@ -8,3 +8,6 @@ molomax_errors.txt
 
 # tutorial videos live on the release page
 docs/videos/
+
+# embedded Python, downloaded by tools/get_python.ps1
+pyembed/

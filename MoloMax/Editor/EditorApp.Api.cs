@@ -154,14 +154,17 @@ public sealed partial class EditorApp
             BakeAllPaint(); SceneIO.Save(Scene, path); CurrentFile = path; Dirty = false; AddRecent(path);
             return new { file = path };
         });
-        A.Add("script.run", "Run C# code inside Polymorph, like Python in Blender (bpy). Globals: app (the editor), scene, sel, active, cursor, print(...), " +
-            "Find(name), FindAll(text), Create(kind, at, name), Add(name, PolyMesh, at), Delete(o), Select(...), Level(\"edge\"), Sub(o) (sub-object selection), " +
-            "Import(path), Open(path), SaveAs(path), Material(name), NewMaterial(name, diffuse, shader), SetMaterial(o, m, faces), AddLight(kind, at), Frame(), " +
-            "Call(apiMethod, args), Invoke(editorMethod, args...) / Get / Set (any editor member, private too), Members(text). Namespaces System.Linq, System.Numerics, " +
-            "MoloMax.Core.Mesh (PolyMesh, Primitives, MeshOps, UvUnwrap...), MoloMax.Core.Scenes, MoloMax.Core.Gta are imported. One run = one undo step. " +
-            "Returns what was printed and the value of the last expression.",
-            new[] { new P("code", "string", "C# statements; the last expression is returned", true) },
+        A.Add("script.run", "Run Python inside Polymorph, like Blender's bpy: 'import poly' gives the scene and the editor. " +
+            "poly.context (scene, selected, active, cursor), poly.create(kind, (x,y,z), name), poly.add(name, PolyMesh, at), poly.delete(o), poly.find(name), " +
+            "poly.find_all(text), poly.objects(), poly.select(*objs), poly.level('edge'), poly.sub(o), poly.import_file(path), poly.open_file / save_as, " +
+            "poly.material(name), poly.new_material(name, diffuse, shader), poly.set_material(o, m, faces), poly.add_light(kind, at), poly.frame(), " +
+            "poly.call(apiMethod, **args), poly.invoke / get / set (any editor member), poly.members(text), poly.register_menu(label, func) for add-ons. " +
+            "Mesh tools: poly.Primitives, poly.MeshOps, poly.PolyMesh, poly.UvUnwrap, poly.Vector3. One run = one undo step; returns print() output and the value of a last bare expression.",
+            new[] { new P("code", "string", "Python code", true) },
+            p => RunPython(Str(p, "code")));
+        A.Add("script.run_cs", "Run C# code inside Polymorph (same helpers as Python, for heavy loops).", new[] { new P("code", "string", "C# statements", true) },
             p => RunCSharp(Str(p, "code")));
+        A.Add("addons.reload", "Reload the Python add-ons (bundled + %APPDATA%\\Polymorph\\addons). Returns the report.", Array.Empty<P>(), _ => LoadPyAddons());
         A.Add("scene.undo", "Undo the last step.", Array.Empty<P>(), _ => { DoUndo(); return Undo.UndoName; });
         A.Add("scene.redo", "Redo.", Array.Empty<P>(), _ => { DoRedo(); return Undo.RedoName; });
 

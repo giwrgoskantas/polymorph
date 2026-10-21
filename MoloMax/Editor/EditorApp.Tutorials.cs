@@ -207,7 +207,9 @@ public sealed partial class EditorApp
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
+        T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
         T("TERRAIN 4 LAYERS: terrain material, PAINT TERRAIN LAYERS, paint texture 3 with the real mouse", TerrainLayerTest);
+        T("PYTHON: embedded Python like bpy (import poly, objects, mesh tools, materials, lights, errors, undo, API, add-ons, editor window)", PythonTest);
         T("SCRIPT: C# scripting like bpy (create, mesh tools, materials, lights, private members, errors, undo, API)", ScriptTest);
         T("UPDATE: version compare, the green Update button and its window", UpdateUiTest);
         T("EYE REAL: Ctrl+click rows of game meshes, click an eye twice, slide the eyes (real mouse, Drawables)", EyeRealTest);
@@ -1404,6 +1406,30 @@ public sealed partial class EditorApp
     }
 
 
+    IEnumerable<object> TerrainScout()
+    {
+        Fresh();
+        var folder = Settings.GtaFolder ?? @"C:\Program Files\Rockstar Games\Grand Theft Auto V Legacy";
+        if (game == null) { StartGameLoad(folder); yield return Until(() => game != null || gameError != null, 600); }
+        if (game == null) { Note("no game: " + gameError); yield break; }
+        var cands = new List<GameAsset>();
+        foreach (var w in new[] { "carpark", "car_park", "parking", "_park", "pkng", "lot" })
+            cands.AddRange(game.Search(w, ydr: true, yft: false, ydd: false).Where(a => !cands.Contains(a)));
+        Note($"{cands.Count} candidates: {string.Join(", ", cands.Take(60).Select(a => a.Name))}");
+        int tried = 0;
+        foreach (var a in cands.Where(a => !a.Name.StartsWith("prop_") && !a.Name.Contains("_lod")).Take(30))
+        {
+            Fresh(); tried++;
+            GameImport(a, null);
+            yield return Until(() => pendingImports.Count == 0, 60);
+            var terr = Scene.Materials.Where(m => m.IsTerrain).ToList();
+            var faces = Scene.Objects.Sum(o => o.Mesh?.Faces.Count ?? 0);
+            var (mn, mx) = Scene.Objects.Where(o => o.Mesh != null && o.Mesh.Faces.Count > 0).Select(o => o.WorldBounds()).DefaultIfEmpty().Aggregate((x, y) => (Vector3.Min(x.Item1, y.Item1), Vector3.Max(x.Item2, y.Item2)));
+            Note($"{a.Name}: {faces} faces, size {mx - mn}, terrain {terr.Count}: {string.Join(" | ", terr.Select(m => m.Name + " [" + string.Join(", ", Enumerable.Range(0, 4).Select(i => Path.GetFileNameWithoutExtension(m.Layer(i) ?? "-"))) + "]"))}");
+        }
+        Note($"tried {tried}");
+    }
+
     IEnumerable<object> TerrainLayerTest()
     {
         Fresh(); paintMode = false; SculptMode = false; EndIsolate(); Maximized = true; ActiveViewport = 3; nav = NavMode.None;
@@ -1461,6 +1487,62 @@ public sealed partial class EditorApp
         UI.ImGuiBackend.SyntheticInput = false;
     }
 
+    IEnumerable<object> PythonTest()
+    {
+        Fresh();
+        int n0 = Scene.Objects.Count;
+        var r = RunPython(@"import poly
+box = poly.create('box', (0, 0, 0), 'room_floor')
+room = poly.add('room_01', poly.Primitives.Box(6, 4, 3), (10, 0, 0))
+poly.MeshOps.FlipAll(room.Mesh); room.Touch()
+mat = poly.new_material('wall_paint', 'molo_wall_01')
+poly.set_material(room, mat)
+light = poly.add_light('spot', (10, 0, 2.5))
+poly.select(room, box)
+print('objects', len(poly.objects()), 'selected', len(poly.context.selected))
+room.Mesh.Faces.Count");
+        Note($"run: ok {r.Ok}, {r.Ms} ms, out '{r.Output?.Trim()}', result {r.Result}, error {r.Error}");
+        Expect(r.Ok && r.Result == "6" && Scene.Objects.Count == n0 + 3, $"Python builds a box, a room, a material and a spot light ({Scene.Objects.Count - n0} new)");
+        var room = Scene.Objects.FirstOrDefault(o => o.Name.StartsWith("room_01"));
+        Expect(room != null && Scene.Material(room.Mesh.Faces[0].MatId)?.Name == "wall_paint", "the room got its material");
+        Expect(r.Output.Contains("selected 2"), "print() output and poly.context.selected come back");
+        var r2 = RunPython("poly.invoke('SetStatus', 'hi from python')\npoly.get('status')");
+        Expect(r2.Ok && r2.Result == "hi from python", $"poly.invoke / poly.get reach private editor members ({r2.Result} {r2.Error})");
+        int n1 = Scene.Objects.Count;
+        var r3 = RunPython("x = = 1");
+        Expect(!r3.Ok && r3.Error.Contains("Syntax"), $"a syntax error is reported ({r3.Error?.Split('\n')[0]})");
+        var r4 = RunPython("poly.find('nothing_here').Name");
+        Expect(!r4.Ok && r4.Error.Contains("Error"), $"a runtime error comes back as a traceback ({r4.Error?.Trim().Split('\n').Last()})");
+        Expect(Scene.Objects.Count == n1, "errors leave the scene as it was");
+        DoUndo(); DoUndo(); yield return Frames(2);
+        Expect(Scene.Objects.Count == n0, $"Ctrl+Z removes what the script made in one step ({Scene.Objects.Count} vs {n0})");
+        var api = Api.CallLocal("script.run", new System.Text.Json.Nodes.JsonObject { ["code"] = "poly.create('sphere', (0, 5, 0), 'ball')\nlen(poly.objects())" }) as ScriptRun;
+        Expect(api is { Ok: true } && Scene.Objects.Any(o => o.Name.StartsWith("ball")), $"script.run (the MCP tool) runs Python ({api?.Result} {api?.Error})");
+        var r5 = RunPython("for i in range(200):\n    poly.add('crate_%d' % i, poly.Primitives.Box(0.5, 0.5, 0.5), (i % 20, i // 20, 0))\nlen(poly.objects())");
+        Note($"200 boxes from Python: {r5.Ms} ms, ok {r5.Ok} {r5.Error}");
+        Expect(r5.Ok && r5.Ms < 5000, $"200 boxes in {r5.Ms} ms");
+        // add-ons: the bundled example registers two menu entries
+        var rep = LoadPyAddons();
+        Note("add-ons: " + rep.Trim().Replace("\n", " / "));
+        RefreshPyMenu();
+        Expect(pyMenu.Any(m => m.Contains("drop selection to the ground")), $"the example add-on is in the Add-ons menu ({string.Join(" | ", pyMenu)})");
+        var lift = Scene.Objects.First(o => o.Name.StartsWith("crate_"));
+        lift.Position = new Vector3(lift.Position.X, lift.Position.Y, 5); SelectOnly(lift); yield return Frames(2);
+        var ar = RunAddonMenu(pyMenu.FindIndex(m => m.Contains("drop selection")));
+        lift = Scene.Find(lift.Id);
+        Expect(ar.Ok && MathF.Abs(lift.WorldBounds().Item1.Z) < 1e-3f, $"the add-on menu entry runs (lowest point at {lift.WorldBounds().Item1.Z:0.000}) {ar.Error}");
+        // the script editor window
+        pyEditorOpen = true; FrameAll(); yield return Frames(4);
+        yield return Shot("python_editor");
+        UI.ImGuiBackend.SyntheticInput = true;
+        int n2 = Scene.Objects.Count;
+        foreach (var x in ClickAt(TutCentre("py_run"), moveFrames: 8)) yield return x;
+        yield return Frames(6);
+        Expect(Scene.Objects.Count > n2 && pyEditorOut.Contains("objects"), $"Run in the Python Script Editor runs the code ({Scene.Objects.Count - n2} new, output '{pyEditorOut.Trim().Split('\n')[0]}')");
+        yield return Shot("python_editor_run");
+        pyEditorOpen = false; UI.ImGuiBackend.SyntheticInput = false;
+    }
+
     IEnumerable<object> ScriptTest()
     {
         Fresh();
@@ -1497,8 +1579,8 @@ room.Mesh.Faces.Count");
         Note($"after 2 undos: {Scene.Objects.Count} objects (started with {n0})");
         Expect(Scene.Objects.Count == n0, $"Ctrl+Z removes what a script made in one step ({Scene.Objects.Count} vs {n0})");
         // through the API, like the MCP tool script_run
-        var api = Api.CallLocal("script.run", new System.Text.Json.Nodes.JsonObject { ["code"] = "Create(\"sphere\", new Vector3(0,5,0), \"ball\"); scene.Objects.Count" }) as ScriptRun;
-        Expect(api is { Ok: true } && Scene.Objects.Any(o => o.Name.StartsWith("ball")), $"script.run through the API works ({api?.Result} {api?.Error})");
+        var api = Api.CallLocal("script.run_cs", new System.Text.Json.Nodes.JsonObject { ["code"] = "Create(\"sphere\", new Vector3(0,5,0), \"ball\"); scene.Objects.Count" }) as ScriptRun;
+        Expect(api is { Ok: true } && Scene.Objects.Any(o => o.Name.StartsWith("ball")), $"script.run_cs through the API works ({api?.Result} {api?.Error})");
         // speed of a heavier script: 200 boxes
         var r5 = RunCSharp("for (int i = 0; i < 200; i++) Add(\"crate_\" + i, Primitives.Box(0.5f, 0.5f, 0.5f), new Vector3(i % 20, i / 20, 0)); scene.Objects.Count");
         Note($"200 boxes: {r5.Ms} ms, ok {r5.Ok}");

@@ -2,6 +2,8 @@
 rem Polymorph build (needs the .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0)
 setlocal
 cd /d "%~dp0"
+rem the embedded Python (scripts and add-ons run inside Polymorph)
+if not exist pyembed\python312.dll powershell -NoProfile -ExecutionPolicy Bypass -File tools\get_python.ps1 || goto :fail
 
 rem Close a running Polymorph first (it asks to save if the scene changed), otherwise its files are locked.
 set /a TRIES=0

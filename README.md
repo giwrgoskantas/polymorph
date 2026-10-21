@@ -102,7 +102,7 @@ release.bat    :: self-contained zip in release\
 installer\    :: NSIS script for the setup .exe (makensis installer\polymorph.nsi)
 ```
 
-Scripting: C# code runs inside Polymorph like Python in Blender (`script.run`), plus a Python API and an MCP server so Claude can drive it (see `python/README.md`).
+Scripting: Python runs inside Polymorph like `bpy` in Blender (`import poly`, add-ons, a script editor), plus an MCP server so Claude can drive it (see `python/README.md`).
 
 ## Licence
 

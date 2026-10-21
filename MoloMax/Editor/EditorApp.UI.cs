@@ -188,6 +188,7 @@ public sealed partial class EditorApp
             ImGui.SetNextItemWidth(180); ImGui.SliderFloat("Modelling light", ref AmbientBoost, 0, 0.6f);
             ImGui.EndMenu();
         }
+        AddonsMenu();
         if (ImGui.BeginMenu("Help"))
         {
             if (ImGui.MenuItem("Keyboard Shortcuts")) shortcutsOpen = true;
@@ -546,6 +547,7 @@ public sealed partial class EditorApp
         }
 
         DrawUpdateWindow();
+        DrawPyEditor();
         if (aboutOpen) { ImGui.OpenPopup("About Polymorph"); aboutOpen = false; }
         bool aopen = true;
         if (ImGui.BeginPopupModal("About Polymorph", ref aopen, ImGuiWindowFlags.AlwaysAutoResize))
