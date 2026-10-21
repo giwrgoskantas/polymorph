@@ -75,7 +75,8 @@ public sealed partial class EditorApp
             if (TerrainMaterialOf(o) != null)
             {
                 Ui.TextWrapped("This model uses a terrain material: paint where each of its 4 ground textures shows.");
-                if (Theme.Toggle("PAINT TERRAIN LAYERS", true, new Vector2(-1, 40))) StartTerrainPaint(o);
+                bool startT = Theme.Toggle("PAINT TERRAIN LAYERS", true, new Vector2(-1, 40)); TutRect("terrain_start");
+                if (startT) StartTerrainPaint(o);
                 ImGui.Separator();
             }
             Ui.TextWrapped("Paint the model in layers, then Polymorph makes the GTA textures (diffuse, normal, spec).");
@@ -288,6 +289,7 @@ public sealed partial class EditorApp
             ImGui.PushStyleColor(ImGuiCol.Text, c.Y > 0.5f ? new Vector4(0, 0, 0, 1) : new Vector4(1));
             if (sel) { ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 2.5f); ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(1, 0.75f, 0.2f, 1)); }
             if (ImGui.Button((sel ? "> " : "") + name + "##tl" + i, new Vector2(w2, 30))) terrainPaintLayer = i;
+            TutRect("tl" + i);
             if (sel) { ImGui.PopStyleColor(); ImGui.PopStyleVar(); }
             ImGui.PopStyleColor(3);
             Theme.Tip($"Paints {name.ToLower()} (vertex colour 1 = {(int)(c.X * 255)}, {(int)(c.Y * 255)}, {(int)(c.Z * 255)})" + (tex != null ? ": " + Path.GetFileNameWithoutExtension(tex) : ""));

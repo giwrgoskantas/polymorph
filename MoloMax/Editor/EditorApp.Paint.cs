@@ -138,7 +138,7 @@ public sealed partial class EditorApp
             if (o.Paint != null) foreach (var ts in o.Paint.Sets) if (ts.Dirty != null) UploadPaint(o, ts);
         PumpBake();
         // vertex colour tool: the viewport shows the vertex colours while it is active
-        bool vtool = paintMode && paintTool == PaintTool.VertexColour;
+        bool vtool = paintMode && paintTool == PaintTool.VertexColour && !(terrainPaintLayer >= 0 && Current is { } tc && TerrainMaterialOf(tc) != null); // terrain: the real textures stay on screen
         var vp = Viewports[ActiveViewport];
         if (vtool && shadingBeforeVertex == null) { shadingBeforeVertex = vp.Shading; vp.Shading = ShadingMode.VertexColour; }
         else if (!vtool && shadingBeforeVertex != null) { vp.Shading = shadingBeforeVertex.Value; shadingBeforeVertex = null; }
