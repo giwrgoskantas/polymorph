@@ -208,6 +208,9 @@ public sealed partial class EditorApp
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
         T("UPDATE: version compare, the green Update button and its window", UpdateUiTest);
+        T("EYE REAL: Ctrl+click rows of game meshes, click an eye twice, slide the eyes (real mouse, Drawables)", EyeRealTest);
+        T("MIDDLE HEAVY: Move tool, middle drag on empty space / other mesh / selected edge, heavy scene", MiddleHeavyTest);
+        T("MIDDLE MLO: Mimi's MRPD ydr files, Industry keys, Move tool, middle drag in the view (only on her PC)", MiddleMloTest);
         T("EYE: the outliner eye on the selected row of a Drawable hides it (object and edit mode), the whole selection, slide down the eyes", EyeRowTest);
         T("NEW TOOLS: selection undo, typed rotation, middle scale / move, flipped piece click, UV gizmo", NewToolsTest);
         T("SHIFT DRAG DRAW: Shift + drag a face, the original stays drawn", ShiftDragDraw);
@@ -1441,6 +1444,197 @@ public sealed partial class EditorApp
     }
 
     static bool InstalledDirLooksWrong() => InstalledDir() != null && !File.Exists(Path.Combine(InstalledDir(), "Uninstall Polymorph.exe"));
+
+    /// <summary>Like Mimi's MLO: Drawables each holding a game mesh; rows picked with Ctrl+click, eyes clicked with the real mouse.</summary>
+    IEnumerable<object> EyeRealTest()
+    {
+        Fresh(); paintMode = false; SculptMode = false; Tool = Tool.Select;
+        UI.ImGuiBackend.SyntheticInput = true;
+        var meshes = new List<SceneObject>();
+        for (int i = 0; i < 6; i++)
+        {
+            var q = Prim(CreateKind.Box, new Vector3(i * 3, 0, 0)); q.Name = $"room_{i:00}_high_0";
+            SelectOnly(q); CreateDrawable(); yield return Frames(2);
+            meshes.Add(Scene.Find(q.Id));
+        }
+        SelectNone(); yield return Frames(20);
+        IEnumerable<object> Click(string key, bool ctrl = false)
+        {
+            if (ctrl) KeyDownT(System.Windows.Forms.Keys.ControlKey);
+            yield return Frames(2);
+            foreach (var x in ClickAt(TutCentre(key), moveFrames: 8)) yield return x;
+            if (ctrl) KeyUpT(System.Windows.Forms.Keys.ControlKey);
+            yield return Frames(30); // slower than a double click
+        }
+        // pick 3 game-mesh rows: click, Ctrl+click, Ctrl+click
+        foreach (var x in Click("row:" + meshes[1].Id)) yield return x;
+        foreach (var x in Click("row:" + meshes[2].Id, true)) yield return x;
+        foreach (var x in Click("row:" + meshes[3].Id, true)) yield return x;
+        Note($"selected after Ctrl+clicks: {string.Join(", ", Selected.Select(i => Scene.Find(i)?.Name))}");
+        Expect(Selected.Count == 3, $"3 rows selected ({Selected.Count})");
+        yield return Shot("eyereal_selected");
+        foreach (var x in Click("eye:" + meshes[2].Id)) yield return x;
+        string St() => string.Join(" ", meshes.Select(m => Scene.Find(m.Id).Hidden ? "H" : "v"));
+        Note($"after 1st eye click: {St()}, selected {Selected.Count}");
+        Expect(new[] { 1, 2, 3 }.All(i => Scene.Find(meshes[i].Id).Hidden) && !Scene.Find(meshes[0].Id).Hidden, $"1st click on an eye hides the 3 selected ({St()})");
+        yield return Shot("eyereal_hidden");
+        foreach (var x in Click("eye:" + meshes[2].Id)) yield return x;
+        Note($"after 2nd eye click: {St()}, selected {Selected.Count}");
+        Expect(meshes.All(m => !Scene.Find(m.Id).Hidden), $"2nd click on the same eye shows them again ({St()})");
+        yield return Shot("eyereal_shown");
+        // slide: press the eye of the first game mesh, go down over the next rows
+        SelectNone(); yield return Frames(10);
+        var a = TutCentre("eye:" + meshes[0].Id); var b = TutCentre("eye:" + meshes[4].Id);
+        foreach (var x in DragTo(a, b, 40)) yield return x;
+        yield return Frames(10);
+        Note($"after the slide over the mesh eyes: {St()} (Drawable rows: {string.Join(" ", meshes.Select(m => Scene.Parent(Scene.Find(m.Id))?.Hidden == true ? "H" : "v"))})");
+        Expect(Enumerable.Range(0, 5).All(i => Scene.Find(meshes[i].Id).Hidden) && !Scene.Find(meshes[5].Id).Hidden, $"sliding from mesh 0 to mesh 4 hides those 5, not the 6th ({St()})");
+        yield return Shot("eyereal_slide");
+        foreach (var x in DragTo(b, a, 40)) yield return x;
+        yield return Frames(10);
+        Expect(meshes.All(m => !Scene.Find(m.Id).Hidden), $"sliding back up shows them ({St()})");
+        foreach (var t in Scene.Objects) t.Hidden = false;
+        var ev = Viewports[ActiveViewport];
+        foreach (var x in ClickAt(new Vector2(ev.X + ev.W * 0.5f, ev.Y + ev.H * 0.85f), moveFrames: 6)) yield return x;
+        SelectNone(); yield return Frames(3);
+        UI.ImGuiBackend.SyntheticInput = false;
+    }
+
+    /// <summary>A heavy scene: middle drag with the Move tool where nothing selected is under the mouse must only navigate, quickly.</summary>
+    IEnumerable<object> MiddleHeavyTest()
+    {
+        Fresh(); paintMode = false; SculptMode = false;
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Shaded;
+        UI.ImGuiBackend.SyntheticInput = true;
+        var heavy = new List<SceneObject>();
+        for (int i = 0; i < 3; i++)
+        {
+            var q = Prim(CreateKind.Box, new Vector3(i * 4 - 4, 0, 0)); q.Name = "heavy_" + i;
+            int i0 = i;
+            Do("heavy", () => { q.Mesh = Primitives.Box(3, 3, 3, 160, 160, 160); q.Touch(); });
+            heavy.Add(q);
+        }
+        Note($"faces: {heavy.Sum(h => Scene.Find(h.Id).Mesh.Faces.Count)}");
+        vp.Camera.Frame(new Vector3(-7, -3, -1), new Vector3(7, 3, 4)); vp.Camera.Yaw = -1.9f; vp.Camera.Pitch = 0.3f;
+        var sel = Scene.Find(heavy[1].Id);
+        SelectOnly(sel); Tool = Tool.Move; yield return Frames(10);
+        long FrameMs(System.Diagnostics.Stopwatch w, int n) => w.ElapsedMilliseconds / Math.Max(1, n);
+        IEnumerable<object> MiddleDrag(Vector2 at, Vector2 by, int frames, List<double> times)
+        {
+            foreach (var x in MouseTo(at, 6)) yield return x;
+            PostMouse(0x207, at, 0x10); yield return Frames(2);
+            var w = System.Diagnostics.Stopwatch.StartNew();
+            foreach (var x in MouseTo(at + by, frames, 0x10)) yield return x;
+            times.Add(w.ElapsedMilliseconds / (double)frames);
+            PostMouse(0x208, at + by, 0); yield return Frames(6);
+        }
+        var sky = new Vector2(vp.X + vp.W * 0.5f, vp.Y + 40);
+        var other = ScreenOf(vp, Scene.Find(heavy[0].Id).Position + new Vector3(0, 0, 1.5f));
+        var t = new List<double>();
+        foreach (var snapOn in new[] { false, true })
+        {
+            Snap = snapOn; SnapVertexT = snapOn; yield return Frames(4);
+            var p0 = Scene.Find(sel.Id).Position; var yaw0 = vp.Camera.Yaw;
+            foreach (var x in MiddleDrag(sky, new Vector2(120, 0), 30, t)) yield return x;
+            var p1 = Scene.Find(sel.Id).Position;
+            Expect(Vector3.Distance(p0, p1) < 1e-4f && Selected.Count == 1 && Selected.Contains(sel.Id), $"snap {snapOn}: middle drag on empty sky does not move or change the selection (moved {Vector3.Distance(p0, p1):0.000}, selected {Selected.Count})");
+            Note($"snap {snapOn}: view turned {vp.Camera.Yaw - yaw0:0.00} rad, {t[^1]:0.0} ms per frame while dragging");
+            p0 = Scene.Find(sel.Id).Position;
+            foreach (var x in MiddleDrag(other, new Vector2(0, 80), 30, t)) yield return x;
+            p1 = Scene.Find(sel.Id).Position;
+            Expect(Vector3.Distance(p0, p1) < 1e-4f && Selected.Count == 1 && Selected.Contains(sel.Id), $"snap {snapOn}: middle drag on another (unselected) mesh does not move or change the selection (moved {Vector3.Distance(p0, p1):0.000})");
+            Note($"snap {snapOn}: {t[^1]:0.0} ms per frame over the other mesh");
+        }
+        Snap = false; SnapVertexT = false;
+        yield return Shot("middle_heavy");
+        // edge mode: middle drag on the selected edge moves it
+        var e = Prim(CreateKind.Box, new Vector3(0, -6, 0)); e.Name = "edgebox";
+        SelectOnly(e); SetLevel(SubObject.Edge); yield return Frames(4);
+        e = Scene.Find(e.Id);
+        var top = e.Mesh.AllEdges().OrderByDescending(ed => e.Mesh.Verts[ed.A].Z + e.Mesh.Verts[ed.B].Z).ThenBy(ed => e.Mesh.Verts[ed.A].Y + e.Mesh.Verts[ed.B].Y).First();
+        SubSel(e).Edges.Clear(); SubSel(e).Edges.Add(top); yield return Frames(4);
+        var w0 = Vector3.Transform(e.Mesh.Verts[top.A], e.World); var w1 = Vector3.Transform(e.Mesh.Verts[top.B], e.World);
+        var onEdge = ScreenOf(vp, Vector3.Lerp(w0, w1, 0.3f));
+        var v0 = e.Mesh.Verts[top.A];
+        foreach (var x in MiddleDrag(onEdge, new Vector2(0, -60), 15, t)) yield return x;
+        e = Scene.Find(e.Id);
+        Expect(Vector3.Distance(e.Mesh.Verts[top.A], v0) > 0.05f, $"edge mode: middle drag on the selected edge moves it ({v0} -> {e.Mesh.Verts[top.A]})");
+        DoUndo(); yield return Frames(4); e = Scene.Find(e.Id);
+        // just off the outline (no face under the mouse), 8 px away from the edge: still grabs it
+        var ctr = ScreenOf(vp, e.Position + new Vector3(0, 0, 1));
+        var off = onEdge + Vector2.Normalize(onEdge - ctr) * 8f;
+        var pk = PickVisibleFace(RayAt(vp, off));
+        Note($"off the outline: face under the mouse {(pk.HasValue ? pk.Value.Object.Name : "none")}");
+        v0 = e.Mesh.Verts[top.A];
+        foreach (var x in MiddleDrag(off, new Vector2(0, -60), 15, t)) yield return x;
+        e = Scene.Find(e.Id);
+        Expect(Vector3.Distance(e.Mesh.Verts[top.A], v0) > 0.05f, $"edge mode: middle drag 8 px off the selected edge (outside the shape) moves it");
+        DoUndo(); yield return Frames(2);
+        SetLevel(SubObject.Object); Tool = Tool.Select;
+        UI.ImGuiBackend.SyntheticInput = false;
+    }
+
+    IEnumerable<object> MiddleMloTest()
+    {
+        var dir = @"C:\Users\molo3\Desktop\base_para_testes\resources\[map]\molo_mrpd_ydr\stream\mlo";
+        if (!Directory.Exists(dir)) { Note("folder not here: skipped"); yield break; }
+        Fresh(); paintMode = false; SculptMode = false;
+        var keep = Settings.Keymap; Settings.Keymap = Keymap.Industry;
+        var files = Directory.GetFiles(dir, "*.ydr").ToList();
+        Note($"{files.Count} ydr");
+        ImportFilesAsync(files);
+        yield return Until(() => pendingImports.Count == 0, 120);
+        yield return Frames(10);
+        Note($"objects {Scene.Objects.Count}, faces {Scene.Objects.Sum(o => o.Mesh?.Faces.Count ?? 0)}");
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Shaded;
+        FrameAll(vp); yield return Frames(10);
+        UI.ImGuiBackend.SyntheticInput = true;
+        var mesh = Scene.Objects.Where(o => o.Mesh != null && o.Mesh.Faces.Count > 100).OrderByDescending(o => o.Mesh.Faces.Count).First();
+        SelectOnly(mesh); Tool = Tool.Move; yield return Frames(10);
+        var w = System.Diagnostics.Stopwatch.StartNew(); yield return Frames(30); Note($"idle: {w.ElapsedMilliseconds / 30.0:0.0} ms per frame");
+        string Sig() => string.Join(";", Scene.Objects.Select(o => o.Position.ToString()));
+        foreach (var at in new[] { new Vector2(vp.X + vp.W * 0.5f, vp.Y + 30), new Vector2(vp.X + vp.W * 0.5f, vp.Y + vp.H * 0.5f), new Vector2(vp.X + 40, vp.Y + vp.H - 40) })
+        {
+            var s0 = Sig(); var sel0 = string.Join(",", Selected); var cam0 = (vp.Camera.Yaw, vp.Camera.Target);
+            foreach (var x in MouseTo(at, 6)) yield return x;
+            bool onSel = MiddleOnSelection(vp);
+            Note($"at {at}: over the selection {onSel}");
+            PostMouse(0x207, at, 0x10); yield return Frames(2);
+            w.Restart();
+            foreach (var x in MouseTo(at + new Vector2(100, 40), 30, 0x10)) yield return x;
+            double ms = w.ElapsedMilliseconds / 30.0;
+            PostMouse(0x208, at + new Vector2(100, 40), 0); yield return Frames(6);
+            Note($"  {ms:0.0} ms per frame, transforming {transforming}, nav {nav}, status '{status}'");
+            Expect(onSel ? Sig() != s0 : Sig() == s0, $"middle drag at {at}: moves only when on the selection (on it: {onSel}, moved: {Sig() != s0})");
+            Expect(string.Join(",", Selected) == sel0, $"middle drag at {at}: the selection did not change ({Selected.Count})");
+            Expect(ms < 60, $"middle drag at {at}: stays fluid ({ms:0.0} ms per frame)");
+            if (Sig() != s0) DoUndo();
+            yield return Frames(4);
+        }
+        yield return Shot("middle_mlo");
+        // the eyes on this real MLO: 3 game meshes selected, then 3 Drawable nodes
+        Tool = Tool.Select;
+        var nodes = Scene.Objects.Where(o => o.GtaType == GtaObjectType.Model && Scene.Children(o).Any()).Take(3).ToList();
+        var kids = nodes.Select(n => Scene.Children(n).First()).ToList();
+        Note($"nodes {string.Join(", ", nodes.Select(n => n.Name))}");
+        foreach (var set in new[] { kids, nodes })
+        {
+            if (set.Count < 3) { Note("not enough rows"); break; }
+            SelectOnly(set.ToArray()); yield return Frames(20);
+            string St() => string.Join(" ", set.Select(m => Scene.Find(m.Id).Hidden ? "H" : "v"));
+            foreach (var x in ClickAt(TutCentre("eye:" + set[1].Id), moveFrames: 8)) yield return x;
+            yield return Frames(30);
+            Note($"{set[0].GtaType}: 1st click {St()} selected {Selected.Count}");
+            Expect(set.All(m => Scene.Find(m.Id).Hidden), $"{set[0].GtaType} rows: 1st eye click hides the 3 ({St()})");
+            foreach (var x in ClickAt(TutCentre("eye:" + set[1].Id), moveFrames: 8)) yield return x;
+            yield return Frames(30);
+            Note($"{set[0].GtaType}: 2nd click {St()} selected {Selected.Count}");
+            Expect(set.All(m => !Scene.Find(m.Id).Hidden), $"{set[0].GtaType} rows: 2nd click on the same eye shows the 3 ({St()})");
+            yield return Shot("mlo_eye_" + set[0].GtaType);
+        }
+        Settings.Keymap = keep; Tool = Tool.Select;
+        UI.ImGuiBackend.SyntheticInput = false;
+    }
 
     /// <summary>The eye of the selected row in the outliner (a game mesh under its Drawable node), with real clicks.</summary>
     IEnumerable<object> EyeRowTest()

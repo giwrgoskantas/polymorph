@@ -769,6 +769,8 @@ public sealed partial class EditorApp
     /// <summary>The mouse is over a selected object (object mode) or over the object being edited (edit mode).</summary>
     bool MiddleOnSelection(Viewport hv)
     {
+        // edit mode, edges or points: close to a selected one on screen is enough (an edge on the outline has no face under it)
+        if (Level is SubObject.Vertex or SubObject.Edge or SubObject.Border && Current is { Mesh: not null } c && MiddleNearSelected(hv, c, 14f)) return true;
         var hit = PickVisibleFace(RayAt(hv, Input.Mouse));
         if (hit is not { } hh) return false;
         var o = hh.Object;
@@ -776,6 +778,32 @@ public sealed partial class EditorApp
         if (Selected.Contains(o.Id)) return true;
         // a game mesh under a selected Drawable node moves with it
         for (var p = Scene.Parent(o); p != null; p = Scene.Parent(p)) if (Selected.Contains(p.Id)) return true;
+        return false;
+    }
+
+    bool MiddleNearSelected(Viewport hv, SceneObject c, float px)
+    {
+        var m = c.Mesh; var w = c.World; var sel = SubSel(c); var mouse = Input.Mouse;
+        Vector2? Scr(int v)
+        {
+            if (v < 0 || v >= m.Verts.Count) return null;
+            if (!hv.Camera.Project(Vector3.Transform(m.Verts[v], w), hv.W, hv.H, out var sp, out _)) return null;
+            return new Vector2(hv.X + sp.X, hv.Y + sp.Y);
+        }
+        if (Level == SubObject.Vertex)
+        {
+            int n = 0;
+            foreach (var v in sel.Verts) { if (++n > 20000) break; if (Scr(v) is { } p && Vector2.Distance(p, mouse) <= px) return true; }
+            return false;
+        }
+        int k = 0;
+        foreach (var e in sel.Edges)
+        {
+            if (++k > 20000) break;
+            if (Scr(e.A) is not { } a || Scr(e.B) is not { } b) continue;
+            var ab = b - a; float t = ab.LengthSquared() < 1e-6f ? 0 : Math.Clamp(Vector2.Dot(mouse - a, ab) / ab.LengthSquared(), 0, 1);
+            if (Vector2.Distance(a + ab * t, mouse) <= px) return true;
+        }
         return false;
     }
 

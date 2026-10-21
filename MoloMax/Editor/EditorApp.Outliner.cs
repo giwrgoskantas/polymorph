@@ -456,6 +456,7 @@ public sealed partial class EditorApp
         if (kids.Count > 0 && open != isOpen) { if (open) closedObjs.Remove(o.Id); else closedObjs.Add(o.Id); }
         var min = ImGui.GetItemRectMin();
         var rmax = ImGui.GetItemRectMax();
+        TutRect("row:" + o.Id);
         outBandRows.Add((o.Id, min.Y, rmax.Y));
         // the name is the handle for drag & drop (linking); a drag that starts right of the name selects a box of rows
         float nameEnd = min.X + ImGui.GetTreeNodeToLabelSpacing() + 24 + ImGui.CalcTextSize(o.Name).X;
