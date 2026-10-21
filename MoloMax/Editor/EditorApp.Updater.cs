@@ -52,7 +52,7 @@ public sealed partial class EditorApp
     void AutoCheckUpdates()
     {
         if (SelfTestDir != null || !Settings.CheckUpdates) return;
-        if (DateTime.UtcNow - Settings.LastUpdateCheck < TimeSpan.FromHours(20)) { RestoreKnownUpdate(); return; }
+        // the feed is a few hundred bytes: read it at every start, so what is offered is always what the site has now
         CheckUpdates(byHand: false);
     }
 
@@ -108,10 +108,19 @@ public sealed partial class EditorApp
         {
             try
             {
-                var dir = Path.Combine(Path.GetTempPath(), "PolymorphUpdate"); Directory.CreateDirectory(dir);
-                var file = Path.Combine(dir, $"Polymorph-Setup-{u.Version}.exe");
                 using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(30) };
                 http.DefaultRequestHeaders.UserAgent.ParseAdd("Polymorph/" + AppInfo.Version);
+                // read the feed again right before downloading: the window may have been open a while, a newer build may be out
+                try
+                {
+                    var fresh = JsonSerializer.Deserialize<UpdateInfo>(await http.GetStringAsync(UpdateFeed + "?t=" + DateTime.UtcNow.Ticks),
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (fresh != null && !string.IsNullOrEmpty(fresh.Setup) && CompareVersions(fresh.Version, AppInfo.Version) > 0)
+                    { u = fresh; form.BeginInvoke(new Action(() => updateAvail = fresh)); }
+                }
+                catch { }
+                var dir = Path.Combine(Path.GetTempPath(), "PolymorphUpdate"); Directory.CreateDirectory(dir);
+                var file = Path.Combine(dir, $"Polymorph-Setup-{u.Version}.exe");
                 using var resp = await http.GetAsync(u.Setup, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
                 resp.EnsureSuccessStatusCode();
                 long total = resp.Content.Headers.ContentLength ?? u.Size;

@@ -2,7 +2,7 @@
 rem Polymorph release: tests, self-contained build (nothing to install for users), zip.
 setlocal
 cd /d "%~dp0"
-set VER=1.1.2
+set VER=1.1.3
 set NAME=Polymorph-%VER%-win-x64
 set DST=release\%NAME%
 
