@@ -56,16 +56,26 @@ public sealed partial class EditorApp
         var o = Current;
         if (o == null) { Ui.TextDisabled("Select the object to paint."); return; }
         var doc = o.Paint;
+        if (doc == null && paintMode && paintTool == PaintTool.VertexColour && terrainPaintLayer >= 0 && TerrainMaterialOf(o) is { } ttm)
+        {
+            // terrain painting: vertex colour 1 only, the terrain shader stays on and shows the blend
+            if (Theme.Toggle("PAINTING TERRAIN  -  Esc to stop", true, new Vector2(-1, 32))) { paintMode = false; terrainPaintLayer = -1; }
+            TerrainLayerOptions(o, ttm);
+            float r = brush.Radius; ImGui.SetNextItemWidth(-90);
+            if (ImGui.SliderFloat("Size (m)", ref r, 0.05f, 20f, "%.2f", ImGuiSliderFlags.Logarithmic)) brush.Radius = r;
+            float st = brush.Strength; ImGui.SetNextItemWidth(-90);
+            if (ImGui.SliderFloat("Strength", ref st, 0.05f, 1f, "%.2f")) brush.Strength = st;
+            float hd = brush.Hardness; ImGui.SetNextItemWidth(-90);
+            if (ImGui.SliderFloat("Hardness", ref hd, 0f, 0.99f, "%.2f")) brush.Hardness = hd;
+            Ui.TextDisabled("[ and ] change the size. Ctrl+Z undoes a stroke.");
+            return;
+        }
         if (doc == null)
         {
             if (TerrainMaterialOf(o) != null)
             {
                 Ui.TextWrapped("This model uses a terrain material: paint where each of its 4 ground textures shows.");
-                if (Theme.Toggle("PAINT TERRAIN LAYERS", true, new Vector2(-1, 40)))
-                {
-                    if (!TexelMap.HasUsableUvs(o.Mesh)) DoMesh("Smart UV Project", (oo, m, s) => UvUnwrap.SmartProject(m));
-                    StartPaint(o); paintTool = PaintTool.VertexColour; terrainPaintLayer = 1; paintMode = true;
-                }
+                if (Theme.Toggle("PAINT TERRAIN LAYERS", true, new Vector2(-1, 40))) StartTerrainPaint(o);
                 ImGui.Separator();
             }
             Ui.TextWrapped("Paint the model in layers, then Polymorph makes the GTA textures (diffuse, normal, spec).");
@@ -291,6 +301,31 @@ public sealed partial class EditorApp
         if (terrainPaintLayer >= 0 && ImGui.Button($"Fill the whole object with texture {terrainPaintLayer + 1}", new Vector2(-1, 0)))
             Do("Terrain layer fill", () => { VertexPaint.FillLayer(o.Mesh, Enumerable.Range(0, o.Mesh.Faces.Count), terrainPaintLayer); o.Touch(); });
         ImGui.Separator();
+    }
+
+    /// <summary>Terrain painting on: vertex colour brush on texture 2, sized to the mesh (a ground's vertices are often metres apart:
+    /// a brush smaller than that would touch no vertex and seem to do nothing).</summary>
+    void StartTerrainPaint(SceneObject o)
+    {
+        // no Molo Paint texture set here: its paint material would replace the terrain shader
+        paintTool = PaintTool.VertexColour; terrainPaintLayer = 1; terrainLayerObj = o.Id; paintMode = true;
+        if (o.Mesh.Faces.All(f => f.Col1 == null)) Do("Terrain start", () => { VertexPaint.FillLayer(o.Mesh, Enumerable.Range(0, o.Mesh.Faces.Count), 0); o.Touch(); });
+        float edge = AverageEdgeLength(o);
+        if (brush.Radius < edge * 1.5f) brush.Radius = MathF.Min(20f, edge * 1.5f);
+        brush.Strength = MathF.Max(brush.Strength, 0.8f);
+        SetStatus($"Terrain: pick texture 1-4, then paint. Brush {brush.Radius:0.##} m ([ and ] change it).");
+    }
+
+    float AverageEdgeLength(SceneObject o)
+    {
+        var m = o.Mesh; double sum = 0; int n = 0;
+        var sc = MathF.Max(o.Scale.X, MathF.Max(o.Scale.Y, o.Scale.Z));
+        for (int fi = 0; fi < m.Faces.Count && n < 4000; fi += Math.Max(1, m.Faces.Count / 1000))
+        {
+            var f = m.Faces[fi];
+            for (int i = 0; i < f.V.Length; i++) { sum += Vector3.Distance(m.Verts[f.V[i]], m.Verts[f.V[(i + 1) % f.V.Length]]); n++; }
+        }
+        return n == 0 ? 0.1f : (float)(sum / n) * sc;
     }
 
     /// <summary>The object's materials become terrain_cb_w_4lyr (their diffuse / normal is texture 1).</summary>

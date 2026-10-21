@@ -239,13 +239,15 @@ public sealed partial class EditorApp
     {
         var o = Current;
         paintHover.Hit = false;
-        if (!paintMode || o?.Paint == null || Level != SubObject.Object) { painting = false; return false; }
+        // terrain layers paint vertex colour 1 only: no texture set needed (its paint material would hide the terrain shader)
+        bool terrainOnly = o != null && o.Paint == null && paintTool == PaintTool.VertexColour && terrainPaintLayer >= 0;
+        if (!paintMode || o == null || (o.Paint == null && !terrainOnly) || Level != SubObject.Object) { painting = false; return false; }
         if (hv == null || uiMouse) { if (!Input.Down(System.Windows.Forms.MouseButtons.Left)) painting = false; return painting; }
         var hit = HitLocal(o, hv, Input.Mouse, out var pl, out var nl, out int face);
         float rLocal = brush.Radius / ObjScale(o);
         if (hit) paintHover = (Vector3.Transform(pl, o.World), Vector3.Normalize(Vector3.TransformNormal(nl, o.World)), brush.Radius, true);
         bool alt = Input.Alt;
-        var ts = o.Paint.Cur;
+        var ts = o.Paint?.Cur;
         bool pressed = Input.Pressed(System.Windows.Forms.MouseButtons.Left) && !alt;
         // in paint mode a click next to the model does nothing (it would deselect the object being painted)
         if (pressed && !hit) return true;
@@ -261,7 +263,7 @@ public sealed partial class EditorApp
                 VertexStamp(o, pl, nl, rLocal);
                 lastStamp = pl; painting = true; return true;
             }
-            if (!PrepareStroke(o, ts)) return true;
+            if (ts == null || !PrepareStroke(o, ts)) return true;
             if (paintTool == PaintTool.Clone)
             {
                 if (cloneSource == null) { SetStatus("Ctrl+click on the model first to pick what to copy."); return true; }
@@ -279,6 +281,7 @@ public sealed partial class EditorApp
             if (!Input.Down(System.Windows.Forms.MouseButtons.Left)) { painting = false; return true; }
             if (!hit) return true;
             if (paintTool == PaintTool.VertexColour) { if (Vector3.Distance(lastStamp, pl) > rLocal * 0.3f) { VertexStamp(o, pl, nl, rLocal); lastStamp = pl; } return true; }
+            if (ts == null) return true;
             if (brush.Stamp != null && brush.StampOnce) return true;
             // lazy mouse: the brush trails behind the cursor
             var target = pl;

@@ -154,6 +154,14 @@ public sealed partial class EditorApp
             BakeAllPaint(); SceneIO.Save(Scene, path); CurrentFile = path; Dirty = false; AddRecent(path);
             return new { file = path };
         });
+        A.Add("script.run", "Run C# code inside Polymorph, like Python in Blender (bpy). Globals: app (the editor), scene, sel, active, cursor, print(...), " +
+            "Find(name), FindAll(text), Create(kind, at, name), Add(name, PolyMesh, at), Delete(o), Select(...), Level(\"edge\"), Sub(o) (sub-object selection), " +
+            "Import(path), Open(path), SaveAs(path), Material(name), NewMaterial(name, diffuse, shader), SetMaterial(o, m, faces), AddLight(kind, at), Frame(), " +
+            "Call(apiMethod, args), Invoke(editorMethod, args...) / Get / Set (any editor member, private too), Members(text). Namespaces System.Linq, System.Numerics, " +
+            "MoloMax.Core.Mesh (PolyMesh, Primitives, MeshOps, UvUnwrap...), MoloMax.Core.Scenes, MoloMax.Core.Gta are imported. One run = one undo step. " +
+            "Returns what was printed and the value of the last expression.",
+            new[] { new P("code", "string", "C# statements; the last expression is returned", true) },
+            p => RunCSharp(Str(p, "code")));
         A.Add("scene.undo", "Undo the last step.", Array.Empty<P>(), _ => { DoUndo(); return Undo.UndoName; });
         A.Add("scene.redo", "Redo.", Array.Empty<P>(), _ => { DoRedo(); return Undo.RedoName; });
 

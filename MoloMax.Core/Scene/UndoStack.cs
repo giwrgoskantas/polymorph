@@ -176,6 +176,9 @@ public sealed class UndoStack
         if (redoBackup != null) { redo.Clear(); foreach (var r in redoBackup) redo.Push(r); redoBackup = null; }
     }
 
+    /// <summary>Forgets the last recorded state, redo untouched (steps folded into an earlier one).</summary>
+    public void DropLastKeepRedo() { if (undo.Count > 0) { undo.RemoveLast(); undoStamp.RemoveLast(); } }
+
     /// <summary>Returns the last recorded state and forgets it, without touching redo.</summary>
     public Scene PopLast(Scene current = null)
     {

@@ -155,6 +155,16 @@ class Polymorph:
     def frame(self): return self.call("view.frame")
     def screenshot(self, path): return self.call("view.screenshot", path=path)
 
+    # ---- scripting inside Polymorph (like bpy in Blender)
+    def run(self, code):
+        """Runs C# code inside Polymorph with the whole scene and editor at hand (one undo step).
+        Returns {'ok', 'output' (what print() wrote), 'result' (last expression), 'error', 'ms'}.
+        Example: run('var b = Create("box", new Vector3(0,0,1), "crate"); MeshOps.FlipAll(b.Mesh); b.Touch(); b.Name')"""
+        r = self.call("script.run", code=code)
+        if r and not r.get("ok") and r.get("error"):
+            raise PolymorphError(r["error"])
+        return r
+
 
 _default = None
 

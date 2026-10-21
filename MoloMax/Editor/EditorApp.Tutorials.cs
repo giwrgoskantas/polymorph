@@ -207,6 +207,8 @@ public sealed partial class EditorApp
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
+        T("TERRAIN 4 LAYERS: terrain material, PAINT TERRAIN LAYERS, paint texture 3 with the real mouse", TerrainLayerTest);
+        T("SCRIPT: C# scripting like bpy (create, mesh tools, materials, lights, private members, errors, undo, API)", ScriptTest);
         T("UPDATE: version compare, the green Update button and its window", UpdateUiTest);
         T("EYE REAL: Ctrl+click rows of game meshes, click an eye twice, slide the eyes (real mouse, Drawables)", EyeRealTest);
         T("MIDDLE HEAVY: Move tool, middle drag on empty space / other mesh / selected edge, heavy scene", MiddleHeavyTest);
@@ -1401,6 +1403,109 @@ public sealed partial class EditorApp
         HubOpen = false; checkOpen = false;
     }
 
+
+    IEnumerable<object> TerrainLayerTest()
+    {
+        Fresh(); paintMode = false; SculptMode = false; EndIsolate(); Maximized = true; ActiveViewport = 3; nav = NavMode.None;
+        yield return Frames(3);
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Shaded;
+        UI.ImGuiBackend.SyntheticInput = true;
+        var g = Prim(CreateKind.Plane, Vector3.Zero); g.Name = "terrain";
+        Do("ground", () => { g.Mesh = Primitives.Plane(10, 10, 40, 40); g.Touch(); });
+        SelectOnly(g); yield return Frames(2);
+        MakeTerrainMaterial(g); yield return Frames(2);
+        var tm = TerrainMaterialOf(g);
+        Expect(tm != null && tm.Shader.Contains("4lyr"), $"the material became a 4-layer terrain ({tm?.Shader})");
+        // what the PAINT TERRAIN LAYERS button does
+        brush.Radius = 0.08f; // the default, smaller than this ground's 0.25 m between vertices
+        StartTerrainPaint(g);
+        yield return Frames(4);
+        Note($"brush after PAINT TERRAIN LAYERS: {brush.Radius:0.00} m");
+        Expect(paintMode && terrainPaintLayer == 1, "PAINT TERRAIN LAYERS turns paint mode on with texture 2");
+        terrainPaintLayer = 2; // texture 3 = green
+        vp.Camera.Yaw = 0; vp.Camera.Pitch = 1.45f; vp.Camera.Frame(new Vector3(-5, -5, -0.5f), new Vector3(5, 5, 0.5f));
+        yield return Frames(6);
+        var a = ScreenOf(vp, new Vector3(-3, 0, 0)); var b = ScreenOf(vp, new Vector3(3, 0, 0));
+        foreach (var x in MouseTo(a, 8)) yield return x;
+        yield return Frames(3);
+        Note($"before the stroke: hover hit {paintHover.Hit}, paint doc {g.Paint != null}, level {Level}, current {Current?.Name}, tool {paintTool}, layer {terrainPaintLayer}, radius {brush.Radius:0.00}");
+        foreach (var x in DragTo(a, b, 30)) yield return x;
+        yield return Frames(6); g = Scene.Find(g.Id);
+        var f0 = g.Mesh.Faces[g.Mesh.Faces.Count / 2];
+        Note($"after: undo step '{Undo.UndoName}', faces with colour 1: {g.Mesh.Faces.Count(f => f.Col1 != null)}, centre face col1 {(f0.Col1 != null ? f0.Col1[0].ToString() : "null")}, col0 {f0.Col[0]}");
+        var mm = Scene.Material(f0.MatId);
+        Note($"material of the faces: {mm.Name} shader {mm.Shader}, same as the terrain one {ReferenceEquals(mm, TerrainMaterialOf(g))}");
+        int green = 0, other = 0;
+        foreach (var f in g.Mesh.Faces)
+            for (int i = 0; i < f.V.Length; i++)
+            {
+                var v = g.Mesh.Verts[f.V[i]];
+                bool onStroke = MathF.Abs(v.Y) < 0.3f && MathF.Abs(v.X) < 2.5f;
+                bool farAway = MathF.Abs(v.Y) > 3f;
+                var c = f.Col1 != null ? f.Col1[i] : Vector4.Zero;
+                if (onStroke && c.Y > 0.8f && c.Z < 0.2f) green++;
+                if (farAway && c.Y > 0.2f) other++;
+            }
+        Note($"vertex colour 1: {green} green corners on the stroke, {other} touched far from it");
+        Expect(green > 20, $"the stroke paints texture 3 (vertex colour 1 green) along the line ({green})");
+        Expect(other == 0, $"nothing painted far from the stroke ({other})");
+        yield return Shot("terrain_painted");
+        paintMode = false; yield return Frames(4); vp.Shading = ShadingMode.VertexColour; yield return Frames(4);
+        yield return Shot("terrain_vertex_colour_view");
+        vp.Shading = ShadingMode.Shaded; paintMode = true; yield return Frames(2);
+        // undo the stroke
+        DoUndo(); yield return Frames(4); g = Scene.Find(g.Id);
+        int left = g.Mesh.Faces.Sum(f => f.Col1?.Count(c => c.Y > 0.8f) ?? 0);
+        Note($"after Ctrl+Z: {left} green corners");
+        paintMode = false; terrainPaintLayer = -1;
+        UI.ImGuiBackend.SyntheticInput = false;
+    }
+
+    IEnumerable<object> ScriptTest()
+    {
+        Fresh();
+        int n0 = Scene.Objects.Count;
+        var r = RunCSharp(@"
+var floor = Create(""box"", new Vector3(0, 0, 0), ""room_floor"");
+var m = Primitives.Box(6, 4, 3);
+MeshOps.FlipAll(m);                       // a room: normals inward
+var room = Add(""room_01"", m, new Vector3(10, 0, 0));
+var mat = NewMaterial(""wall_paint"", ""molo_wall_01"");
+SetMaterial(room, mat);
+var light = AddLight(""spot"", new Vector3(10, 0, 2.5f));
+Select(room, floor);
+print(""objects"", scene.Objects.Count, ""room faces"", room.Mesh.Faces.Count);
+room.Mesh.Faces.Count");
+        Note($"run: ok {r.Ok}, {r.Ms} ms, out '{r.Output?.Trim()}', result {r.Result}, error {r.Error}");
+        Expect(r.Ok && r.Result == "6" && Scene.Objects.Count == n0 + 3, $"a script builds a box, a room (flipped), a material and a spot light ({Scene.Objects.Count - n0} new)");
+        var room = Scene.Objects.FirstOrDefault(o => o.Name.StartsWith("room_01"));
+        Expect(room != null && Scene.Material(room.Mesh.Faces[0].MatId)?.Name == "wall_paint", "the room got its material");
+        Expect(Scene.Objects.Any(o => o.GtaType == GtaObjectType.Light && o.Gta.Light?.Kind == GtaLightKind.Spot), "a spot light was added");
+        Expect(r.Output.Contains("objects"), "print() comes back in the output");
+        // private members of the editor through Invoke / Get
+        var r2 = RunCSharp(@"Invoke(""SetStatus"", ""hello from a script""); (string)Get(""status"")");
+        Expect(r2.Ok && r2.Result == "hello from a script", $"Invoke / Get reach private members ({r2.Result} {r2.Error})");
+        // errors: compile and runtime, the scene untouched
+        int n1 = Scene.Objects.Count;
+        var r3 = RunCSharp("var x = ;");
+        Expect(!r3.Ok && r3.Error.StartsWith("Compile error"), $"a compile error is reported ({r3.Error?.Split('\n')[0]})");
+        var r4 = RunCSharp(@"Find(""nothing_here"").Name");
+        Expect(!r4.Ok && r4.Error.Contains("NullReference"), $"a runtime error is reported ({r4.Error?.Split('\n')[0]})");
+        Expect(Scene.Objects.Count == n1, "errors leave the scene as it was");
+        // one run = one undo step
+        DoUndo(); DoUndo(); yield return Frames(2);
+        Note($"after 2 undos: {Scene.Objects.Count} objects (started with {n0})");
+        Expect(Scene.Objects.Count == n0, $"Ctrl+Z removes what a script made in one step ({Scene.Objects.Count} vs {n0})");
+        // through the API, like the MCP tool script_run
+        var api = Api.CallLocal("script.run", new System.Text.Json.Nodes.JsonObject { ["code"] = "Create(\"sphere\", new Vector3(0,5,0), \"ball\"); scene.Objects.Count" }) as ScriptRun;
+        Expect(api is { Ok: true } && Scene.Objects.Any(o => o.Name.StartsWith("ball")), $"script.run through the API works ({api?.Result} {api?.Error})");
+        // speed of a heavier script: 200 boxes
+        var r5 = RunCSharp("for (int i = 0; i < 200; i++) Add(\"crate_\" + i, Primitives.Box(0.5f, 0.5f, 0.5f), new Vector3(i % 20, i / 20, 0)); scene.Objects.Count");
+        Note($"200 boxes: {r5.Ms} ms, ok {r5.Ok}");
+        Expect(r5.Ok && r5.Ms < 3000, $"200 boxes in {r5.Ms} ms");
+        FrameAll(); yield return Frames(4);
+        yield return Shot("script");
+    }
 
     /// <summary>The update button: versions compared right, the button shows for a newer version, the window opens.</summary>
     IEnumerable<object> UpdateUiTest()
