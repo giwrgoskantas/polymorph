@@ -153,3 +153,7 @@ Copyright (c) 2006-2024 the contributors of the Python.NET project.
 ----------------------------------------------------------------------
 Roslyn (Microsoft.CodeAnalysis C# scripting) - MIT License
 Copyright (c) .NET Foundation and Contributors.
+
+----------------------------------------------------------------------
+ZstdSharp (ZstdSharp.Port, Zstandard decoder for SPZ splat files) - MIT License
+Copyright (c) 2021 Oleg Stepanischev. Zstandard: Copyright (c) Meta Platforms, Inc. and affiliates (BSD License).

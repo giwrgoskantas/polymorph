@@ -102,6 +102,7 @@ public sealed partial class EditorApp
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         if (ext == ".mmx") { if (ConfirmDiscard()) OpenFile(path); return; }
+        if (TryImportSplat(path, null)) return;
         if (MoloMax.Core.IO.ModelImporter.CanImport(path)) { ImportFilesAsync(new[] { path }); return; }
         if (ext is ".dds" or ".png" or ".jpg" or ".jpeg" or ".bmp")
         {
@@ -129,7 +130,7 @@ public sealed partial class EditorApp
     {
         using var d = new OpenFileDialog
         {
-            Filter = "All supported|*.glb;*.gltf;*.obj;*.ydr;*.ydd;*.yft;*.ybn;*.xml|GTA V (*.ydr;*.ydd;*.yft;*.ybn)|*.ydr;*.ydd;*.yft;*.ybn|CodeWalker XML (*.ydr.xml, *.yft.xml...)|*.xml|glTF binary (*.glb)|*.glb|glTF (*.gltf)|*.gltf|Wavefront OBJ (*.obj)|*.obj|All files (*.*)|*.*",
+            Filter = "All supported|*.glb;*.gltf;*.obj;*.ydr;*.ydd;*.yft;*.ybn;*.xml;*.ply;*.spz;*.splat|Gaussian splat scans (*.ply;*.spz;*.splat)|*.ply;*.spz;*.splat|GTA V (*.ydr;*.ydd;*.yft;*.ybn)|*.ydr;*.ydd;*.yft;*.ybn|CodeWalker XML (*.ydr.xml, *.yft.xml...)|*.xml|glTF binary (*.glb)|*.glb|glTF (*.gltf)|*.gltf|Wavefront OBJ (*.obj)|*.obj|All files (*.*)|*.*",
             Title = "Import model",
             Multiselect = true,
             InitialDirectory = Settings.LastFolder != null && Directory.Exists(Settings.LastFolder) ? Settings.LastFolder : "",
@@ -152,6 +153,11 @@ public sealed partial class EditorApp
     /// <summary>Imports a model file; its base lands on <paramref name="at"/> (default: the 3D cursor). Returns the new objects.</summary>
     public List<SceneObject> ImportFile(string path, Vector3? at = null, Quaternion? rot = null, Vector3? scale = null)
     {
+        if (TryImportSplat(path, at, wait: true))
+        {
+            var made = Scene.Objects.Where(x => string.Equals(x.SplatFile, path, StringComparison.OrdinalIgnoreCase)).OrderByDescending(x => x.Id).Take(1).ToList();
+            return made;
+        }
         MoloMax.Core.IO.ImportResult r;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try { r = MoloMax.Core.IO.ModelImporter.Import(path, ImportOpts()); }
@@ -177,6 +183,7 @@ public sealed partial class EditorApp
         foreach (var p in paths)
         {
             var path = p;
+            if (prepare == null && TryImportSplat(path, at)) continue;
             pendingImports.Add(new PendingImport
             {
                 Path = path, At = at, Rot = rot, Scale = scale, Sw = System.Diagnostics.Stopwatch.StartNew(),

@@ -202,6 +202,7 @@ public sealed partial class EditorApp : IDisposable
         gpu.BindBackBuffer();
         ctx.ClearRenderTargetView(gpu.BackBufferView, new SharpDX.Mathematics.Interop.RawColor4(0.27f, 0.27f, 0.27f, 1));
         renderer.UploadBudgetMs = MapMode ? 12 : 0; renderer.BeginFrameUploads();
+        PumpSplats(); splats?.BeginFrame();
         gpuTimer ??= new MoloMax.Rendering.GpuTimer(gpu.Device);
         gpuTimer.Begin(ctx);
         for (int i = 0; i < Viewports.Length; i++)
@@ -361,6 +362,7 @@ public sealed partial class EditorApp : IDisposable
             foreach (var o in Scene.Objects)
             {
                 if (o.Hidden || IsVolumeOnly(o)) continue;
+                if (o.SplatFile != null) { if (o.SplatCloud != null) splatDraws.Add(o); continue; } // scans: drawn after the transparent pass
                 if (o.Modifiers is not { Count: > 0 } && o.Mesh != null && o.Mesh.Verts.Count > 0)
                 {
                     var (bmn, bmx) = o.FastWorldBounds();
@@ -382,6 +384,7 @@ public sealed partial class EditorApp : IDisposable
         {
             renderer.DrawObject(Scene, o, true, Vector4.Zero, BackfaceCull);
         }
+        DrawSplats(vp);
 
         // wires, edges, selection, brackets, creation preview
         ctx.Rasterizer.State = renderer.LinesState;
@@ -400,7 +403,7 @@ public sealed partial class EditorApp : IDisposable
             bool editing = Level != SubObject.Object && o == cur;
             // object mode: a selected object gets an outline (its silhouette), not all its edges; Edged Faces (F4) shows the edges
             Vector4 selCol = o.Id == ActiveId ? Theme.ActiveWire : Theme.SelectWire;
-            if (sel && !editing && !wireOnly(vp) && !vp.EdgedFaces && o.Mesh != null)
+            if (sel && !editing && !wireOnly(vp) && !vp.EdgedFaces && o.Mesh != null && o.SplatFile == null)
             {
                 var obj = o;
                 outlineItems.Add(new OutlineRenderer.Item(o.Id, o.Version, o.World, () => obj.Evaluated(), selCol));
@@ -727,7 +730,7 @@ public sealed partial class EditorApp : IDisposable
 
     public void Dispose()
     {
-        lines.Dispose(); wires.Dispose(); outline.Dispose(); Api.Dispose();
+        lines.Dispose(); wires.Dispose(); outline.Dispose(); splats?.Dispose(); Api.Dispose();
         renderer.Dispose();
     }
 }

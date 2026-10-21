@@ -952,6 +952,49 @@ Console.WriteLine("Molo Tools");
         return r.Ok && loops.Count == 1 && lay.Portals.Count == 1 && p.RoomTo == 0
             && Near(p.Corners.Max(c => c.X) - p.Corners.Min(c => c.X), 1.2f) && Near(p.Corners.Max(c => c.Z), 2.3f);
     });
+    Check("splats: a 3DGS .ply and an SPZ v2 file read back the same centres, colours, opacity and shapes", () =>
+    {
+        var rnd = new Random(5);
+        var list = new List<(System.Numerics.Vector3, System.Numerics.Vector3, System.Numerics.Quaternion, System.Numerics.Vector3, float)>();
+        for (int i = 0; i < 500; i++)
+            list.Add((new(rnd.NextSingle() * 4 - 2, rnd.NextSingle() * 4 - 2, rnd.NextSingle() * 2), new(0.01f + rnd.NextSingle() * 0.1f, 0.02f, 0.05f),
+                System.Numerics.Quaternion.Normalize(new(rnd.NextSingle() - 0.5f, rnd.NextSingle() - 0.5f, rnd.NextSingle() - 0.5f, 1f)),
+                new(rnd.NextSingle(), rnd.NextSingle(), rnd.NextSingle()), 0.2f + rnd.NextSingle() * 0.7f));
+        var dir = Path.Combine(Path.GetTempPath(), "poly_splat_test"); Directory.CreateDirectory(dir);
+        var ply = Path.Combine(dir, "t.ply"); var spz = Path.Combine(dir, "t.spz");
+        MoloMax.Core.Splats.SplatCloud.WritePly(ply, list);
+        MoloMax.Core.Splats.SplatCloud.WriteSpzV2(spz, list);
+        var a = MoloMax.Core.Splats.SplatCloud.Load(ply); var b = MoloMax.Core.Splats.SplatCloud.Load(spz);
+        bool detect = MoloMax.Core.Splats.SplatCloud.IsSplatFile(ply) && MoloMax.Core.Splats.SplatCloud.IsSplatFile(spz);
+        float ep = 0, ec = 0, eo = 0, ecov = 0, ecovB = 0;
+        for (int i = 0; i < 500; i++)
+        {
+            var (pos, sc, rot, col, op) = list[i];
+            ep = MathF.Max(ep, MathF.Abs(a.Pos[i * 3] - pos.X)); ep = MathF.Max(ep, MathF.Abs(b.Pos[i * 3 + 2] - pos.Z));
+            ec = MathF.Max(ec, MathF.Abs(a.Rgba[i * 4 + 1] - col.Y)); ec = MathF.Max(ec, MathF.Abs(b.Rgba[i * 4] - col.X));
+            eo = MathF.Max(eo, MathF.Abs(a.Rgba[i * 4 + 3] - op)); eo = MathF.Max(eo, MathF.Abs(b.Rgba[i * 4 + 3] - op));
+            // trace of the covariance = sum of squared sizes, whatever the rotation
+            float tr = sc.X * sc.X + sc.Y * sc.Y + sc.Z * sc.Z;
+            ecov = MathF.Max(ecov, MathF.Abs(a.Cov[i * 6] + a.Cov[i * 6 + 3] + a.Cov[i * 6 + 5] - tr) / tr);
+            ecovB = MathF.Max(ecovB, MathF.Abs(b.Cov[i * 6] + b.Cov[i * 6 + 3] + b.Cov[i * 6 + 5] - tr) / tr);
+        }
+        Console.WriteLine($"       {a.Format} / {b.Format}: pos {ep:0.0000}, colour {ec:0.000}, opacity {eo:0.000}, size {ecov:0.0000} / {ecovB:0.000}");
+        return detect && a.Count == 500 && b.Count == 500 && ep < 0.001f && ec < 0.02f && eo < 0.01f && ecov < 1e-3f && ecovB < 0.15f;
+    });
+    Check("several doors on one wall: Room Builder cuts every opening, each a clean loop", () =>
+    {
+        var plan = new MoloMax.Core.Tools.RoomPlanData { Gap = 0.1f };
+        plan.Rooms.Add(new MoloMax.Core.Tools.PlanRoom { Name = "hall", X0 = 0, Y0 = 0, X1 = 11, Y1 = 1.5f, Height = 2.6f });
+        plan.Rooms.Add(new MoloMax.Core.Tools.PlanRoom { Name = "a", X0 = 0, Y0 = 1.5f, X1 = 5, Y1 = 5 });
+        plan.Rooms.Add(new MoloMax.Core.Tools.PlanRoom { Name = "b", X0 = 5, Y0 = 1.5f, X1 = 8, Y1 = 5 });
+        plan.Rooms.Add(new MoloMax.Core.Tools.PlanRoom { Name = "c", X0 = 8, Y0 = 1.5f, X1 = 11, Y1 = 5 });
+        foreach (var x in new[] { 2.5f, 6.5f, 9.5f }) plan.Openings.Add(new MoloMax.Core.Tools.PlanOpening { X = x, Y = 1.5f, Width = 0.9f, Height = 2.1f });
+        var b = MoloMax.Core.Tools.RoomPlanBuilder.Build(plan);
+        var hall = b.Rooms.First(r => r.Item1 == "hall").Item2;
+        var loops = MoloMax.Core.Gta.Export.MloLayout.BorderLoops(hall);
+        Console.WriteLine($"       hall: {loops.Count} openings, warnings {b.Warnings.Count}");
+        return loops.Count == 3 && b.Warnings.Count == 0 && loops.All(l => l.Count == 4);
+    });
     Check("sign glow: halo texture with a lit centre, plane behind the lettering facing the same way", () =>
     {
         var letters = Primitives.Box(2, 0.1f, 0.5f);

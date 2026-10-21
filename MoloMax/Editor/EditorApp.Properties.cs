@@ -220,6 +220,12 @@ public sealed partial class EditorApp
             if (Vec3Row("Scale", ref sc, 0.01f, "%.3f")) { var v = sc; Do("Scale", () => o.Scale = v); }
             Ui.TextDisabled("Mode: XYZ Euler");
         }
+        if (IsSplat(o))
+        {
+            SplatPanel(o);
+            if (Ui.Header("Visibility", Open)) { bool hs = o.Hidden; if (ImGui.Checkbox("Hide in Viewport", ref hs)) o.Hidden = hs; }
+            return;
+        }
         if (Ui.Header("Origin & Apply", Open))
         {
             float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;

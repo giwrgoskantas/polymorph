@@ -28,6 +28,8 @@ public static class SceneIO
         public GtaInfo Gta { get; set; }
         public string Tripo { get; set; }
         public string PaintFile { get; set; }
+        public string Splat { get; set; }
+        public SplatLook SplatLook { get; set; }
         public string Folder { get; set; }
         public int? Parent { get; set; }
         public List<MoloMax.Core.Modifiers.Modifier> Modifiers { get; set; }
@@ -90,13 +92,13 @@ public static class SceneIO
             return new ObjDto
             {
                 Id = o.Id, Name = o.Name, Pos = A(o.Position), Rot = new[] { o.Rotation.X, o.Rotation.Y, o.Rotation.Z, o.Rotation.W }, Scale = A(o.Scale),
-                Wire = A(o.WireColour), Hidden = o.Hidden, Frozen = o.Frozen, Folder = string.IsNullOrEmpty(o.Folder) ? null : o.Folder, Parent = o.ParentId >= 0 ? o.ParentId : null, Type = o.GtaType.ToString(), Gta = o.Gta, Tripo = o.TripoTaskId, PaintFile = o.PaintFile,
+                Wire = A(o.WireColour), Hidden = o.Hidden, Frozen = o.Frozen, Folder = string.IsNullOrEmpty(o.Folder) ? null : o.Folder, Parent = o.ParentId >= 0 ? o.ParentId : null, Type = o.GtaType.ToString(), Gta = o.Gta, Tripo = o.TripoTaskId, PaintFile = o.PaintFile, Splat = o.SplatFile, SplatLook = o.Splat,
                 Inst = o.InstanceKey, MeshOf = first.Id,
             };
         return new ObjDto
             {
                 Id = o.Id, Name = o.Name, Pos = A(o.Position), Rot = new[] { o.Rotation.X, o.Rotation.Y, o.Rotation.Z, o.Rotation.W }, Scale = A(o.Scale),
-                Wire = A(o.WireColour), Hidden = o.Hidden, Frozen = o.Frozen, Folder = string.IsNullOrEmpty(o.Folder) ? null : o.Folder, Parent = o.ParentId >= 0 ? o.ParentId : null, Type = o.GtaType.ToString(), Gta = o.Gta, Tripo = o.TripoTaskId, PaintFile = o.PaintFile, Modifiers = o.Modifiers?.Count > 0 ? o.Modifiers : null,
+                Wire = A(o.WireColour), Hidden = o.Hidden, Frozen = o.Frozen, Folder = string.IsNullOrEmpty(o.Folder) ? null : o.Folder, Parent = o.ParentId >= 0 ? o.ParentId : null, Type = o.GtaType.ToString(), Gta = o.Gta, Tripo = o.TripoTaskId, PaintFile = o.PaintFile, Splat = o.SplatFile, SplatLook = o.Splat, Modifiers = o.Modifiers?.Count > 0 ? o.Modifiers : null,
                 Inst = o.InstanceKey,
                 Mesh = PackMesh(o.Mesh),
             };
@@ -131,7 +133,7 @@ public static class SceneIO
                     Rotation = o.Rot != null ? new Quaternion(o.Rot[0], o.Rot[1], o.Rot[2], o.Rot[3]) : Quaternion.Identity,
                     Scale = o.Scale != null ? V3(o.Scale) : Vector3.One, WireColour = V3(o.Wire), Hidden = o.Hidden, Frozen = o.Frozen, Folder = o.Folder ?? "", ParentId = o.Parent ?? -1,
                     GtaType = Enum.TryParse<GtaObjectType>(o.Type, out var it) ? it : GtaObjectType.Drawable,
-                    Gta = o.Gta ?? new GtaInfo(), TripoTaskId = o.Tripo, PaintFile = o.PaintFile, Modifiers = o.Modifiers ?? new(), InstanceKey = o.Inst,
+                    Gta = o.Gta ?? new GtaInfo(), TripoTaskId = o.Tripo, PaintFile = o.PaintFile, SplatFile = o.Splat, Splat = o.SplatLook, Modifiers = o.Modifiers ?? new(), InstanceKey = o.Inst,
                 };
                 s.Objects.Add(inst); meshOfId[inst.Id] = inst;
                 if (o.MeshOf is int of) pending.Add((inst, of));
@@ -164,7 +166,7 @@ public static class SceneIO
                 Rotation = o.Rot != null ? new Quaternion(o.Rot[0], o.Rot[1], o.Rot[2], o.Rot[3]) : Quaternion.Identity,
                 Scale = o.Scale != null ? V3(o.Scale) : Vector3.One, WireColour = V3(o.Wire), Hidden = o.Hidden, Frozen = o.Frozen, Folder = o.Folder ?? "", ParentId = o.Parent ?? -1,
                 GtaType = Enum.TryParse<GtaObjectType>(o.Type, out var t) ? t : GtaObjectType.Drawable,
-                Gta = o.Gta ?? new GtaInfo(), TripoTaskId = o.Tripo, PaintFile = o.PaintFile, Modifiers = o.Modifiers ?? new(), InstanceKey = o.Inst,
+                Gta = o.Gta ?? new GtaInfo(), TripoTaskId = o.Tripo, PaintFile = o.PaintFile, SplatFile = o.Splat, Splat = o.SplatLook, Modifiers = o.Modifiers ?? new(), InstanceKey = o.Inst,
             });
             meshOfId[o.Id] = s.Objects[^1];
         }

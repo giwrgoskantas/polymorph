@@ -207,6 +207,7 @@ public sealed partial class EditorApp
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
+        T("SPLATS: Gaussian splat scans (.ply / .spz) import upright, draw sorted, keep their look, save and reload", SplatTest);
         T("MCP HOUSE: Claude's MCP server builds a classic house interior with Python (rooms, doors, windows, lights, GTA check)", McpHouseTest);
         T("TUTO 20 terrain painting: a game parking lot with 4 textures", TutTerrainPaint);
         T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
@@ -1411,6 +1412,86 @@ public sealed partial class EditorApp
     const string HouseScript = "import poly\nfrom MoloMax.Core.Tools import RoomPlanData, PlanRoom, PlanOpening\n\n# a classic house, one floor: living room, kitchen, hall, two bedrooms, bathroom (metres)\nplan = RoomPlanData()\nplan.Gap = 0.1  # Molo rule: rooms never touch, a passage links them\ndef room(name, x0, y0, x1, y1, h=2.8):\n    r = PlanRoom(); r.Name = name; r.X0 = x0; r.Y0 = y0; r.X1 = x1; r.Y1 = y1; r.Height = h\n    plan.Rooms.Add(r)\ndef opening(x, y, w=0.9, h=2.1, sill=0.0):\n    o = PlanOpening(); o.X = x; o.Y = y; o.Width = w; o.Height = h; o.Sill = sill\n    plan.Openings.Add(o)\n\nroom(\"living_room\", 0, 0, 7, 5)\nroom(\"kitchen\", 7, 0, 11, 5)\nroom(\"hall\", 0, 5, 11, 6.5, 2.6)\nroom(\"bedroom_01\", 0, 6.5, 5, 10.5)\nroom(\"bathroom\", 5, 6.5, 8, 9.5)\nroom(\"bedroom_02\", 8, 6.5, 11, 10.5)\n\nopening(0, 2.5, 1.0, 2.2)              # front door\nopening(7, 2.5, 1.4, 2.2)              # living <-> kitchen\nopening(3.5, 5, 1.2, 2.2)              # living <-> hall\nopening(9, 5, 0.9, 2.1)                # kitchen <-> hall\nopening(2.5, 6.5); opening(6.5, 6.5); opening(9.5, 6.5)   # hall <-> bedrooms / bathroom\nopening(3.5, 0, 1.8, 1.3, 0.9)         # windows\nopening(11, 2.5, 1.2, 1.1, 1.0)\nopening(2.5, 10.5, 1.6, 1.3, 0.9)\nopening(9.5, 10.5, 1.4, 1.3, 0.9)\n\npoly.context.scene.Plan = plan\npoly.invoke(\"BuildPlan\")\n\nrooms = [o for o in poly.objects() if o.GtaType == poly.GtaObjectType.MloRoom]\nfor r in rooms:\n    lo, hi = r.WorldBounds().Item1, r.WorldBounds().Item2\n    poly.add_light(\"point\", ((lo.X + hi.X) / 2, (lo.Y + hi.Y) / 2, hi.Z - 0.35))\nprint(\"rooms:\", len(rooms), \"| objects:\", len(poly.objects()))\nprint(\"\\n\".join(\"%s: %d faces\" % (o.Name, o.Mesh.Faces.Count) for o in rooms))\n";
 
     /// <summary>The real MCP server (python/polymorph_mcp.py on the embedded Python) talks to this Polymorph like Claude does.</summary>
+    IEnumerable<object> SplatTest()
+    {
+        Fresh(); Maximized = true; ActiveViewport = 3;
+        // a small fake scan, written like real captures (Y down, Z forward): floor, back wall, a red ball, a blue box
+        var rnd = new Random(3);
+        var list = new List<(Vector3, Vector3, Quaternion, Vector3, float)>();
+        Vector3 File(Vector3 z) => new(z.X, -z.Z, z.Y);
+        for (int i = 0; i < 40000; i++)
+        {
+            float x = rnd.NextSingle() * 6 - 3, y = rnd.NextSingle() * 6 - 3;
+            bool chk = ((int)MathF.Floor(x) + (int)MathF.Floor(y)) % 2 == 0;
+            list.Add((File(new(x, y, 0)), new(0.04f, 0.04f, 0.004f), Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2), chk ? new(0.85f, 0.8f, 0.7f) : new(0.35f, 0.3f, 0.28f), 0.95f));
+        }
+        for (int i = 0; i < 20000; i++)
+            list.Add((File(new(rnd.NextSingle() * 6 - 3, 3, rnd.NextSingle() * 2.6f)), new(0.04f, 0.04f, 0.004f), Quaternion.Identity, new(0.9f, 0.88f, 0.82f), 0.95f));
+        for (int i = 0; i < 15000; i++)
+        {
+            var d = Vector3.Normalize(new(rnd.NextSingle() - 0.5f, rnd.NextSingle() - 0.5f, rnd.NextSingle() - 0.5f));
+            list.Add((File(new Vector3(-0.8f, 0.5f, 0.6f) + d * 0.6f), new(0.03f), Quaternion.Identity, new(0.85f, 0.15f, 0.1f), 0.9f));
+        }
+        for (int i = 0; i < 15000; i++)
+        {
+            var q = new Vector3(rnd.NextSingle() - 0.5f, rnd.NextSingle() - 0.5f, rnd.NextSingle() - 0.5f);
+            int ax = rnd.Next(3); q = ax switch { 0 => q with { X = MathF.Sign(q.X) * 0.5f }, 1 => q with { Y = MathF.Sign(q.Y) * 0.5f }, _ => q with { Z = MathF.Sign(q.Z) * 0.5f } };
+            list.Add((File(new Vector3(1.2f, 0.2f, 0.5f) + q), new(0.03f), Quaternion.Identity, new(0.15f, 0.3f, 0.85f), 0.9f));
+        }
+        // haze: faint floaters around the scan
+        for (int i = 0; i < 3000; i++)
+            list.Add((File(new(rnd.NextSingle() * 10 - 5, rnd.NextSingle() * 10 - 5, rnd.NextSingle() * 5)), new(0.15f), Quaternion.Identity, new(0.7f, 0.75f, 0.8f), 0.04f));
+        Directory.CreateDirectory(StPath("scene"));
+        var ply = StPath("scene", "scan_room.ply"); var spz = StPath("scene", "scan_room.spz");
+        MoloMax.Core.Splats.SplatCloud.WritePly(ply, list);
+        MoloMax.Core.Splats.SplatCloud.WriteSpzV2(spz, list.Select(t => (new Vector3(t.Item1.X, -t.Item1.Y, -t.Item1.Z), t.Item2, Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI) * t.Item3, t.Item4, t.Item5)).ToList() /* SPZ is right / up / back */);
+        Cursor3D = Vector3.Zero;
+        var made = ImportFile(ply);
+        var o = made.FirstOrDefault();
+        Expect(o != null && o.SplatCloud != null && o.SplatCloud.Count == list.Count, $"the .ply scan imports as one object ({o?.SplatCloud?.Count} splats)");
+        if (o == null) yield break;
+        var (wmn, wmx) = o.WorldBounds();
+        Note($"scan box {wmn} .. {wmx}");
+        Expect(MathF.Abs(wmn.Z) < 0.05f && wmx.Z > 2.2f && wmx.Z < 4f && wmx.X - wmn.X > 5f, "upright: floor on the ground, wall 2.6 m up");
+        Expect(o.Gta.Role == GtaRole.Ignore && o.Mesh.Faces.Count == 0, "never exported, nothing to click by mistake");
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic; InteriorLight = false; Hour = 13;
+        vp.Camera.Target = new Vector3(0, 0.5f, 0.8f); vp.Camera.Distance = 6.5f; vp.Camera.Yaw = -1.9f; vp.Camera.Pitch = 0.45f;
+        Selected.Clear(); ActiveId = -1;
+        yield return Frames(20);
+        Expect(splats != null && splats.Drawn >= list.Count, $"drawn on the graphics card ({splats?.Drawn} splats last frame)");
+        yield return Shot("scan_view");
+        o.Splat.MinOpacity = 0.1f; yield return Frames(6); yield return Shot("scan_clean_haze");
+        // a box mesh standing in the scan: the scan must sit behind / in front of it correctly (depth)
+        var box = Scene.Add("blockout_box", MoloMax.Core.Mesh.Primitives.Box(1, 1, 1), new Vector3(0.2f, -1.2f, 0));
+        yield return Frames(8); yield return Shot("scan_with_mesh");
+        // orbit: the order is rebuilt in the background
+        for (int k = 0; k < 20; k++) { vp.Camera.Yaw += 0.15f; yield return Frames(2); }
+        yield return Shot("scan_orbit");
+        // the SPZ copy
+        var o2 = ImportFile(spz, new Vector3(8, 0, 0)).FirstOrDefault();
+        Expect(o2?.SplatCloud != null && o2.SplatCloud.Format.StartsWith("SPZ"), $"the .spz copy imports too ({o2?.SplatCloud?.Format})");
+        if (o2 != null)
+        {
+            var (a2, b2) = o2.WorldBounds();
+            Note($"spz box {a2} .. {b2}");
+            Expect(MathF.Abs(a2.Z) < 0.05f && b2.Z > 2.2f && b2.Z < 4f, "the SPZ copy is upright too");
+        }
+        // look settings and the file survive save + open
+        o.Splat.Size = 0.7f; o.Splat.Opacity = 0.6f; o.Splat.Crop = true;
+        var scenePath = StPath("scene", "scan_scene.mmx");
+        CurrentFile = scenePath; Save(false);
+        OpenFile(scenePath);
+        yield return Until(() => Scene.Objects.Where(x => x.SplatFile != null).All(x => x.SplatCloud != null), 60);
+        var back = Scene.Objects.FirstOrDefault(x => x.SplatFile == ply);
+        Expect(back != null && back.SplatCloud != null && Math.Abs(back.Splat.Size - 0.7f) < 1e-4f && back.Splat.Crop, "saved and opened again: scan reloaded with its look");
+        // undo of the import
+        int n0 = Scene.Objects.Count;
+        Selected.Clear(); if (back != null) { Selected.Add(back.Id); ActiveId = back.Id; }
+        if (back != null) { vp.Camera.Target = new Vector3(0, 0.5f, 0.8f); vp.Camera.Distance = 6.5f; vp.Camera.Yaw = -1.9f; vp.Camera.Pitch = 0.45f; }
+        yield return Frames(10);
+        yield return Shot("scan_panel");
+    }
+
     IEnumerable<object> McpHouseTest()
     {
         Fresh(); Maximized = true; ActiveViewport = 3;

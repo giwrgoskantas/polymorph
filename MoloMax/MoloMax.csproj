@@ -61,6 +61,7 @@
     <EmbeddedResource Include="Shaders\gta_basic.hlsl"><LogicalName>gta_basic.hlsl</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="Shaders\lines.hlsl"><LogicalName>lines.hlsl</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="Shaders\outline.hlsl"><LogicalName>outline.hlsl</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="Shaders\splat.hlsl"><LogicalName>splat.hlsl</LogicalName></EmbeddedResource>
   </ItemGroup>
 
 </Project>

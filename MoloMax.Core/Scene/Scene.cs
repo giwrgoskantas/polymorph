@@ -207,6 +207,23 @@ public sealed class GtaProjectSettings
     public GtaProjectSettings Clone() => (GtaProjectSettings)MemberwiseClone();
 }
 
+/// <summary>How a splat capture is drawn (simple settings).</summary>
+public sealed class SplatLook
+{
+    /// <summary>Size of the blobs (1 = as captured).</summary>
+    public float Size = 1f;
+    /// <summary>Opacity (1 = as captured).</summary>
+    public float Opacity = 1f;
+    /// <summary>Brightness (1 = as captured).</summary>
+    public float Brightness = 1f;
+    /// <summary>Hide splats fainter than this (0..1): cleans the haze around a capture.</summary>
+    public float MinOpacity = 0.05f;
+    /// <summary>Keep only what is inside the box (the object's box, see Crop).</summary>
+    public bool Crop;
+    public System.Numerics.Vector3 CropMin, CropMax;
+    public SplatLook Clone() => (SplatLook)MemberwiseClone();
+}
+
 /// <summary>One node in the scene: an Editable Poly with a transform (3ds Max object).</summary>
 public sealed class SceneObject
 {
@@ -229,6 +246,10 @@ public sealed class SceneObject
     /// <summary>Molo Paint texture set (layers), saved next to the scene in <see cref="PaintFile"/>.</summary>
     [System.Text.Json.Serialization.JsonIgnore] public Paint.PaintDoc Paint;
     public string PaintFile;
+    /// <summary>Gaussian splat capture shown by this object (.ply / .spz / .splat), or null. The mesh is then only its box.</summary>
+    public string SplatFile;
+    public SplatLook Splat;
+    [System.Text.Json.Serialization.JsonIgnore] public global::MoloMax.Core.Splats.SplatCloud SplatCloud;
     /// <summary>Instance group (3ds Max instance / Blender linked duplicate): objects with the same key share one mesh,
     /// its modifiers and its paint. Null = a unique object. GTA export writes the model once and places it several times.</summary>
     public string InstanceKey;
@@ -340,7 +361,7 @@ public sealed class SceneObject
     {
         Id = Id, Name = Name, Mesh = mesh ?? Mesh.Clone(), Position = Position, Rotation = Rotation, Scale = Scale,
         WireColour = WireColour, Hidden = Hidden, Frozen = Frozen, Folder = Folder, ParentId = ParentId, GtaType = GtaType, Version = Version,
-        Gta = (Gta ?? new GtaInfo()).Clone(), TripoTaskId = TripoTaskId, Paint = Paint, PaintFile = PaintFile, InstanceKey = InstanceKey, UvRow0 = UvRow0, UvRow1 = UvRow1,
+        Gta = (Gta ?? new GtaInfo()).Clone(), TripoTaskId = TripoTaskId, Paint = Paint, PaintFile = PaintFile, SplatFile = SplatFile, Splat = Splat?.Clone(), SplatCloud = SplatCloud, InstanceKey = InstanceKey, UvRow0 = UvRow0, UvRow1 = UvRow1,
         Modifiers = (Modifiers ?? new()).Select(m => m.Clone()).ToList(),
         ModEdit = ModEdit == null ? null : new ModEditState { Base = ModEdit.Base, All = ModEdit.All.Select(m => m.Clone()).ToList(), Index = ModEdit.Index },
     };
