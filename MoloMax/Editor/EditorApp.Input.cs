@@ -50,7 +50,7 @@ public sealed partial class EditorApp
     // ---------------------------------------------------------------- pivot / gizmo placement
 
     (int, int, long) pivotKey; Vector3 pivotLocal;
-    (int Obj, long Topo, SubObject Level, long Sig, int Frame) ptsKey; HashSet<int> ptsCache = new(); long ptsSig;
+    (int Obj, long Topo, SubObject Level, long Sig, int Frame, int Count) ptsKey; HashSet<int> ptsCache = new(); long ptsSig;
     /// <summary>Changes when the polygons change (not when points only move): mesh object, counts, a few polygon sizes.</summary>
     static long TopoSig(PolyMesh m)
     {
@@ -66,12 +66,14 @@ public sealed partial class EditorApp
     {
         int frame = ImGui.GetFrameCount();
         long topo = TopoSig(cur.Mesh);
-        if (ptsKey.Obj == cur.Id && ptsKey.Frame == frame && ptsKey.Level == Level && ptsKey.Topo == topo) return ptsCache;
         var s = SubSel(cur);
+        // same frame: only the size of the set is compared (a selection changed by code within the frame still shows)
+        int count = Level switch { SubObject.Vertex => s.Verts.Count, SubObject.Edge or SubObject.Border => s.Edges.Count, _ => s.Faces.Count };
+        if (ptsKey.Obj == cur.Id && ptsKey.Frame == frame && ptsKey.Level == Level && ptsKey.Topo == topo && ptsKey.Count == count) return ptsCache;
         long sig = Level switch { SubObject.Vertex => SetSig(s.Verts), SubObject.Edge or SubObject.Border => SetSig(s.Edges), _ => SetSig(s.Faces) } ^ (long)Level << 56;
-        if (ptsKey.Obj == cur.Id && ptsKey.Topo == topo && ptsKey.Level == Level && ptsKey.Sig == sig) { ptsKey.Frame = frame; return ptsCache; }
+        if (ptsKey.Obj == cur.Id && ptsKey.Topo == topo && ptsKey.Level == Level && ptsKey.Sig == sig) { ptsKey.Frame = frame; ptsKey.Count = count; return ptsCache; }
         ptsCache = s.VerticesOf(cur.Mesh, Level);
-        ptsKey = (cur.Id, topo, Level, sig, frame); ptsSig = sig;
+        ptsKey = (cur.Id, topo, Level, sig, frame, count); ptsSig = sig;
         return ptsCache;
     }
 

@@ -261,8 +261,9 @@ public sealed partial class EditorApp
         // the modal tool itself (Ctrl+B): starts and cancels without breaking the mesh
         var e1 = b.Mesh.AllEdges().First(); SubSel(b).Edges.Add(e1);
         BeginModal(ModalKind.Chamfer);
+        bool started = ModalActive; string st0 = status;
         yield return Frames(3);
-        Expect(ModalActive, "Ctrl+B modal started");
+        Expect(ModalActive, $"Ctrl+B modal started (right after: {started}, level {Level}, edges {SubSel(b).Edges.Count}, status '{st0}' / '{status}')");
         CancelModal();
         Expect(!ModalActive && b.Mesh.Faces.Count == 26, "modal cancelled, mesh unchanged");
         SetLevel(SubObject.Object);

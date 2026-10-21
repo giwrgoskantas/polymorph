@@ -1645,6 +1645,7 @@ public sealed partial class EditorApp
         Expect(eb.Faces.Count == 6 && eb.IsClosedManifold(out _) && ec.IsClosedManifold(out _) && Scene.Find(box.Id).Mesh.Faces.Count > 300, $"Clean Up: box -> {eb.Faces.Count} faces, cylinder -> {ec.Faces.Count}, base meshes untouched");
         SelectOnly(Scene.Find(box.Id)); yield return Frames(10);
         yield return Shot("cleanup_after");
+        DoUndo(); yield return Frames(2); // first Ctrl+Z: the selection change (box only) comes back to box + cylinder
         DoUndo(); yield return Frames(10);
         Expect(!Scene.Find(box.Id).Modifiers.OfType<CleanUpModifier>().Any(), "undo removes the clean up");
     }
