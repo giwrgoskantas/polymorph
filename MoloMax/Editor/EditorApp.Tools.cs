@@ -143,7 +143,7 @@ public sealed partial class EditorApp
         string msg = null;
         Do(door ? "Cut Doorway" : "Cut Window", () =>
         {
-            var r = Doorway.Cut(cur.Mesh, face, w, h, offset, sill);
+            var r = Doorway.Cut(cur.Mesh, face, w, h, offset + Doorway.MidShift(cur.Mesh, face), sill);
             msg = r.Message;
             if (!r.Ok) return;
             SubSel(cur).Clear();

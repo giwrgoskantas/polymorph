@@ -207,6 +207,8 @@ public sealed partial class EditorApp
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
+        T("MCP HOUSE: Claude's MCP server builds a classic house interior with Python (rooms, doors, windows, lights, GTA check)", McpHouseTest);
+        T("TUTO 20 terrain painting: a game parking lot with 4 textures", TutTerrainPaint);
         T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
         T("TERRAIN 4 LAYERS: terrain material, PAINT TERRAIN LAYERS, paint texture 3 with the real mouse", TerrainLayerTest);
         T("PYTHON: embedded Python like bpy (import poly, objects, mesh tools, materials, lights, errors, undo, API, add-ons, editor window)", PythonTest);
@@ -1405,6 +1407,156 @@ public sealed partial class EditorApp
         HubOpen = false; checkOpen = false;
     }
 
+
+    const string HouseScript = "import poly\nfrom MoloMax.Core.Tools import RoomPlanData, PlanRoom, PlanOpening\n\n# a classic house, one floor: living room, kitchen, hall, two bedrooms, bathroom (metres)\nplan = RoomPlanData()\nplan.Gap = 0.1  # Molo rule: rooms never touch, a passage links them\ndef room(name, x0, y0, x1, y1, h=2.8):\n    r = PlanRoom(); r.Name = name; r.X0 = x0; r.Y0 = y0; r.X1 = x1; r.Y1 = y1; r.Height = h\n    plan.Rooms.Add(r)\ndef opening(x, y, w=0.9, h=2.1, sill=0.0):\n    o = PlanOpening(); o.X = x; o.Y = y; o.Width = w; o.Height = h; o.Sill = sill\n    plan.Openings.Add(o)\n\nroom(\"living_room\", 0, 0, 7, 5)\nroom(\"kitchen\", 7, 0, 11, 5)\nroom(\"hall\", 0, 5, 11, 6.5, 2.6)\nroom(\"bedroom_01\", 0, 6.5, 5, 10.5)\nroom(\"bathroom\", 5, 6.5, 8, 9.5)\nroom(\"bedroom_02\", 8, 6.5, 11, 10.5)\n\nopening(0, 2.5, 1.0, 2.2)              # front door\nopening(7, 2.5, 1.4, 2.2)              # living <-> kitchen\nopening(3.5, 5, 1.2, 2.2)              # living <-> hall\nopening(9, 5, 0.9, 2.1)                # kitchen <-> hall\nopening(2.5, 6.5); opening(6.5, 6.5); opening(9.5, 6.5)   # hall <-> bedrooms / bathroom\nopening(3.5, 0, 1.8, 1.3, 0.9)         # windows\nopening(11, 2.5, 1.2, 1.1, 1.0)\nopening(2.5, 10.5, 1.6, 1.3, 0.9)\nopening(9.5, 10.5, 1.4, 1.3, 0.9)\n\npoly.context.scene.Plan = plan\npoly.invoke(\"BuildPlan\")\n\nrooms = [o for o in poly.objects() if o.GtaType == poly.GtaObjectType.MloRoom]\nfor r in rooms:\n    lo, hi = r.WorldBounds().Item1, r.WorldBounds().Item2\n    poly.add_light(\"point\", ((lo.X + hi.X) / 2, (lo.Y + hi.Y) / 2, hi.Z - 0.35))\nprint(\"rooms:\", len(rooms), \"| objects:\", len(poly.objects()))\nprint(\"\\n\".join(\"%s: %d faces\" % (o.Name, o.Mesh.Faces.Count) for o in rooms))\n";
+
+    /// <summary>The real MCP server (python/polymorph_mcp.py on the embedded Python) talks to this Polymorph like Claude does.</summary>
+    IEnumerable<object> McpHouseTest()
+    {
+        Fresh(); Maximized = true; ActiveViewport = 3;
+        var py = Path.Combine(PyEmbedFolder, "python.exe");
+        var mcp = Path.Combine(PythonFolder, "polymorph_mcp.py");
+        Expect(File.Exists(py) && File.Exists(mcp), "embedded Python and the MCP server are next to the app");
+        if (!File.Exists(py) || !File.Exists(mcp)) yield break;
+        var replies = new List<string>(); string err = ""; int exit = -1;
+        var reqs = new List<string>
+        {
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"selftest\",\"version\":\"1\"}}}",
+            "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}",
+            System.Text.Json.JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 3, method = "tools/call", @params = new { name = "script_run", arguments = new { code = HouseScript } } }),
+            "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"gta_check\",\"arguments\":{}}}",
+        };
+        var run = System.Threading.Tasks.Task.Run(() =>
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(py, "-u \"" + mcp + "\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            psi.Environment["POLYMORPH_PORT"] = Api.Port.ToString(); psi.Environment["POLYMORPH_TOKEN"] = Api.Token; psi.Environment["PYTHONIOENCODING"] = "utf-8";
+            using var p = System.Diagnostics.Process.Start(psi);
+            foreach (var r in reqs)
+            {
+                p.StandardInput.WriteLine(r); p.StandardInput.Flush();
+                if (r.Contains("\"id\"")) { var line = p.StandardOutput.ReadLine(); if (line == null) break; lock (replies) replies.Add(line); }
+            }
+            p.StandardInput.Close();
+            err = p.StandardError.ReadToEnd();
+            p.WaitForExit(20000); exit = p.HasExited ? p.ExitCode : -2;
+        });
+        yield return Until(() => run.IsCompleted, 180);
+        Note($"MCP server: {replies.Count} replies, exit {exit}{(string.IsNullOrWhiteSpace(err) ? "" : ", stderr: " + err.Trim().Split('\n').Last())}");
+        string R(int i) => i < replies.Count ? replies[i] : "";
+        Expect(R(0).Contains("protocolVersion"), "initialize answered");
+        Expect(R(1).Contains("script_run") && R(1).Contains("gta_check"), "tools/list has script_run and gta_check");
+        Note("script_run: " + R(2)[..Math.Min(R(2).Length, 900)]);
+        Expect(R(2).Contains("rooms: 6") && !R(2).Contains("\"isError\": true") && !R(2).Contains("\"isError\":true"), "script_run built the 6 rooms");
+        Note("gta_check: " + R(3)[..Math.Min(R(3).Length, 1500)]);
+        var rooms = Scene.Objects.Where(o => o.GtaType == GtaObjectType.MloRoom).ToList();
+        Expect(rooms.Count == 6, $"6 rooms ({rooms.Count})");
+        Expect(!R(3).Contains("not a closed cube") && !R(3).Contains("has no opening"), "GTA check: every room closed, every doorway cut on both sides");
+        Expect(Scene.Objects.Count(o => o.GtaType == GtaObjectType.Light) == 6, "a light in every room");
+        // photos: from above, then inside the living room and the hall
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic; InteriorLight = true;
+        FrameAll(vp); vp.Camera.Yaw = -2.3f; vp.Camera.Pitch = 0.9f; yield return Frames(15);
+        yield return Shot("house_top");
+        foreach (var name in new[] { "living_room", "kitchen", "hall", "bedroom_01" })
+        {
+            var r = rooms.FirstOrDefault(o => o.Name.StartsWith(name)); if (r == null) continue;
+            var (mn, mx) = r.WorldBounds();
+            var c = (mn + mx) * 0.5f; c.Z = mn.Z + 1.6f;
+            vp.Camera.Target = c; vp.Camera.Distance = 0.3f; vp.Camera.Pitch = 0.05f; vp.Camera.Yaw = name == "hall" ? 0f : -2.4f;
+            yield return Frames(12);
+            yield return Shot("house_in_" + name);
+        }
+        InteriorLight = false;
+    }
+
+    IEnumerable<object> TutTerrainPaint()
+    {
+        Fresh(); paintMode = false; SculptMode = false; EndIsolate(); Maximized = true; ActiveViewport = 3;
+        var folder = Settings.GtaFolder ?? @"C:\Program Files\Rockstar Games\Grand Theft Auto V Legacy";
+        if (game == null) { StartGameLoad(folder); yield return Until(() => game != null || gameError != null, 600); }
+        if (game == null) { Note("no game: " + gameError); yield break; }
+        var asset = game.Search("bh1_rd2_carpark2", ydr: true, yft: false, ydd: false).FirstOrDefault();
+        Expect(asset != null, "bh1_rd2_carpark2 found in the game files");
+        if (asset == null) yield break;
+        GameImport(asset, null);
+        yield return Until(() => pendingImports.Count == 0, 120);
+        gameOpen = false;
+        var ground = Scene.Objects.Where(o => o.Mesh != null && o.Mesh.Faces.Count > 0 && TerrainMaterialOf(o) != null).OrderByDescending(o => o.Mesh.Faces.Count).FirstOrDefault();
+        Expect(ground != null, $"the parking has a 4-layer terrain mesh ({ground?.Name})");
+        if (ground == null) yield break;
+        var tm = TerrainMaterialOf(ground);
+        Note($"terrain {tm.Name}: {string.Join(", ", Enumerable.Range(0, 4).Select(i => Path.GetFileNameWithoutExtension(tm.Layer(i) ?? "-")))}");
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic; InteriorLight = false; Hour = 13;
+        var (mn, mx) = ground.WorldBounds();
+        vp.Camera.Frame(mn, mx); vp.Camera.Yaw = -2.0f; vp.Camera.Pitch = 0.95f; vp.Camera.Distance *= 0.42f;
+        SelectOnly(ground); Tool = Tool.Select;
+        yield return Settle(() => renderer.Textures.Pending == 0, 20);
+        yield return Frames(20);
+        // points on the ground, upward faces only, picked on screen (what the brush will really hit)
+        var m = ground.Mesh; var w = ground.World;
+        Vector2? GroundAt(float fx, float fy)
+        {
+            var p = new Vector3(mn.X + (mx.X - mn.X) * fx, mn.Y + (mx.Y - mn.Y) * fy, mx.Z + 5);
+            var hit = Picking.PickFace(ground, new Ray(p, -Vector3.UnitZ));
+            if (!hit.HasValue) return null;
+            var s2 = ScreenOf(vp, hit.Value.Point);
+            return s2.X > vp.X + 40 && s2.X < vp.X + vp.W - 40 && s2.Y > vp.Y + 40 && s2.Y < vp.Y + vp.H - 40 ? s2 : null;
+        }
+        List<Vector2> Pts(params (float, float)[] pts) => pts.Select(t => GroundAt(t.Item1, t.Item2)).Where(v => v.HasValue).Select(v => v.Value).ToList();
+        IEnumerable<object> Stroke(List<Vector2> pts)
+        {
+            if (pts.Count < 2) yield break;
+            foreach (var x in MouseTo(pts[0], 14)) yield return x;
+            yield return Frames(3);
+            PostMouse(0x201, pts[0], 1); tutClick = 0.35f; yield return Frames(3);
+            for (int i = 1; i < pts.Count; i++) foreach (var x in MouseTo(pts[i], 18, 1)) yield return x;
+            yield return Frames(3);
+            PostMouse(0x202, pts[^1], 0); yield return Frames(10);
+        }
+        foreach (var x in StartFilm("20_terrain_paint", 6)) yield return x;
+        foreach (var x in Say("Terrain painting: 4 textures", "A real GTA V parking lot (bh1_rd2_carpark2), shader terrain_cb_w_4lyr", 80)) yield return x;
+        // 1. paint panel
+        foreach (var x in Say("Select the ground, open Paint", "Polymorph sees its terrain material by itself")) yield return x;
+        propTab = PropTab.Paint; ShowPanel = true; yield return Frames(25);
+        foreach (var x in ClickAt(TutCentre("terrain_start"))) yield return x;
+        if (!(paintMode && terrainPaintLayer >= 0)) StartTerrainPaint(ground);
+        brush.Radius = 4.5f; brush.Strength = 1f; brush.Hardness = 0.6f;
+        yield return Frames(30);
+        // 2. texture 2
+        foreach (var x in Say("Pick a texture, paint where it shows", "Texture 2: worn tarmac")) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl1"))) yield return x;
+        terrainPaintLayer = 1;
+        foreach (var x in Stroke(Pts((0.2f, 0.3f), (0.4f, 0.35f), (0.6f, 0.3f), (0.8f, 0.35f)))) yield return x;
+        // 3. texture 3
+        foreach (var x in Say("Texture 3", "Strokes blend smoothly with the brush hardness")) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl2"))) yield return x;
+        terrainPaintLayer = 2;
+        foreach (var x in Stroke(Pts((0.25f, 0.55f), (0.45f, 0.65f), (0.65f, 0.55f)))) yield return x;
+        // 4. texture 4
+        foreach (var x in Say("Texture 4", "Concrete patches, oil stains, wear: like the game")) yield return x;
+        foreach (var x in ClickAt(TutCentre("tl3"))) yield return x;
+        terrainPaintLayer = 3;
+        foreach (var x in Stroke(Pts((0.5f, 0.75f), (0.55f, 0.8f), (0.6f, 0.75f)))) yield return x;
+        foreach (var x in Stroke(Pts((0.75f, 0.6f), (0.8f, 0.65f)))) yield return x;
+        int green = m.Faces.Sum(f => f.Col1?.Count(c => c.Y > 0.5f || c.Z > 0.5f) ?? 0);
+        Expect(green > 30, $"the strokes changed the layers ({green} corners on textures 2-4)");
+        // where each texture is: the colour 1 view (black 1, blue 2, green 3, cyan 4)
+        foreach (var x in Say("See where each texture goes", "Vertex colour view: black 1, blue 2, green 3, cyan 4", 20)) yield return x;
+        var keepShade = vp.Shading; shadingBeforeVertex = null; vp.Shading = ShadingMode.VertexColour;
+        paintMode = false; yield return Frames(75);
+        vp.Shading = keepShade; paintMode = true; yield return Frames(30);
+        // 5. size and undo
+        foreach (var x in Say("Ctrl+Z undoes the last stroke", "[ and ] change the brush size")) yield return x;
+        KeyDownT(Keys.ControlKey); yield return Frames(4);
+        foreach (var x in Tap(Keys.Z)) yield return x;
+        KeyUpT(Keys.ControlKey);
+        yield return Frames(30);
+        foreach (var x in Say("Export as usual: vertex colour 1 goes to the game", "The terrain shader stays, nothing to set up", 80)) yield return x;
+        var vp2 = Viewports[ActiveViewport];
+        for (int i = 0; i < 90; i++) { vp2.Camera.Orbit(1.2f, 0); yield return Frames(1); }
+        foreach (var x in EndFilm()) yield return x;
+        paintMode = false; terrainPaintLayer = -1;
+    }
 
     IEnumerable<object> TerrainScout()
     {

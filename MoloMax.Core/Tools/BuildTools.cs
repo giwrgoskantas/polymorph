@@ -93,7 +93,19 @@ public static class Doorway
         public float Width, Height;
     }
 
-    /// <param name="offset">Shift of the opening along the wall from the face centre (m).</param>
+    /// <summary>Where the middle of a wall face's width sits, measured along the wall from FaceCenter (0 for a plain quad).</summary>
+    public static float MidShift(PolyMesh m, int faceIndex)
+    {
+        var f = m.Faces[faceIndex]; var n = m.FaceNormal(f);
+        var up = Vector3.UnitZ - n * Vector3.Dot(Vector3.UnitZ, n);
+        if (up.LengthSquared() < 1e-6f) return 0;
+        var right = Vector3.Normalize(Vector3.Cross(Vector3.Normalize(up), n));
+        var o = m.FaceCenter(f);
+        var xs = f.V.Select(v => Vector3.Dot(m.Verts[v] - o, right)).ToArray();
+        return (xs.Min() + xs.Max()) / 2;
+    }
+
+    /// <param name="offset">Shift of the opening along the wall from FaceCenter (m): the middle of a plain quad wall.</param>
     /// <param name="sill">Height of the bottom of the opening above the face bottom (0 = door, &gt; 0 = window).</param>
     public static Result Cut(PolyMesh m, int faceIndex, float width, float height, float offset = 0, float sill = 0)
     {
@@ -109,9 +121,13 @@ public static class Doorway
         // the face in its own 2D frame
         var pr = f.V.Select(v => new Vector2(Vector3.Dot(m.Verts[v] - o, right), Vector3.Dot(m.Verts[v] - o, up))).ToArray();
         float r0 = pr.Min(p => p.X), r1 = pr.Max(p => p.X), u0 = pr.Min(p => p.Y), u1 = pr.Max(p => p.Y);
-        bool rect = f.V.Length == 4 && pr.All(p => (MathF.Abs(p.X - r0) < 1e-3f || MathF.Abs(p.X - r1) < 1e-3f) && (MathF.Abs(p.Y - u0) < 1e-3f || MathF.Abs(p.Y - u1) < 1e-3f));
+        // a rectangle: every vertex on its bounding box, the 4 corners present (extra points on the sides are allowed,
+        // so a wall already cut by another opening can take one more)
+        bool OnBox(Vector2 p) => MathF.Abs(p.X - r0) < 1e-3f || MathF.Abs(p.X - r1) < 1e-3f || MathF.Abs(p.Y - u0) < 1e-3f || MathF.Abs(p.Y - u1) < 1e-3f;
+        bool HasCorner(float x, float y) => pr.Any(p => MathF.Abs(p.X - x) < 1e-3f && MathF.Abs(p.Y - y) < 1e-3f);
+        bool rect = f.V.Length >= 4 && pr.All(OnBox) && HasCorner(r0, u0) && HasCorner(r1, u0) && HasCorner(r1, u1) && HasCorner(r0, u1);
         if (!rect) { r.Message = "The wall face must be a rectangle (one quad per wall, like MLO room boxes)."; return r; }
-        float cx = (r0 + r1) / 2 + offset;
+        float cx = offset; // from FaceCenter (the vertex average: the middle of a plain quad)
         float a = cx - width / 2, b = cx + width / 2, top = u0 + sill + height, bottom = u0 + sill;
         if (a <= r0 + 0.01f || b >= r1 - 0.01f) { r.Message = "The opening is wider than the wall (or too close to its corners)."; return r; }
         if (top >= u1 - 0.01f) top = u1; // full height: no lintel
@@ -150,6 +166,28 @@ public static class Doorway
         if (sillPart) polys.Add(new[] { (a, u0), (b, u0), (b, bottom), (a, bottom) });
         var oldCorners = (int[])f.V.Clone();
         m.Faces.RemoveAt(faceIndex);
+        // points the old face already had on its sides (from an earlier opening) go into the new polygons' edges
+        var extra = Enumerable.Range(0, pr.Length).Where(i => !((MathF.Abs(pr[i].X - r0) < 1e-3f || MathF.Abs(pr[i].X - r1) < 1e-3f) && (MathF.Abs(pr[i].Y - u0) < 1e-3f || MathF.Abs(pr[i].Y - u1) < 1e-3f))).ToList();
+        for (int pi = 0; pi < polys.Count && extra.Count > 0; pi++)
+        {
+            var src = polys[pi]; var outP = new List<(float X, float Y)>();
+            for (int c = 0; c < src.Length; c++)
+            {
+                var pa = src[c]; var pb = src[(c + 1) % src.Length];
+                outP.Add(pa);
+                float dx = pb.X - pa.X, dy = pb.Y - pa.Y, l2 = dx * dx + dy * dy;
+                if (l2 < 1e-10f) continue;
+                var mids = new List<(float t, (float, float) q)>();
+                foreach (var i in extra)
+                {
+                    float t = ((pr[i].X - pa.X) * dx + (pr[i].Y - pa.Y) * dy) / l2;
+                    float ex = pa.X + dx * t - pr[i].X, ey = pa.Y + dy * t - pr[i].Y;
+                    if (t > 1e-4f && t < 1 - 1e-4f && ex * ex + ey * ey < 1e-7f) mids.Add((t, (pr[i].X, pr[i].Y)));
+                }
+                foreach (var mq in mids.OrderBy(x => x.t)) outP.Add(mq.q);
+            }
+            polys[pi] = outP.ToArray();
+        }
         foreach (var xy in polys)
         {
             var idx = xy.Select(p => V(p.X, p.Y)).ToArray();

@@ -202,7 +202,7 @@ public sealed class WallOpeningModifier : Modifier
             var cc = new Vector2(Vector3.Dot(c - o, right), Vector3.Dot(c - o, up));
             if (cc.X < r0 || cc.X > r1 || cc.Y < u0) continue;
             var copy = m.Clone();
-            float offset = cc.X - (r0 + r1) * 0.5f;
+            float offset = cc.X; // Doorway.Cut measures from FaceCenter
             float sill = Vector3.Dot(op.At(0, op.Bottom) - o, up) - u0;
             var res = Doorway.Cut(copy, fi, op.Width, op.Height, offset, MathF.Max(0, sill));
             return res.Ok ? copy : m;
