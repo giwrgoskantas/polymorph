@@ -605,8 +605,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Flip Normals", null, false, Selected.Count > 0)) { var objs = SelObjects().ToList(); Do("Flip Normals", () => { foreach (var o in objs) { MeshOps.FlipAll(o.Mesh); o.Touch(); } }); }
             ImGui.Separator();
             SendToModelMenuItem();
-            if (ImGui.MenuItem("Isolate Selection", K("/", "Shift+I"), false, Selected.Count > 0)) IsolateSelection(forceOn: true);
-            if (isolated && ImGui.MenuItem("End Isolate", K("/", "Shift+I"))) EndIsolate();
+            HideMenuItems();
             if (ImGui.MenuItem("Delete", K("X", "Del"), false, Selected.Count > 0)) DeleteSelection();
             ImGui.Separator();
             if (ImGui.MenuItem("Add...", "Shift+A")) OpenPopup("add");
@@ -703,8 +702,7 @@ public sealed partial class EditorApp
         // ---- top right: display
         ImGui.TableNextColumn();
         QuadHeader("display");
-        if (ImGui.MenuItem("Isolate Selection", "Alt+Q", false, Selected.Count > 0)) IsolateSelection();
-        if (isolated && ImGui.MenuItem("End Isolate")) EndIsolate();
+        HideMenuItems();
         var vp = Viewports[ActiveViewport];
         if (ImGui.MenuItem("Edged Faces", "F4", vp.EdgedFaces)) vp.EdgedFaces ^= true;
         if (ImGui.MenuItem("Face Orientation", null, FaceOrientation)) FaceOrientation = !FaceOrientation;

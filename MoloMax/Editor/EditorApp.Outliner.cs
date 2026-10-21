@@ -505,11 +505,10 @@ public sealed partial class EditorApp
             }
             ImGui.Separator();
             SendToModelMenuItem();
-            if (ImGui.MenuItem("Isolate Selection")) IsolateSelection(forceOn: true);
+            HideMenuItems();
             ImGui.Separator();
             if (ImGui.MenuItem("Collapse all")) CollapseAll();
             if (ImGui.MenuItem("Expand all")) ExpandAll();
-            if (isolated && ImGui.MenuItem("End Isolate")) EndIsolate();
             ImGui.Separator();
             if (ImGui.MenuItem("Delete", "X")) DeleteSelection();
             ImGui.EndPopup();

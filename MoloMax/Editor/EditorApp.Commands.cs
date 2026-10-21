@@ -364,7 +364,22 @@ public sealed partial class EditorApp
         foreach (var id in Selected) { var o = Scene.Find(id); if (o != null) o.Hidden = true; }
         Selected.Clear(); Level = SubObject.Object; SelectionChanged();
     }
-    public void UnhideAll() { foreach (var o in Scene.Objects) o.Hidden = false; }
+    public void UnhideAll()
+    {
+        foreach (var o in Scene.Objects) o.Hidden = false;
+        isolated = false; isolateHidden = null; // everything shown: an isolation in progress is over too
+    }
+
+    /// <summary>Hide / show entries of the right-click menus (viewport, quad menu, Scene Explorer).</summary>
+    void HideMenuItems()
+    {
+        bool any = Selected.Count > 0, hiddenSome = Scene.Objects.Any(o => o.Hidden);
+        if (ImGuiNET.ImGui.MenuItem("Isolate Selection", K("/", "Shift+I", "Alt+Q"), false, any)) IsolateSelection(forceOn: true);
+        if (isolated && ImGuiNET.ImGui.MenuItem("End Isolate", K("/", "Shift+I", "Alt+Q"))) EndIsolate();
+        if (ImGuiNET.ImGui.MenuItem("Hide Selection", K("H", "Ctrl+H", ""), false, any)) HideSelection();
+        if (ImGuiNET.ImGui.MenuItem("Hide Unselected", K("Shift+H", "Shift+H", ""), false, any)) HideUnselected();
+        if (ImGuiNET.ImGui.MenuItem("Unhide All", K("Alt+H", "Alt+H", ""), false, hiddenSome)) UnhideAll();
+    }
 
     public void SetLevel(SubObject level)
     {

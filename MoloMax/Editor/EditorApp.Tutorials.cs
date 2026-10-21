@@ -1492,6 +1492,11 @@ public sealed partial class EditorApp
         yield return Frames(3);
         Expect(bx.All(q => !Scene.Find(q.Id).Hidden), "sliding back up shows them again");
         foreach (var t in Scene.Objects) t.Hidden = false;
+        // Unhide All (right-click menu) shows everything and ends an isolation
+        SelectOnly(bx[0]); IsolateSelection(forceOn: true); yield return Frames(2);
+        Expect(isolated && Scene.Find(bx[1].Id).Hidden, "isolate hides the others");
+        UnhideAll(); yield return Frames(2);
+        Expect(!isolated && Scene.Objects.All(o => !o.Hidden), "Unhide All shows everything and ends the isolation");
         // leave the mouse over the viewport (the next test drags there): an empty-grid click gives the viewport the focus back
         var ev = Viewports[ActiveViewport];
         foreach (var x in ClickAt(new Vector2(ev.X + ev.W * 0.5f, ev.Y + ev.H * 0.85f), moveFrames: 6)) yield return x;
