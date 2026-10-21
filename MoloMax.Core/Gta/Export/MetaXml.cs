@@ -100,7 +100,7 @@ public static class MetaXml
         if (mloName != null && layout != null)
         {
             x.Open("Item", "type=\"CMloArchetypeDef\"");
-            ArchetypeCommon(x, 200, 0, Vector3.Zero, Vector3.Zero, 100, mloName, "", mloName, "ASSET_TYPE_ASSETLESS");
+            ArchetypeCommon(x, 200, 0, Vector3.Zero, Vector3.Zero, 100, mloName, "", "", "ASSET_TYPE_ASSETLESS"); // an MLO archetype must not name a physics dictionary (crashes the game)
             x.Value("mloFlags", 0);
             x.Open("entities");
             foreach (var e in mloEntities ?? new()) Entity(x, e, true);
