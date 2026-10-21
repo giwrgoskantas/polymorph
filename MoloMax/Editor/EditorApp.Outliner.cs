@@ -164,6 +164,7 @@ public sealed partial class EditorApp
                 }
             clip.End(); clip.Destroy();
         }
+        EndEyeDrag();
         ImGui.PopStyleVar();
         // empty space: click clears, right click offers a new folder
         ImGui.InvisibleButton("##empty", new Vector2(-1, MathF.Max(20, ImGui.GetContentRegionAvail().Y)));
@@ -293,13 +294,26 @@ public sealed partial class EditorApp
         return true;
     }
 
-    /// <summary>A hidden object leaves the selection (like 3ds Max): no gizmo, outline or edit highlights left floating in the view.</summary>
+    int eyeDrag = -1; readonly HashSet<int> eyeDragDone = new();
+    /// <summary>The mouse is on this row's height, left of the end of its eye (the eyes of children sit a little to the right).</summary>
+    bool EyeColumnHovered()
+    {
+        var mn = ImGui.GetItemRectMin(); var mx = ImGui.GetItemRectMax(); var m = ImGui.GetMousePos();
+        return m.Y >= mn.Y && m.Y < mx.Y + ImGui.GetStyle().ItemSpacing.Y && m.X >= ImGui.GetWindowPos().X && m.X <= mx.X + 30;
+    }
+    /// <summary>Once a frame, after the rows: the eye slide ends with the mouse button.</summary>
+    void EndEyeDrag()
+    {
+        if (eyeDrag < 0 || ImGui.IsMouseDown(ImGuiMouseButton.Left)) return;
+        if (eyeDrag == 1) DropHiddenFromSelection();
+        eyeDrag = -1; eyeDragDone.Clear();
+    }
+
+    /// <summary>Hidden objects stay selected (one more eye click on the selection shows them all again); only the edit mode
+    /// of a hidden object is left, so no edit highlights float in the view.</summary>
     void DropHiddenFromSelection()
     {
-        if (Selected.RemoveWhere(id => Scene.Find(id) is { Hidden: true }) == 0) return;
-        if (Scene.Find(ActiveId) is not { Hidden: false }) ActiveId = Selected.Count > 0 ? Selected.First() : -1;
-        if (Current == null || Level != SubObject.Object && Current.Mesh == null) SetLevel(SubObject.Object);
-        SelectionChanged();
+        if (Level != SubObject.Object && Current is { Hidden: true }) SetLevel(SubObject.Object);
     }
 
     /// <summary>Objects an eye / freeze click on this row changes: the selection when the row is in it, with their children.</summary>
@@ -391,12 +405,19 @@ public sealed partial class EditorApp
     {
         ImGui.PushID(o.Id);
         // the eye / freeze of a selected row act on the whole selection (and on what is under the clicked objects)
-        bool eyeClick = EyeButton(!o.Hidden); TutRect("eye:" + o.Id);
-        if (eyeClick)
+        // press on an eye toggles it (the whole selection when the row is selected); keep the button held and slide down
+        // the column: every eye passed over takes the same state, like Blender
+        EyeButton(!o.Hidden); TutRect("eye:" + o.Id);
+        if (ImGui.IsItemActivated())
         {
             bool hide = !o.Hidden;
+            eyeDrag = hide ? 1 : 0; eyeDragDone.Clear(); eyeDragDone.Add(o.Id);
             foreach (var t in RowTargets(o)) t.Hidden = hide;
-            if (hide) DropHiddenFromSelection();
+        }
+        else if (eyeDrag >= 0 && !eyeDragDone.Contains(o.Id) && EyeColumnHovered())
+        {
+            eyeDragDone.Add(o.Id);
+            o.Hidden = eyeDrag == 1; foreach (var d in Scene.Descendants(o)) d.Hidden = eyeDrag == 1;
         }
         ImGui.SameLine(0, 2);
         if (FreezeButton(o.Frozen))

@@ -206,7 +206,7 @@ public sealed partial class EditorApp
         T("DENSE OPENING: door + window on a very dense wall (photos)", TutDenseOpening);
         T("BEVEL CONNECT: bevel sides with the wheel, connect segments, gothic arch, material editor of the selection (photos)", TutBevelConnect);
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
-        T("EYE: the outliner eye on the selected row of a Drawable hides it (object and edit mode)", EyeRowTest);
+        T("EYE: the outliner eye on the selected row of a Drawable hides it (object and edit mode), the whole selection, slide down the eyes", EyeRowTest);
         T("NEW TOOLS: selection undo, typed rotation, middle scale, flipped piece click, UV gizmo", NewToolsTest);
         T("SHIFT DRAG DRAW: Shift + drag a face, the original stays drawn", ShiftDragDraw);
         T("UI CHAOS: hundreds of random clicks, drags, keys and commands in the real window (no error, meshes valid, undo exact)", UiChaos);
@@ -1410,7 +1410,7 @@ public sealed partial class EditorApp
         SelectOnly(m); yield return Frames(4);
         foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
-        Expect(m.Hidden && Selected.Count == 0, $"eye on the selected game mesh hides it and drops it from the selection (hidden {m.Hidden}, selected {Selected.Count})");
+        Expect(m.Hidden && Selected.Count == 1, $"eye on the selected game mesh hides it, it stays selected (hidden {m.Hidden}, selected {Selected.Count})");
         yield return Shot("eye_hidden");
         foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
@@ -1419,13 +1419,33 @@ public sealed partial class EditorApp
         SelectOnly(m); SetLevel(SubObject.Polygon); yield return Frames(4);
         foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
-        Expect(m.Hidden && Level == SubObject.Object && Selected.Count == 0, $"in edit mode too: hidden, edit mode left (hidden {m.Hidden}, level {Level})");
+        Expect(m.Hidden && Level == SubObject.Object, $"in edit mode too: hidden, edit mode left (hidden {m.Hidden}, level {Level})");
         yield return Shot("eye_hidden_edit");
         // the Drawable node row: hides it with its meshes
         SetLevel(SubObject.Object); m.Hidden = false; SelectOnly(node); yield return Frames(4);
         foreach (var x in ClickAt(TutCentre("eye:" + node.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
         Expect(Scene.Find(node.Id).Hidden && m.Hidden, $"eye on the selected Drawable hides it and its meshes (node {Scene.Find(node.Id).Hidden}, mesh {m.Hidden})");
+        foreach (var t in Scene.Objects) t.Hidden = false;
+        // several selected rows: one eye hides them all, a second click shows them all
+        var bx = new List<SceneObject>();
+        for (int i = 0; i < 3; i++) { var q = Prim(CreateKind.Box, new Vector3(4 + i * 3, 0, 0)); q.Name = "piece_" + i; bx.Add(q); }
+        SelectOnly(bx.ToArray()); yield return Frames(4);
+        foreach (var x in ClickAt(TutCentre("eye:" + bx[0].Id), moveFrames: 6)) yield return x;
+        yield return Frames(3);
+        Expect(bx.All(q => Scene.Find(q.Id).Hidden), "eye on one of 3 selected rows hides all 3");
+        foreach (var x in ClickAt(TutCentre("eye:" + bx[0].Id), moveFrames: 6)) yield return x;
+        yield return Frames(3);
+        Expect(bx.All(q => !Scene.Find(q.Id).Hidden), "and a second click shows all 3 again");
+        // slide down the eye column: every eye passed over follows
+        SelectNone(); yield return Frames(3);
+        foreach (var x in DragTo(TutCentre("eye:" + bx[0].Id), TutCentre("eye:" + bx[2].Id), 20)) yield return x;
+        yield return Frames(3);
+        Expect(bx.All(q => Scene.Find(q.Id).Hidden), $"sliding down the eyes hides each row passed ({bx.Count(q => Scene.Find(q.Id).Hidden)}/3)");
+        yield return Shot("eye_slide");
+        foreach (var x in DragTo(TutCentre("eye:" + bx[2].Id), TutCentre("eye:" + bx[0].Id), 20)) yield return x;
+        yield return Frames(3);
+        Expect(bx.All(q => !Scene.Find(q.Id).Hidden), "sliding back up shows them again");
         foreach (var t in Scene.Objects) t.Hidden = false;
         // leave the mouse over the viewport (the next test drags there): an empty-grid click gives the viewport the focus back
         var ev = Viewports[ActiveViewport];
