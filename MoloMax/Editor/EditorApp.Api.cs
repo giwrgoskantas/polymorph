@@ -259,6 +259,20 @@ public sealed partial class EditorApp
         A.Add("view.frame", "Frame the selection (or everything) in the views.", Array.Empty<P>(), _ => { foreach (var vp in Viewports) FrameSelection(vp); return true; });
         A.Add("view.screenshot", "Save a PNG of the window at the end of this frame.", new[] { new P("path", "string", "PNG path", true) }, p => { apiShotPath = Str(p, "path"); return new { path = apiShotPath, note = "written after this frame" }; });
 
+        A.Add("render.photo", "Photo render of the active view (path traced in the background). quality: 0 quick, 1 good, 2 best. light: 0 like the view, 1 daylight, 2 evening, 3 night, 4 studio. size: 0 like the view, 1 HD, 2 4K, 3 square. Returns at once; poll render.status until done, then the PNG is at 'output'.",
+            new[] { new P("quality", "number", "0 quick, 1 good, 2 best"), new P("light", "number", "0 like the view, 1 daylight, 2 evening, 3 night, 4 studio"), new P("size", "number", "0 like the view, 1 HD, 2 4K, 3 square"), new P("brightness", "number", "exposure, -3..3") },
+            p =>
+            {
+                if (Arg(p, "quality") != null) Settings.PhotoQuality = Math.Clamp(Int(p, "quality"), 0, 2);
+                if (Arg(p, "light") != null) Settings.PhotoLight = Math.Clamp(Int(p, "light"), 0, 4);
+                if (Arg(p, "size") != null) Settings.PhotoSize = Math.Clamp(Int(p, "size"), 0, 3);
+                if (Arg(p, "brightness") != null) Settings.PhotoExposure = Math.Clamp(Num(p, "brightness"), -3, 3);
+                bool ok = StartPhotoRender();
+                return new { started = ok, output = photoOutput, error = photoError };
+            });
+        A.Add("render.status", "Progress of the photo render: running, sample / samples, done, output PNG, error.", Array.Empty<P>(),
+            _ => new { running = PhotoRendering, sample = photoSample, samples = photoSamples, status = photoStatus, device = photoDevice, output = photoOutput, done = !PhotoRendering && photoOutput != null && File.Exists(photoOutput), error = photoError });
+
         // ---- mesh data
         A.Add("mesh.get", "Mesh data of an object: verts (flat x,y,z), faces (index lists), materials per face. evaluated = after the modifier stack.",
             new[] { new P("id", "int", ""), new P("name", "string", ""), new P("evaluated", "bool", "after modifiers"), new P("uv", "bool", "include UVs per face corner") },

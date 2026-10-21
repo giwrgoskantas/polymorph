@@ -133,6 +133,16 @@ def add_light(kind="point", at=None): return _g().AddLight(kind, vec(at) if at i
 # ---- view / misc
 def frame(): _g().Frame()
 def frame_all(): _g().FrameAll()
+
+
+def photo_render(quality=1, light=0, size=0, brightness=0.0):
+    """Path-traced photo of the active view, rendered in the background. quality 0 quick / 1 good / 2 best;
+    light 0 like the view / 1 daylight / 2 evening / 3 night / 4 studio. Returns {'started', 'output', 'error'};
+    poll photo_status() until 'done'."""
+    return call("render.photo", quality=quality, light=light, size=size, brightness=brightness)
+
+
+def photo_status(): return call("render.status")
 def status(text): _g().Status(str(text))
 
 
