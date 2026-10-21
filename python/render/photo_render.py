@@ -137,6 +137,7 @@ for i, L in enumerate(job.get("lights", [])):
     ob = bpy.data.objects.new("lamp_%d" % i, data)
     try:
         ob.visible_camera = False  # the bulb itself is not a white disc in the picture (the fitting is the model's job)
+        ob.visible_transmission = False  # nor seen through glass
     except Exception:
         pass
     ob.location = L["pos"]

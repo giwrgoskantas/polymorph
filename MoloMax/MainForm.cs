@@ -127,7 +127,15 @@ public sealed class MainForm : Form
         // Modal dialogs opened from the UI run their own message loop, which raises Idle again:
         // never start a second frame inside the first one.
         if (inFrame || disposed) return;
-        if (gpu == null || app == null || WindowState == FormWindowState.Minimized) { System.Threading.Thread.Sleep(15); return; }
+        if (gpu == null || app == null) { System.Threading.Thread.Sleep(15); return; }
+        if (WindowState == FormWindowState.Minimized)
+        {
+            // minimised: nothing to draw, but scripting / MCP calls must still be answered
+            inFrame = true;
+            try { app.BackgroundTick(); } catch { } finally { inFrame = false; }
+            System.Threading.Thread.Sleep(15);
+            return;
+        }
         inFrame = true;
         try
         {

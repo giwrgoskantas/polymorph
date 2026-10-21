@@ -71,6 +71,14 @@ public sealed partial class EditorApp
 
     public bool PhotoRendering => photoProc != null && !photoProc.HasExited;
 
+    /// <summary>Window minimised: no frame is drawn, but Claude / Python calls and a running photo render keep going.</summary>
+    public void BackgroundTick()
+    {
+        inApi = true;
+        try { Api.Pump(); } catch { }
+        finally { inApi = false; }
+    }
+
     /// <summary>Starts a photo render of the active view. Returns false (and says why) when it cannot.</summary>
     public bool StartPhotoRender()
     {
