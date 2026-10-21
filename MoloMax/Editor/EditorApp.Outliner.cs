@@ -293,6 +293,15 @@ public sealed partial class EditorApp
         return true;
     }
 
+    /// <summary>A hidden object leaves the selection (like 3ds Max): no gizmo, outline or edit highlights left floating in the view.</summary>
+    void DropHiddenFromSelection()
+    {
+        if (Selected.RemoveWhere(id => Scene.Find(id) is { Hidden: true }) == 0) return;
+        if (Scene.Find(ActiveId) is not { Hidden: false }) ActiveId = Selected.Count > 0 ? Selected.First() : -1;
+        if (Current == null || Level != SubObject.Object && Current.Mesh == null) SetLevel(SubObject.Object);
+        SelectionChanged();
+    }
+
     /// <summary>Objects an eye / freeze click on this row changes: the selection when the row is in it, with their children.</summary>
     IEnumerable<SceneObject> RowTargets(SceneObject o)
     {
@@ -316,7 +325,7 @@ public sealed partial class EditorApp
     {
         ImGui.PushID("F:" + folder);
         bool allHidden = objs.Count > 0 && objs.All(o => o.Hidden), allFrozen = objs.Count > 0 && objs.All(o => o.Frozen);
-        if (EyeButton(!allHidden)) foreach (var o in objs) o.Hidden = !allHidden;
+        if (EyeButton(!allHidden)) { foreach (var o in objs) o.Hidden = !allHidden; if (!allHidden) DropHiddenFromSelection(); }
         ImGui.SameLine(0, 2);
         if (FreezeButton(allFrozen)) foreach (var o in objs) o.Frozen = !allFrozen;
         ImGui.SameLine(0, 4);
@@ -387,6 +396,7 @@ public sealed partial class EditorApp
         {
             bool hide = !o.Hidden;
             foreach (var t in RowTargets(o)) t.Hidden = hide;
+            if (hide) DropHiddenFromSelection();
         }
         ImGui.SameLine(0, 2);
         if (FreezeButton(o.Frozen))

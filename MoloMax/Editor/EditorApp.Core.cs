@@ -431,7 +431,7 @@ public sealed partial class EditorApp : IDisposable
                     }
                     if (mn.X <= mx.X) bracketBoxes.Add((Matrix4x4.Identity, mn, mx));
                 }
-        if (cur != null && Level != SubObject.Object) { SubObjectHighlightsGpu(cur, viewProj); DrawModifierSeams(cur); }
+        if (cur != null && !cur.Hidden && Level != SubObject.Object) { SubObjectHighlightsGpu(cur, viewProj); DrawModifierSeams(cur); }
         // object mode: a clean outline around the selection, no inner edges (Blender style)
         if (outlineItems.Count > 0)
         {

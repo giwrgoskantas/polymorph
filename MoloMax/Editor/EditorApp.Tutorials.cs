@@ -1410,7 +1410,7 @@ public sealed partial class EditorApp
         SelectOnly(m); yield return Frames(4);
         foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
-        Expect(m.Hidden, $"eye on the selected game mesh hides it (hidden {m.Hidden}, selected {Selected.Count})");
+        Expect(m.Hidden && Selected.Count == 0, $"eye on the selected game mesh hides it and drops it from the selection (hidden {m.Hidden}, selected {Selected.Count})");
         yield return Shot("eye_hidden");
         foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
@@ -1419,7 +1419,7 @@ public sealed partial class EditorApp
         SelectOnly(m); SetLevel(SubObject.Polygon); yield return Frames(4);
         foreach (var x in ClickAt(TutCentre("eye:" + m.Id), moveFrames: 6)) yield return x;
         yield return Frames(3); m = Scene.Find(m.Id);
-        Expect(m.Hidden, $"in edit mode too (hidden {m.Hidden}, level {Level})");
+        Expect(m.Hidden && Level == SubObject.Object && Selected.Count == 0, $"in edit mode too: hidden, edit mode left (hidden {m.Hidden}, level {Level})");
         yield return Shot("eye_hidden_edit");
         // the Drawable node row: hides it with its meshes
         SetLevel(SubObject.Object); m.Hidden = false; SelectOnly(node); yield return Frames(4);
@@ -1427,6 +1427,10 @@ public sealed partial class EditorApp
         yield return Frames(3); m = Scene.Find(m.Id);
         Expect(Scene.Find(node.Id).Hidden && m.Hidden, $"eye on the selected Drawable hides it and its meshes (node {Scene.Find(node.Id).Hidden}, mesh {m.Hidden})");
         foreach (var t in Scene.Objects) t.Hidden = false;
+        // leave the mouse over the viewport (the next test drags there): an empty-grid click gives the viewport the focus back
+        var ev = Viewports[ActiveViewport];
+        foreach (var x in ClickAt(new Vector2(ev.X + ev.W * 0.5f, ev.Y + ev.H * 0.85f), moveFrames: 6)) yield return x;
+        SelectNone(); yield return Frames(3);
         UI.ImGuiBackend.SyntheticInput = false;
     }
 
