@@ -21,6 +21,8 @@ public static class GlbExporter
         var meshes = new List<object>(); var nodes = new List<object>();
         var materials = new List<object>(); var images = new List<object>(); var textures = new List<object>();
         var matIndex = new Dictionary<int, int>();
+        // one image per texture file, even when many materials use it
+        var imageOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         void Align() { while (bin.Length % 4 != 0) bin.WriteByte(0); }
         int View(byte[] data, int? target)
@@ -61,15 +63,30 @@ public static class GlbExporter
                 ["baseColorFactor"] = new[] { m.ViewportColour.X, m.ViewportColour.Y, m.ViewportColour.Z, 1f },
                 ["metallicFactor"] = 0f, ["roughnessFactor"] = 0.8f,
             };
-            var png = m.DiffuseTexture != null ? pngForTexture?.Invoke(m.DiffuseTexture) : null;
-            if (png != null)
+            int Tex(string file)
             {
-                images.Add(new Dictionary<string, object> { ["bufferView"] = View(png, null), ["mimeType"] = "image/png", ["name"] = Path.GetFileNameWithoutExtension(m.DiffuseTexture) });
-                textures.Add(new Dictionary<string, object> { ["source"] = images.Count - 1 });
-                pbr["baseColorTexture"] = new Dictionary<string, object> { ["index"] = textures.Count - 1 };
+                if (string.IsNullOrEmpty(file)) return -1;
+                if (imageOf.TryGetValue(file, out int t)) return t;
+                var png = pngForTexture?.Invoke(file);
+                t = -1;
+                if (png != null)
+                {
+                    images.Add(new Dictionary<string, object> { ["bufferView"] = View(png, null), ["mimeType"] = "image/png", ["name"] = Path.GetFileNameWithoutExtension(file) });
+                    textures.Add(new Dictionary<string, object> { ["source"] = images.Count - 1 });
+                    t = textures.Count - 1;
+                }
+                return imageOf[file] = t;
+            }
+            int tex = Tex(m.DiffuseTexture);
+            if (tex >= 0)
+            {
+                pbr["baseColorTexture"] = new Dictionary<string, object> { ["index"] = tex };
                 pbr["baseColorFactor"] = new[] { 1f, 1f, 1f, 1f };
             }
-            materials.Add(new Dictionary<string, object> { ["name"] = m.Name, ["pbrMetallicRoughness"] = pbr, ["extras"] = new Dictionary<string, object> { ["gta_shader"] = m.Shader } });
+            var mat = new Dictionary<string, object> { ["name"] = m.Name, ["pbrMetallicRoughness"] = pbr, ["extras"] = new Dictionary<string, object> { ["gta_shader"] = m.Shader } };
+            int nrm = Tex(m.BumpTexture);
+            if (nrm >= 0) mat["normalTexture"] = new Dictionary<string, object> { ["index"] = nrm };
+            materials.Add(mat);
             matIndex[id] = materials.Count - 1;
             return matIndex[id];
         }

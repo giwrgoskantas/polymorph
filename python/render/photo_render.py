@@ -55,7 +55,12 @@ for mat in bpy.data.materials:
     bsdf = node(nt, "BSDF_PRINCIPLED")
     if bsdf is None:
         continue
-    tex = node(nt, "TEX_IMAGE")
+    # the colour texture (not the normal map, which goes through a Normal Map node)
+    tex = None
+    for n in nt.nodes:
+        if n.type == "TEX_IMAGE" and not any(l.to_node.type == "NORMAL_MAP" for o in n.outputs for l in o.links):
+            tex = n
+            break
     base = bsdf.inputs["Base Color"]
     # GTA vertex colours (green / red bake masks) must not tint the photo: base colour = texture or plain colour
     for l in list(base.links):

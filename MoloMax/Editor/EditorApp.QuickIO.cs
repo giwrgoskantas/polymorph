@@ -145,7 +145,8 @@ public sealed partial class EditorApp
         {
             var full = renderer.Textures.Resolve(path);
             if (full == null) return null;
-            var img = LoadImageRgba(full);
+            // GTA textures are .dds (the system image loader can't read them)
+            var img = full.EndsWith(".dds", StringComparison.OrdinalIgnoreCase) ? MoloMax.Core.Gta.Library.TextureReader.Load(full, 1024) : LoadImageRgba(full);
             if (img == null) return null;
             using var bmp = new Bitmap(img.Width, img.Height, PixelFormat.Format32bppArgb);
             var data = bmp.LockBits(new Rectangle(0, 0, img.Width, img.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
