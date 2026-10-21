@@ -151,6 +151,17 @@ public sealed partial class EditorApp
                 xfRadialScale = true;
                 if (SelectionPivot(out var pv, out _)) xfPivotScreen = ScreenOf(hv, pv);
             }
+            else if (h == GizmoHandle.None && Tool == Tool.Move && MiddleOnSelection(hv))
+            {
+                // Move tool, middle button on the selection itself (not on the gizmo): it follows the mouse in the view plane,
+                // like 3ds Max; middle button on empty space still navigates
+                ActiveViewport = Array.IndexOf(Viewports, hv);
+                shiftClone = false;
+                if (Input.Shift && Level == SubObject.Object) { CloneSelection(); shiftClone = lastCloneMap.Count > 0; }
+                else if (Input.Shift && Level != SubObject.Object) SubShiftClone();
+                BeginTransform(hv, GizmoHandle.View);
+                xfButton = MouseButtons.Middle;
+            }
             else if (h != GizmoHandle.None)
             {
                 ActiveViewport = Array.IndexOf(Viewports, hv);
@@ -753,6 +764,19 @@ public sealed partial class EditorApp
             if (h.HasValue && (!best.HasValue || h.Value.Distance < best.Value.Distance)) best = h;
         }
         return best;
+    }
+
+    /// <summary>The mouse is over a selected object (object mode) or over the object being edited (edit mode).</summary>
+    bool MiddleOnSelection(Viewport hv)
+    {
+        var hit = PickVisibleFace(RayAt(hv, Input.Mouse));
+        if (hit is not { } hh) return false;
+        var o = hh.Object;
+        if (Level != SubObject.Object) return o == Current;
+        if (Selected.Contains(o.Id)) return true;
+        // a game mesh under a selected Drawable node moves with it
+        for (var p = Scene.Parent(o); p != null; p = Scene.Parent(p)) if (Selected.Contains(p.Id)) return true;
+        return false;
     }
 
     bool CulledFor(SceneObject o) => !FaceOrientation && o.GtaType != GtaObjectType.Portal && (BackfaceCull || o.GtaType == GtaObjectType.MloRoom);

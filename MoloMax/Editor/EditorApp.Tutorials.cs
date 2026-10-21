@@ -209,7 +209,7 @@ public sealed partial class EditorApp
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
         T("UPDATE: version compare, the green Update button and its window", UpdateUiTest);
         T("EYE: the outliner eye on the selected row of a Drawable hides it (object and edit mode), the whole selection, slide down the eyes", EyeRowTest);
-        T("NEW TOOLS: selection undo, typed rotation, middle scale, flipped piece click, UV gizmo", NewToolsTest);
+        T("NEW TOOLS: selection undo, typed rotation, middle scale / move, flipped piece click, UV gizmo", NewToolsTest);
         T("SHIFT DRAG DRAW: Shift + drag a face, the original stays drawn", ShiftDragDraw);
         T("UI CHAOS: hundreds of random clicks, drags, keys and commands in the real window (no error, meshes valid, undo exact)", UiChaos);
         T("VERTEX SNAP: in vertex mode, grab a selected vertex and drop it on another (square shown)", TutVertexSnap);
@@ -1540,7 +1540,26 @@ public sealed partial class EditorApp
         foreach (var x in MouseTo(m1, 10, 0x10)) yield return x;
         PostMouse(0x208, m1, 0); yield return Frames(4); b = Scene.Find(b.Id);
         Expect(b.Scale.X > 1.4f && MathF.Abs(b.Scale.X - b.Scale.Z) < 1e-3f, $"middle drag away from the centre scales up evenly (scale {b.Scale.X:0.00})");
-        DoUndo(); yield return Frames(2);
+        DoUndo(); yield return Frames(2); b = Scene.Find(b.Id);
+        // 3b. middle button with the Move tool on the selected object (off the gizmo): it follows the mouse
+        SelectOnly(b); Tool = Tool.Move; yield return Frames(4);
+        var onBox = ScreenOf(vp, b.Position + new Vector3(0.7f, -1f, 0.4f));
+        Note($"middle on the box: over the selection {MiddleOnSelection(vp)} (mouse not there yet)");
+        var bp0 = b.Position;
+        foreach (var x in MouseTo(onBox, 6)) yield return x;
+        Note($"over the selection now: {MiddleOnSelection(vp)}");
+        PostMouse(0x207, onBox, 0x10); yield return Frames(3);
+        foreach (var x in MouseTo(onBox + new Vector2(90, 0), 10, 0x10)) yield return x;
+        PostMouse(0x208, onBox + new Vector2(90, 0), 0); yield return Frames(4); b = Scene.Find(b.Id);
+        Expect(Vector3.Distance(b.Position, bp0) > 0.3f, $"Move tool: middle drag on the object moves it ({bp0} -> {b.Position})");
+        DoUndo(); yield return Frames(2); b = Scene.Find(b.Id);
+        // middle drag on empty space still turns the view, the object stays
+        var empty = new Vector2(vp.X + 30, vp.Y + vp.H - 30); bp0 = b.Position;
+        foreach (var x in MouseTo(empty, 6)) yield return x;
+        PostMouse(0x207, empty, 0x10); yield return Frames(3);
+        foreach (var x in MouseTo(empty + new Vector2(40, -10), 8, 0x10)) yield return x;
+        PostMouse(0x208, empty + new Vector2(40, -10), 0); yield return Frames(4); b = Scene.Find(b.Id);
+        Expect(Vector3.Distance(b.Position, bp0) < 1e-4f, "middle drag on empty space does not move it (navigation)");
         Tool = Tool.Select;
         // 4. a piece with flipped faces in front of a wall (same mesh): the click takes the piece
         var wall = Prim(CreateKind.Box, new Vector3(0, 6, 0)); wall.Name = "wall";
