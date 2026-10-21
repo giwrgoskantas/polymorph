@@ -40,6 +40,19 @@ public sealed class AppSettings
     public int AutosaveMinutes { get; set; } = 3;
     /// <summary>Look for a new version at start (once a day).</summary>
     public bool CheckUpdates { get; set; } = true;
+    // ---- photo render (path traced)
+    /// <summary>Path of the free path-tracing engine (empty = found automatically).</summary>
+    public string RenderEngine { get; set; } = "";
+    public int PhotoQuality { get; set; } = 1;
+    public int PhotoSize { get; set; }
+    public int PhotoLight { get; set; }
+    public float PhotoExposure { get; set; }
+    public float PhotoSky { get; set; } = 1f;
+    public float PhotoLamps { get; set; } = 1f;
+    public bool PhotoDenoise { get; set; } = true;
+    public bool PhotoSoft { get; set; } = true;
+    public bool PhotoTransparent { get; set; }
+    public bool PhotoDof { get; set; }
     public DateTime LastUpdateCheck { get; set; }
     /// <summary>The newer version found by the last check (offered again after a restart).</summary>
     public string KnownUpdateJson { get; set; }

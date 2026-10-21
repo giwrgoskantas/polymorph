@@ -730,7 +730,7 @@ public sealed partial class EditorApp : IDisposable
 
     public void Dispose()
     {
-        lines.Dispose(); wires.Dispose(); outline.Dispose(); splats?.Dispose(); Api.Dispose();
+        lines.Dispose(); wires.Dispose(); outline.Dispose(); splats?.Dispose(); StopPhotoRender(); Api.Dispose();
         renderer.Dispose();
     }
 }

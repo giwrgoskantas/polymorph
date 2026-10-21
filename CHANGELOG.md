@@ -1,5 +1,16 @@
 # Polymorph — journal des versions
 
+## 1.4.0 — octobre 2026
+
+- **Scans en Gaussian splats** : import .ply (3DGS ou nuage de points), .spz (v1 à v4) et .splat. Le scan s'affiche
+  dans toutes les vues, trié et mélangé avec vos modèles, comme référence pour modéliser par-dessus.
+  Réglages simples : taille des blobs, opacité, luminosité, nettoyage du brouillard, redresser, poser au sol,
+  garder une boîte. Jamais exporté vers GTA. Enregistré dans la scène.
+- **Rendu photo** (F12, menu Rendering ou menu de la vue Realistic) : photo path tracée de la vue active,
+  calculée en arrière-plan par un moteur gratuit. Réglages en mots simples : qualité, taille, lumière (comme la vue,
+  jour, soir, nuit, studio), luminosité, lumière du ciel, puissance des lampes, grain, ombres douces, fond transparent.
+- Constructeur de pièces : plusieurs portes et fenêtres sur un même mur.
+
 ## 1.0.0 — octobre 2026
 
 Première version publique. Polymorph est gratuit, par Molo Modding.

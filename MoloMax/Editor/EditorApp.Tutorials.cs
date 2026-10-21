@@ -208,6 +208,7 @@ public sealed partial class EditorApp
         T("PERF FULL: frame and action times on heavy scenes (490k-polygon mesh, 3000 objects)", PerfFull);
         T("UPDATE E2E: check the feed, download, install over this copy and restart (POLYMORPH_UPDATE_FEED only)", UpdateE2E);
         T("SPLATS: Gaussian splat scans (.ply / .spz) import upright, draw sorted, keep their look, save and reload", SplatTest);
+        T("PHOTO: photo render of the office scene (path traced in the background, simple settings, picture shown)", PhotoTest);
         T("MCP HOUSE: Claude's MCP server builds a classic house interior with Python (rooms, doors, windows, lights, GTA check)", McpHouseTest);
         T("TUTO 20 terrain painting: a game parking lot with 4 textures", TutTerrainPaint);
         T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
@@ -1412,6 +1413,49 @@ public sealed partial class EditorApp
     const string HouseScript = "import poly\nfrom MoloMax.Core.Tools import RoomPlanData, PlanRoom, PlanOpening\n\n# a classic house, one floor: living room, kitchen, hall, two bedrooms, bathroom (metres)\nplan = RoomPlanData()\nplan.Gap = 0.1  # Molo rule: rooms never touch, a passage links them\ndef room(name, x0, y0, x1, y1, h=2.8):\n    r = PlanRoom(); r.Name = name; r.X0 = x0; r.Y0 = y0; r.X1 = x1; r.Y1 = y1; r.Height = h\n    plan.Rooms.Add(r)\ndef opening(x, y, w=0.9, h=2.1, sill=0.0):\n    o = PlanOpening(); o.X = x; o.Y = y; o.Width = w; o.Height = h; o.Sill = sill\n    plan.Openings.Add(o)\n\nroom(\"living_room\", 0, 0, 7, 5)\nroom(\"kitchen\", 7, 0, 11, 5)\nroom(\"hall\", 0, 5, 11, 6.5, 2.6)\nroom(\"bedroom_01\", 0, 6.5, 5, 10.5)\nroom(\"bathroom\", 5, 6.5, 8, 9.5)\nroom(\"bedroom_02\", 8, 6.5, 11, 10.5)\n\nopening(0, 2.5, 1.0, 2.2)              # front door\nopening(7, 2.5, 1.4, 2.2)              # living <-> kitchen\nopening(3.5, 5, 1.2, 2.2)              # living <-> hall\nopening(9, 5, 0.9, 2.1)                # kitchen <-> hall\nopening(2.5, 6.5); opening(6.5, 6.5); opening(9.5, 6.5)   # hall <-> bedrooms / bathroom\nopening(3.5, 0, 1.8, 1.3, 0.9)         # windows\nopening(11, 2.5, 1.2, 1.1, 1.0)\nopening(2.5, 10.5, 1.6, 1.3, 0.9)\nopening(9.5, 10.5, 1.4, 1.3, 0.9)\n\npoly.context.scene.Plan = plan\npoly.invoke(\"BuildPlan\")\n\nrooms = [o for o in poly.objects() if o.GtaType == poly.GtaObjectType.MloRoom]\nfor r in rooms:\n    lo, hi = r.WorldBounds().Item1, r.WorldBounds().Item2\n    poly.add_light(\"point\", ((lo.X + hi.X) / 2, (lo.Y + hi.Y) / 2, hi.Z - 0.35))\nprint(\"rooms:\", len(rooms), \"| objects:\", len(poly.objects()))\nprint(\"\\n\".join(\"%s: %d faces\" % (o.Name, o.Mesh.Faces.Count) for o in rooms))\n";
 
     /// <summary>The real MCP server (python/polymorph_mcp.py on the embedded Python) talks to this Polymorph like Claude does.</summary>
+    IEnumerable<object> PhotoTest()
+    {
+        Fresh(); Maximized = true; ActiveViewport = 3;
+        var office = @"C:\Users\molo3\Desktop\MoloMax\out\bureau\bureau.mmx";
+        var vp = Viewports[ActiveViewport]; vp.Camera.Ortho = false; vp.Shading = ShadingMode.Realistic;
+        if (File.Exists(office)) OpenFile(office);
+        else
+        {
+            var room = Scene.Add("room", MoloMax.Core.Mesh.Primitives.Room(5, 4, 2.6f), Vector3.Zero, GtaObjectType.MloRoom);
+            Scene.Add("crate", MoloMax.Core.Mesh.Primitives.Box(1, 1, 1), new Vector3(0.5f, 0.3f, 0));
+            var l = Scene.Add("lamp", new MoloMax.Core.Mesh.PolyMesh(), new Vector3(0, 0, 2.3f), GtaObjectType.Light); l.Gta.Light = new GtaLight();
+        }
+        vp.Camera.Target = new Vector3(2.9f, 3.0f, 0.4f); vp.Camera.Distance = 4.6f; vp.Camera.Yaw = -2.05f; vp.Camera.Pitch = 0.75f;
+        InteriorLight = true; Selected.Clear(); ActiveId = -1;
+        yield return Frames(10);
+        yield return Shot("photo_view");
+        var engine = FindRenderEngine();
+        Note("engine: " + (engine ?? "none"));
+        Expect(engine != null, "the free render engine is found on this PC");
+        if (engine == null) yield break;
+        photoFolder = StPath("photos"); Directory.CreateDirectory(photoFolder);
+        Settings.PhotoQuality = 0; Settings.PhotoSize = 0; Settings.PhotoLight = 1; Settings.PhotoDenoise = true; Settings.PhotoExposure = 0; Settings.PhotoSky = 1; Settings.PhotoLamps = 1;
+        Expect(StartPhotoRender(), "render started" + (photoError != null ? ": " + photoError : ""));
+        yield return Frames(30);
+        yield return Shot("photo_progress");
+        yield return Until(() => !PhotoRendering, 400);
+        yield return Frames(4);
+        Note($"{photoStatus} on {photoDevice}");
+        Expect(photoSrv != null && File.Exists(photoOutput), "the picture is ready and shown" + (photoError != null ? ": " + photoError : ""));
+        yield return Shot("photo_result");
+        // night mood
+        Settings.PhotoLight = 3;
+        Expect(StartPhotoRender(), "night render started");
+        yield return Until(() => !PhotoRendering, 400);
+        yield return Frames(4);
+        Expect(photoSrv != null && File.Exists(photoOutput), "night picture ready");
+        yield return Shot("photo_night");
+        string log; lock (photoLog) log = string.Join("\n", photoLog.TakeLast(6));
+        Note(log);
+        Settings.PhotoLight = 0; Settings.PhotoQuality = 1;
+        photoOpen = false; photoFolder = null;
+    }
+
     IEnumerable<object> SplatTest()
     {
         Fresh(); Maximized = true; ActiveViewport = 3;

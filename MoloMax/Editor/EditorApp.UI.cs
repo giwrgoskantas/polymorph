@@ -186,6 +186,8 @@ public sealed partial class EditorApp
             ImGui.SetNextItemWidth(180); ImGui.SliderFloat("Interior ambient", ref InteriorLevel, 0, 1.5f);
             ImGui.SetNextItemWidth(180); ImGui.SliderFloat("Exposure", ref Exposure, 0.3f, 3f);
             ImGui.SetNextItemWidth(180); ImGui.SliderFloat("Modelling light", ref AmbientBoost, 0, 0.6f);
+            ImGui.Separator();
+            PhotoRenderMenuItems();
             ImGui.EndMenu();
         }
         AddonsMenu();
@@ -216,6 +218,9 @@ public sealed partial class EditorApp
         }
         if (ImGui.MenuItem("Wireframe", K("Shift+Z", "Alt+W", "F3"), vp.WireframeOnly)) vp.WireframeOnly = !vp.WireframeOnly;
         if (ImGui.MenuItem("Edged Faces", "F4", vp.EdgedFaces)) vp.EdgedFaces = !vp.EdgedFaces;
+        ImGui.Separator();
+        if (ImGui.MenuItem("Photo render (path traced)...", "F12")) { if (vp.Shading != ShadingMode.Realistic) vp.Shading = ShadingMode.Realistic; photoOpen = true; }
+        Theme.Tip("A real photo of this view: light bouncing, soft shadows, glass. Rendered in the background.");
     }
 
     static string KindLabel(CreateKind k) => k switch
@@ -548,6 +553,7 @@ public sealed partial class EditorApp
 
         DrawUpdateWindow();
         DrawPyEditor();
+        DrawPhotoRender();
         if (aboutOpen) { ImGui.OpenPopup("About Polymorph"); aboutOpen = false; }
         bool aopen = true;
         if (ImGui.BeginPopupModal("About Polymorph", ref aopen, ImGuiWindowFlags.AlwaysAutoResize))
