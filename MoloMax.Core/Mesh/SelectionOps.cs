@@ -158,12 +158,19 @@ public static class MeshSelect
 
     public static HashSet<int> ShrinkFaces(PolyMesh m, ISet<int> faces)
     {
-        // A face survives only if none of its corners touches the selection's outline
-        // (an unselected neighbour or an open border).
-        var em = m.BuildEdgeMap();
+        // A face survives only if none of its corners touches an unselected face. The open border of the mesh does not
+        // count while some face is left out: on a stair, a strip or any open GTA mesh every face touches the border.
         var outline = new HashSet<int>();
-        foreach (var kv in em)
-            if (kv.Value.Count(faces.Contains) == 1) { outline.Add(kv.Key.A); outline.Add(kv.Key.B); }
+        var mine = new HashSet<int>();
+        foreach (var f in faces) foreach (var v in m.Faces[f].V) mine.Add(v);
+        for (int i = 0; i < m.Faces.Count; i++)
+            if (!faces.Contains(i)) foreach (var v in m.Faces[i].V) if (mine.Contains(v)) outline.Add(v);
+        if (outline.Count == 0)
+        {
+            // the whole part is selected: then it shrinks from its open border (a selected plane keeps its middle)
+            foreach (var kv in m.BuildEdgeMap())
+                if (kv.Value.Count(faces.Contains) == 1) { outline.Add(kv.Key.A); outline.Add(kv.Key.B); }
+        }
         return faces.Where(f => !m.Faces[f].V.Any(outline.Contains)).ToHashSet();
     }
 
@@ -183,6 +190,14 @@ public static class MeshSelect
             if (verts.Contains(e.B) && !verts.Contains(e.A)) res.Remove(e.B);
         }
         return res;
+    }
+
+    /// <summary>Select Less on edges: drops the ends of each selected run (an edge whose point has no other selected edge).</summary>
+    public static HashSet<EdgeKey> ShrinkEdges(PolyMesh m, ISet<EdgeKey> edges)
+    {
+        var count = new Dictionary<int, int>();
+        foreach (var e in edges) { count[e.A] = count.GetValueOrDefault(e.A) + 1; count[e.B] = count.GetValueOrDefault(e.B) + 1; }
+        return edges.Where(e => count[e.A] > 1 && count[e.B] > 1).ToHashSet();
     }
 
     public static HashSet<EdgeKey> GrowEdges(PolyMesh m, ISet<EdgeKey> edges)

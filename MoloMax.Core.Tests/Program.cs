@@ -2625,6 +2625,16 @@ Check("anim: keys -> .ycd (binary) -> keys again: same move, spin and UV scroll"
     Console.WriteLine($"       {keys} keys after thinning (61 frames x 8 values sampled)");
     return ok && keys > 4 && keys < 200 && uvc.Hash == hash;
 });
+Check("shrink on an open strip (a stair) keeps the middle: the mesh border is not the selection outline", () =>
+{
+    var p = Primitives.Plane(8, 1, 8, 1);
+    var order = Enumerable.Range(0, p.Faces.Count).OrderBy(i => p.FaceCenter(i).X).ToArray();
+    var sel = new HashSet<int> { order[2], order[3], order[4] };
+    var e = p.BuildEdgeMap().Keys.Where(k => MathF.Abs(p.Verts[k.A].Y - p.Verts[k.B].Y) < 1e-4f && p.Verts[k.A].Y > 0).OrderBy(k => p.Verts[k.A].X + p.Verts[k.B].X).ToList();
+    var es = new HashSet<EdgeKey>(e.Skip(2).Take(3));
+    var sf = MeshSelect.ShrinkFaces(p, sel); var se = MeshSelect.ShrinkEdges(p, es);
+    return sf.SetEquals(new[] { order[3] }) && se.SetEquals(new[] { e[3] });
+});
 Console.WriteLine("UI rules (source scan)");
 Check("no two ImGui widgets in one file share an ID (same label without ##): ImGui shows a 'conflicting ID' error and one of them stops working", () =>
 {

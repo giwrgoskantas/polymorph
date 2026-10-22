@@ -420,8 +420,9 @@ public sealed partial class EditorApp
             var wn = Vector3.Normalize(n);
             var ax = MathF.Abs(wn.X) >= MathF.Abs(wn.Y) && MathF.Abs(wn.X) >= MathF.Abs(wn.Z) ? Vector3.UnitX : MathF.Abs(wn.Y) >= MathF.Abs(wn.Z) ? Vector3.UnitY : Vector3.UnitZ;
             n = ax;
-            var ha = Picking.PickFace(cur, ra, cullBack: false); var hb = Picking.PickFace(cur, rb, cullBack: false);
-            if (ha is { } h1) pa = h1.Point; else if (hb is { } h2) pa = h2.Point;
+            // the first point of the line that lands on the mesh (the clicks themselves are often outside it)
+            for (int i = 0; i <= 32; i++)
+                if (Picking.PickFace(cur, RayAt(hv, Vector2.Lerp(a, b, i / 32f)), cullBack: false) is { } hit) { pa = hit.Point; break; }
         }
         var lp = Vector3.Transform(pa, inv); var ln = Vector3.Normalize(Vector3.TransformNormal(n, Matrix4x4.Transpose(cur.World)));
         var faces = Level is SubObject.Polygon or SubObject.Element && SubSel(cur).Faces.Count > 0 ? new HashSet<int>(SubSel(cur).Faces) : null;

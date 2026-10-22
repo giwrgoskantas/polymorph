@@ -525,23 +525,40 @@ public sealed partial class EditorApp
     public void Loop() { var o = Current; if (o == null) return; var s = SubSel(o); s.Edges = s.Edges.SelectMany(e => MeshOps.EdgeLoop(o.Mesh, e)).ToHashSet(); }
     public void Ring() { var o = Current; if (o == null) return; var s = SubSel(o); s.Edges = s.Edges.SelectMany(e => MeshOps.EdgeRing(o.Mesh, e)).ToHashSet(); }
 
+    /// <summary>What each Grow replaced, so Shrink right after gives back exactly the selection before (Up then Down = no change).</summary>
+    readonly List<(int Obj, int Version, SubObject Level, PolySelection Before, PolySelection After)> growSteps = new();
+
+    static bool SameSel(PolySelection a, PolySelection b) => a.Faces.SetEquals(b.Faces) && a.Edges.SetEquals(b.Edges) && a.Verts.SetEquals(b.Verts);
+
     public void Grow()
     {
         var o = Current; if (o == null) return; var s = SubSel(o);
+        var before = s.Clone();
         switch (Level)
         {
             case SubObject.Vertex: s.Verts = MeshSelect.GrowVerts(o.Mesh, s.Verts); break;
             case SubObject.Edge: case SubObject.Border: s.Edges = MeshSelect.GrowEdges(o.Mesh, s.Edges); break;
             default: s.Faces = MeshSelect.GrowFaces(o.Mesh, s.Faces); break;
         }
+        if (growSteps.Count > 0 && (growSteps[^1].Obj != o.Id || growSteps[^1].Version != o.Version || growSteps[^1].Level != Level || !SameSel(growSteps[^1].After, before))) growSteps.Clear();
+        growSteps.Add((o.Id, o.Version, Level, before, s.Clone()));
     }
 
     public void Shrink()
     {
         var o = Current; if (o == null) return; var s = SubSel(o);
+        // right after Grow: back to the selection it started from
+        if (growSteps.Count > 0 && growSteps[^1].Obj == o.Id && growSteps[^1].Version == o.Version && growSteps[^1].Level == Level && SameSel(growSteps[^1].After, s))
+        {
+            var b = growSteps[^1].Before; growSteps.RemoveAt(growSteps.Count - 1);
+            s.Faces = new HashSet<int>(b.Faces); s.Edges = new HashSet<EdgeKey>(b.Edges); s.Verts = new HashSet<int>(b.Verts);
+            return;
+        }
+        growSteps.Clear();
         switch (Level)
         {
             case SubObject.Vertex: s.Verts = MeshSelect.ShrinkVerts(o.Mesh, s.Verts); break;
+            case SubObject.Edge: case SubObject.Border: s.Edges = MeshSelect.ShrinkEdges(o.Mesh, s.Edges); break;
             default: s.Faces = MeshSelect.ShrinkFaces(o.Mesh, s.Faces); break;
         }
     }

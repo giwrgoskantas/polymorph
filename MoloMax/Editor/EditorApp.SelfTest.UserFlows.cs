@@ -68,7 +68,7 @@ public sealed partial class EditorApp
                 var m = o.Mesh; int n = m.Faces.Count;
                 // faces ordered along X
                 var order = Enumerable.Range(0, n).OrderBy(i => m.FaceCenter(i).X).ToArray();
-                int addMod = km == Keymap.Blender ? MkShift : MkCtrl;
+                int addMod = km == Keymap.Max ? MkCtrl : MkShift; // Max: Ctrl adds; Standard and Industry: Shift adds
                 var s = SubSel(o);
                 foreach (var x in UClick(FaceOnScreen(vp, o, order[1]))) yield return x;
                 Expect(s.Faces.SetEquals(new[] { order[1] }), $"[{km}] click a face: only that face ({Faces(s.Faces)})");
