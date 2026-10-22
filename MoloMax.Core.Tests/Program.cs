@@ -2625,6 +2625,33 @@ Check("anim: keys -> .ycd (binary) -> keys again: same move, spin and UV scroll"
     Console.WriteLine($"       {keys} keys after thinning (61 frames x 8 values sampled)");
     return ok && keys > 4 && keys < 200 && uvc.Hash == hash;
 });
+Console.WriteLine("UI rules (source scan)");
+Check("no two ImGui widgets in one file share an ID (same label without ##): ImGui shows a 'conflicting ID' error and one of them stops working", () =>
+{
+    // the editor sources sit next to this test project; skipped when they are not there (tests run from a release folder)
+    var dir = AppContext.BaseDirectory;
+    while (dir != null && !File.Exists(Path.Combine(dir, "MoloMax.sln"))) dir = Path.GetDirectoryName(dir);
+    if (dir == null) { Console.WriteLine("       sources not found, skipped"); return true; }
+    var widget = new System.Text.RegularExpressions.Regex(@"ImGui\.(Button|SmallButton|Checkbox|RadioButton|Selectable|SliderInt|SliderFloat|DragFloat|DragInt|DragFloat2|DragFloat3|InputText|InputFloat|InputInt|Combo|BeginCombo|ColorEdit3|ColorEdit4|TreeNode|TreeNodeEx|CollapsingHeader|BeginTabItem|ImageButton|InvisibleButton|ArrowButton)\(\s*""((?:[^""\\]|\\.)*)""");
+    var bad = new List<string>();
+    foreach (var f in Directory.EnumerateFiles(Path.Combine(dir, "MoloMax"), "*.cs", SearchOption.AllDirectories))
+    {
+        if (f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) || f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)) continue;
+        var src = File.ReadAllText(f);
+        var seen = new Dictionary<string, int>();
+        foreach (System.Text.RegularExpressions.Match m in widget.Matches(src))
+        {
+            var label = m.Groups[2].Value;
+            if (label.Contains('{')) continue; // built at run time
+            var id = label.Contains("###") ? label[(label.LastIndexOf("###") + 3)..] : label;
+            int line = src.Take(m.Index).Count(c => c == '\n') + 1;
+            if (seen.TryGetValue(id, out var first)) bad.Add($"{Path.GetFileName(f)}:{line} \"{label}\" (also line {first})");
+            else seen[id] = line;
+        }
+    }
+    foreach (var b in bad.Take(20)) Console.WriteLine("       " + b);
+    return bad.Count == 0;
+});
 Console.WriteLine($"{pass} passed, {fail} failed");
 return fail == 0 ? 0 : 1;
 

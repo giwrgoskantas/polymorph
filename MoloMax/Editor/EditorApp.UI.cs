@@ -570,7 +570,7 @@ public sealed partial class EditorApp
             Ui.TextDisabled("Editable Poly, GTA basic shader (port of CodeWalker's BasicPS), MLO building blocks.");
             Ui.TextDisabled("CodeWalker by dexyfex (MIT), RAGE Tools fork, Sollumz shader data (MIT), Dear ImGui / ImGui.NET (MIT), SharpDX (MIT).");
             Ui.TextDisabled("Full notices: THIRD-PARTY-NOTICES.txt next to Polymorph.exe.");
-            if (ImGui.Button("Close", new Vector2(120, 0))) ImGui.CloseCurrentPopup();
+            if (ImGui.Button("Close##2", new Vector2(120, 0))) ImGui.CloseCurrentPopup();
             ImGui.EndPopup();
         }
     }

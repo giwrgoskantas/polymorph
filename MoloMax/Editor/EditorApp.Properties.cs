@@ -237,7 +237,7 @@ public sealed partial class EditorApp
         }
         if (Ui.Header("Visibility", Open))
         {
-            bool h = o.Hidden; if (ImGui.Checkbox("Hide in Viewport", ref h)) o.Hidden = h;
+            bool h = o.Hidden; if (ImGui.Checkbox("Hide in Viewport##2", ref h)) o.Hidden = h;
             bool f = o.Frozen; if (ImGui.Checkbox("Disable Selection", ref f)) o.Frozen = f;
             var wc = o.WireColour; if (ImGui.ColorEdit3("Viewport Display Colour", ref wc, ImGuiColorEditFlags.NoInputs)) o.WireColour = wc;
         }
@@ -474,7 +474,7 @@ public sealed partial class EditorApp
                 if (m.UseRelativeOffset) { L("Factor"); c |= ImGui.DragFloat3("##rel", ref m.RelativeOffset, 0.01f); }
                 c |= ImGui.Checkbox("Constant Offset", ref m.UseConstantOffset);
                 if (m.UseConstantOffset) { L("Distance"); c |= ImGui.DragFloat3("##con", ref m.ConstantOffset, 0.01f); }
-                c |= ImGui.Checkbox("Merge", ref m.MergeVertices);
+                c |= ImGui.Checkbox("Merge##2", ref m.MergeVertices);
                 if (m.MergeVertices) { L("Distance"); c |= ImGui.DragFloat("##amd", ref m.MergeDistance, 0.001f, 0, 10, "%.3f m"); }
                 break;
             case SolidifyModifier m:
@@ -609,7 +609,7 @@ public sealed partial class EditorApp
             if (ImGui.Button("Loop Cut (Ctrl+R)", new Vector2(w2, 0))) BeginModal(ModalKind.LoopCut); ImGui.SameLine();
             if (ImGui.Button("Fill (F)", new Vector2(w2, 0))) MakeFace();
             if (ImGui.Button("Subdivide", new Vector2(w2, 0))) Tessellate(); ImGui.SameLine();
-            if (ImGui.Button("Flip Normals", new Vector2(w2, 0))) FlipFaces();
+            if (ImGui.Button("Flip Normals##2", new Vector2(w2, 0))) FlipFaces();
             if (ImGui.Button("Separate (P)", new Vector2(w2, 0))) DetachFaces(false); ImGui.SameLine();
             if (ImGui.Button("Fill Holes", new Vector2(w2, 0))) Cap();
             if (ImGui.Button("Connect", new Vector2(w2, 0))) ConnectEdges(); ImGui.SameLine();
@@ -746,7 +746,7 @@ public sealed partial class EditorApp
     {
         string mname = mat.Name;
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputText("##mname", ref mname, 63)) mat.Name = mname;
+        if (ImGui.InputText("##mname_2", ref mname, 63)) mat.Name = mname;
         var shaders = GtaShaders.All;
         int si = Math.Max(0, shaders.ToList().FindIndex(s => s.Name == mat.Shader));
         Ui.TextDisabled("Shader");

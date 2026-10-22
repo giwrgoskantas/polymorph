@@ -160,7 +160,7 @@ public sealed partial class EditorApp
         if (cur?.TripoTaskId != null && Ui.Header($"Selected: {cur.Name}", ImGuiTreeNodeFlags.DefaultOpen))
         {
             float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
-            if (ImGui.Button("Smart UV", new Vector2(w2, 0))) StartTripoPost(cur, "Smart UV", "/v3/mesh/uv", TripoPipeline.SmartUvBody(cur.TripoTaskId));
+            if (ImGui.Button("Smart UV##2", new Vector2(w2, 0))) StartTripoPost(cur, "Smart UV", "/v3/mesh/uv", TripoPipeline.SmartUvBody(cur.TripoTaskId));
             ImGui.SameLine();
             if (ImGui.Button("Retexture", new Vector2(-1, 0))) StartTripoPost(cur, "Retexture", "/v3/models/texture", TripoPipeline.TextureBody(cur.TripoTaskId, tripoRetexPrompt, tripo.TextureQuality, tripo.Pbr));
             ImGui.SetNextItemWidth(-1);
@@ -186,7 +186,7 @@ public sealed partial class EditorApp
                 if (j.Done && j.Error == null) frac = 1;
                 ImGui.ProgressBar(frac, new Vector2(-60, 0), j.Done ? (j.Error == null ? "done" : "failed") : $"{j.Status} {j.Progress}%");
                 ImGui.SameLine();
-                if (!j.Done) { if (ImGui.SmallButton("Cancel")) j.Cts.Cancel(); }
+                if (!j.Done) { if (ImGui.SmallButton("Cancel##2")) j.Cts.Cancel(); }
                 else if (ImGui.SmallButton("Clear")) tripoJobs.Remove(j);
                 if (j.Error != null) { ImGui.PushTextWrapPos(); Ui.TextColored(new Vector4(1f, 0.45f, 0.4f, 1), j.Error); ImGui.PopTextWrapPos(); }
                 else if (j.Credits > 0) Ui.TextDisabled($"{j.Credits:0.##} credits");

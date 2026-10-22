@@ -654,7 +654,7 @@ public sealed partial class EditorApp
             int pc = (int)o.Gta.PropCollision;
             if (ImGui.Combo("##pcol", ref pc, new[] { "None", "Box", "Mesh" }, 3)) foreach (var x in objs) x.Gta.PropCollision = (GtaPropCollision)pc;
             bool frag = o.Gta.Fragment;
-            if (ImGui.Checkbox("Fragment (.yft): physical, can be pushed", ref frag)) { foreach (var x in objs) { x.Gta.Fragment = frag; if (frag && x.Gta.Role == GtaRole.Auto) x.Gta.Role = GtaRole.Prop; } Dirty = true; }
+            if (ImGui.Checkbox("Fragment (.yft): physical, can be pushed##2", ref frag)) { foreach (var x in objs) { x.Gta.Fragment = frag; if (frag && x.Gta.Role == GtaRole.Auto) x.Gta.Role = GtaRole.Prop; } Dirty = true; }
             Theme.Tip("Exports a .yft like Sollumz: one bone, physics with the prop collision (a box when none) and the mass. Set Role to Prop.");
             if (o.Gta.Fragment)
             {

@@ -447,9 +447,9 @@ public sealed partial class EditorApp
             Theme.Tip("Shares the mesh with the original: edit one, they all change.\nGTA: one model, placed several times.");
             CloneAsInstance = mode == 1;
             Ui.TextDisabled("Shift+drag uses this choice too");
-            if (ImGui.Button("OK", new Vector2(80, 0)) || ImGui.IsKeyPressed(ImGuiKey.Enter)) { ImGui.CloseCurrentPopup(); CloneSelection(); }
+            if (ImGui.Button("OK##2", new Vector2(80, 0)) || ImGui.IsKeyPressed(ImGuiKey.Enter)) { ImGui.CloseCurrentPopup(); CloneSelection(); }
             ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(80, 0)) || closeCloneOpts) { ImGui.CloseCurrentPopup(); closeCloneOpts = false; }
+            if (ImGui.Button("Cancel##2", new Vector2(80, 0)) || closeCloneOpts) { ImGui.CloseCurrentPopup(); closeCloneOpts = false; }
             ImGui.EndPopup();
         }
         bool edit = Level != SubObject.Object && Current != null;
@@ -822,7 +822,7 @@ public sealed partial class EditorApp
         }
         ImGui.EndChild();
         if (enter && matches.Count > 0) { Selected.Clear(); foreach (var o in matches) Selected.Add(o.Id); ActiveId = matches[0].Id; SelectionChanged(); ImGui.CloseCurrentPopup(); }
-        if (ImGui.Button("OK", new Vector2(100, 0))) ImGui.CloseCurrentPopup();
+        if (ImGui.Button("OK##3", new Vector2(100, 0))) ImGui.CloseCurrentPopup();
         ImGui.SameLine(); Ui.TextDisabled($"{matches.Count} object(s)");
         ImGui.EndPopup();
     }

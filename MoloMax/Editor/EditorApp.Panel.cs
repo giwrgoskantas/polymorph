@@ -109,9 +109,9 @@ public sealed partial class EditorApp
                 break;
             case CreateKind.Plane: c |= F("Width (X)", ref P.Width); c |= F("Length (Y)", ref P.Length); c |= I("Width Segs", ref P.WSegs); c |= I("Length Segs", ref P.LSegs); break;
             case CreateKind.Sphere: c |= F("Radius", ref P.Radius); c |= I("Segments", ref P.Segments, 4, 128); c |= ImGui.Checkbox("Smooth", ref P.Smooth); break;
-            case CreateKind.Cylinder: c |= F("Radius", ref P.Radius); c |= F("Height", ref P.Height); c |= I("Sides", ref P.Sides, 3, 128); c |= I("Height Segs", ref P.HSegs); c |= ImGui.Checkbox("Smooth", ref P.Smooth); break;
-            case CreateKind.Cone: c |= F("Radius 1", ref P.Radius); c |= F("Radius 2", ref P.Radius2, 0.05f, 0f); c |= F("Height", ref P.Height); c |= I("Sides", ref P.Sides, 3, 128); c |= ImGui.Checkbox("Smooth", ref P.Smooth); break;
-            case CreateKind.Tube: c |= F("Radius 1", ref P.Radius); c |= F("Radius 2", ref P.Radius2); c |= F("Height", ref P.Height); c |= I("Sides", ref P.Sides, 3, 128); c |= ImGui.Checkbox("Smooth", ref P.Smooth); break;
+            case CreateKind.Cylinder: c |= F("Radius", ref P.Radius); c |= F("Height", ref P.Height); c |= I("Sides", ref P.Sides, 3, 128); c |= I("Height Segs", ref P.HSegs); c |= ImGui.Checkbox("Smooth##2", ref P.Smooth); break;
+            case CreateKind.Cone: c |= F("Radius 1", ref P.Radius); c |= F("Radius 2", ref P.Radius2, 0.05f, 0f); c |= F("Height", ref P.Height); c |= I("Sides", ref P.Sides, 3, 128); c |= ImGui.Checkbox("Smooth##3", ref P.Smooth); break;
+            case CreateKind.Tube: c |= F("Radius 1", ref P.Radius); c |= F("Radius 2", ref P.Radius2); c |= F("Height", ref P.Height); c |= I("Sides", ref P.Sides, 3, 128); c |= ImGui.Checkbox("Smooth##4", ref P.Smooth); break;
             case CreateKind.Room: c |= F("Width (X)", ref P.RoomWidth); c |= F("Length (Y)", ref P.RoomLength); c |= F("Height", ref P.RoomHeight); break;
             case CreateKind.Wall: c |= F("Height", ref P.WallHeight); c |= F("Thickness", ref P.WallThickness, 0.01f); break;
             case CreateKind.Stairs: c |= F("Width", ref P.StairWidth); c |= F("Total Rise", ref P.StairRise); c |= F("Run", ref P.StairRun); c |= I("Steps", ref P.Steps, 1, 100); Ui.TextDisabled($"Step {P.StairRise / Math.Max(P.Steps, 1):0.000} m high, {P.StairRun / Math.Max(P.Steps, 1):0.000} m deep"); break;

@@ -333,7 +333,7 @@ public sealed partial class EditorApp
         float b4 = (ImGui.GetContentRegionAvail().X - 12) / 4;
         if (ImGui.Button("Noon", new Vector2(b4, 0))) { InteriorLight = false; Hour = 13; } ImGui.SameLine(0, 4);
         if (ImGui.Button("Sunset", new Vector2(b4, 0))) { InteriorLight = false; Hour = 19.2f; } ImGui.SameLine(0, 4);
-        if (ImGui.Button("Night", new Vector2(b4, 0))) { InteriorLight = false; Hour = 23; } ImGui.SameLine(0, 4);
+        if (ImGui.Button("Night##2", new Vector2(b4, 0))) { InteriorLight = false; Hour = 23; } ImGui.SameLine(0, 4);
         if (ImGui.Button("Interior", new Vector2(b4, 0))) InteriorLight = true;
         ImGui.Checkbox("Interior lighting (no sun)", ref InteriorLight);
         if (!InteriorLight)

@@ -228,8 +228,8 @@ public sealed partial class EditorApp
     {
         ImGui.SetNextItemWidth(-90); ImGui.DragFloat("Size", ref brush.Radius, 0.002f, 0.002f, 20f, "%.2f m");
         Theme.Tip("Also [ and ] while painting.");
-        ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Strength", ref brush.Strength, 0.02f, 1f);
-        ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Hardness", ref brush.Hardness, 0f, 1f);
+        ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Strength##2", ref brush.Strength, 0.02f, 1f);
+        ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Hardness##2", ref brush.Hardness, 0f, 1f);
         if (!withTip) return;
         if (paintTool != PaintTool.Decal)
         {
@@ -242,7 +242,7 @@ public sealed partial class EditorApp
         {
             ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Size jitter", ref brush.SizeJitter, 0, 1);
             ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Angle jitter", ref brush.AngleJitter, 0, 180, "%.0f°");
-            if (paintTool != PaintTool.Decal) { ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Angle", ref brush.StampAngle, -180, 180, "%.0f°"); }
+            if (paintTool != PaintTool.Decal) { ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Angle##2", ref brush.StampAngle, -180, 180, "%.0f°"); }
         }
     }
 
@@ -543,7 +543,7 @@ public sealed partial class EditorApp
         c |= ImGui.Checkbox("Emissive##le", ref l.UseEmissive); ImGui.SameLine(); c |= ImGui.Checkbox("Opacity##la", ref l.UseAlpha);
         if (l.Kind == LayerKind.Fill)
         {
-            if (!l.HasTextures) c |= ImGui.ColorEdit3("Colour", ref l.Color, ImGuiColorEditFlags.NoInputs);
+            if (!l.HasTextures) c |= ImGui.ColorEdit3("Colour##2", ref l.Color, ImGuiColorEditFlags.NoInputs);
             else
             {
                 Ui.TextDisabled("Texture: " + Path.GetFileNameWithoutExtension(l.TexDiffuse ?? l.TexHeight ?? ""));
@@ -614,7 +614,7 @@ public sealed partial class EditorApp
             switch (f.Kind)
             {
                 case FilterKind.Blur: ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Radius", ref f.Radius, 1, 24, "%.0f px"); break;
-                case FilterKind.Sharpen: ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Radius", ref f.Radius, 1, 12, "%.0f px"); ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Amount", ref f.Amount, 0, 4); break;
+                case FilterKind.Sharpen: ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Radius##2", ref f.Radius, 1, 12, "%.0f px"); ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Amount##2", ref f.Amount, 0, 4); break;
                 case FilterKind.Levels:
                     ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Black", ref f.Black, 0, 1);
                     ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("White", ref f.White, 0, 1);
@@ -656,7 +656,7 @@ public sealed partial class EditorApp
         ImGui.SetNextItemWidth(-90); ImGui.DragFloat("Distance", ref bakeSettings.MaxDistance, 0.002f, 0.001f, 5, "%.3f m");
         Theme.Tip("How far the high-poly may be in front of or behind this surface (the cage). Raise it if parts stay flat.");
         ImGui.Checkbox("Normal", ref bakeSettings.Normal); ImGui.SameLine(); ImGui.Checkbox("AO", ref bakeSettings.Ao); ImGui.SameLine();
-        ImGui.Checkbox("Curvature", ref bakeSettings.Curvature); ImGui.SameLine(); ImGui.Checkbox("Colour", ref bakeSettings.Colour);
+        ImGui.Checkbox("Curvature", ref bakeSettings.Curvature); ImGui.SameLine(); ImGui.Checkbox("Colour##3", ref bakeSettings.Colour);
         if (bakeSettings.Ao) { ImGui.SetNextItemWidth(-90); ImGui.SliderInt("AO rays", ref bakeSettings.AoRays, 8, 64); }
         if (bakeSettings.Colour) ImGui.Checkbox("Colour as a new layer", ref bakeColourLayer);
         ImGui.Checkbox("Hide the high-poly after the bake", ref bakeHideHigh);

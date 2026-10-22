@@ -174,14 +174,14 @@ public sealed partial class EditorApp
         Ui.TextWrapped("Turn a 3D car into a FiveM vehicle: it takes the skeleton, wheels, collision and handling of a game car.");
         if (ForgeNeedsGame()) return;
         ImGui.SetNextItemWidth(-90);
-        if (ImGui.BeginCombo("Donor", vehicleDonorName))
+        if (ImGui.BeginCombo("Donor##2", vehicleDonorName))
         {
             foreach (var n in VehicleForge.Suggested) if (ImGui.Selectable(n, n == vehicleDonorName)) vehicleDonorName = n;
             ImGui.EndCombo();
         }
         ImGui.SetNextItemWidth(-90); ImGui.InputText("Other", ref vehicleDonorName, 32);
         Theme.Tip("Any game vehicle name (the spawn name): pick one about the size and type of your car.");
-        if (ImGui.Button("1. Show the donor", new Vector2(-1, 0))) LoadVehicleDonor();
+        if (ImGui.Button("1. Show the donor##2", new Vector2(-1, 0))) LoadVehicleDonor();
         TutRect("vf_donor");
         var sel = ForgeSelection();
         ImGui.Checkbox("My car faces +X / +Y", ref vehicleFrontPositive);
