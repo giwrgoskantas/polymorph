@@ -221,8 +221,10 @@ float4 PSMain(PS_INPUT i) : SV_Target { return i.col * texture0.Sample(sampler0,
 
     void Hook(Control c)
     {
-        c.MouseDown += (_, e) => { if (!Live) return; int b = Btn(e.Button); if (b >= 0) ImGui.GetIO().AddMouseButtonEvent(b, true); };
-        c.MouseUp += (_, e) => { if (!Live) return; int b = Btn(e.Button); if (b >= 0) ImGui.GetIO().AddMouseButtonEvent(b, false); };
+        // a click can come without a move before it (first click after another window had the mouse, a pen, remote
+        // control): the button event carries its own position, so the click lands where it was made, not where the mouse was last seen
+        c.MouseDown += (_, e) => { if (!Live) return; int b = Btn(e.Button); if (b >= 0) { ImGui.GetIO().AddMousePosEvent(e.X, e.Y); ImGui.GetIO().AddMouseButtonEvent(b, true); } };
+        c.MouseUp += (_, e) => { if (!Live) return; int b = Btn(e.Button); if (b >= 0) { ImGui.GetIO().AddMousePosEvent(e.X, e.Y); ImGui.GetIO().AddMouseButtonEvent(b, false); } };
         c.MouseMove += (_, e) => { if (Live) ImGui.GetIO().AddMousePosEvent(e.X, e.Y); };
         c.MouseWheel += (_, e) => { if (Live) ImGui.GetIO().AddMouseWheelEvent(0, e.Delta / 120f); };
         c.KeyPress += (_, e) => { if (Live) ImGui.GetIO().AddInputCharacter(e.KeyChar); };

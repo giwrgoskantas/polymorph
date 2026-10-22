@@ -32,6 +32,7 @@ public sealed class InputState
 
     public void MouseDown(MouseEventArgs e)
     {
+        Mouse = new Vector2(e.X, e.Y); // the press carries its position (no move may come before it)
         down.Add(e.Button); pressedAcc.Add(e.Button);
         if (e.Button == MouseButtons.Left)
         {
@@ -40,7 +41,7 @@ public sealed class InputState
             lastLeftDownTicks = now;
         }
     }
-    public void MouseUp(MouseEventArgs e) { down.Remove(e.Button); releasedAcc.Add(e.Button); }
+    public void MouseUp(MouseEventArgs e) { Mouse = new Vector2(e.X, e.Y); down.Remove(e.Button); releasedAcc.Add(e.Button); }
     public void MouseMove(MouseEventArgs e) { Mouse = new Vector2(e.X, e.Y); }
     public void MouseWheel(MouseEventArgs e) { wheelAcc += e.Delta / 120f; }
     public void KeyDown(KeyEventArgs e) { if (keysDown.Add(e.KeyCode)) keysPressedAcc.Add(e.KeyCode); }

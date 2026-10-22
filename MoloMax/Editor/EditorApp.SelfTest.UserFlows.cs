@@ -275,6 +275,16 @@ public sealed partial class EditorApp
             yield return Frames(4);
             Expect(Scene.Find(node.Id).Hidden && Scene.Find(m.Id).Hidden, $"Drawable eye while editing its mesh: hidden (level {Level})");
             foreach (var t in Scene.Objects) t.Hidden = false;
+            // a click that comes with no move before it (first click after another window had the mouse): it must land
+            // where it was made, on the eye, not on the viewport point where the mouse was last seen
+            SelectOnly(m); SetLevel(SubObject.Vertex); SubSel(m).Clear(); yield return Frames(4);
+            var inView = new Vector2(vp.X + vp.W * 0.5f, vp.Y + vp.H * 0.5f);
+            PostMouse(0x200, inView, 0); yield return Frames(4);
+            var eye = TutCentre("eye:" + node.Id);
+            PostMouse(0x201, eye, 1); yield return Frames(3);
+            PostMouse(0x202, eye, 0); yield return Frames(4);
+            Expect(Scene.Find(node.Id).Hidden && SubSel(m).Verts.Count == 0, $"a click with no move before it hits the eye (hidden {Scene.Find(node.Id).Hidden}), not the view ({SubSel(m).Verts.Count} points picked)");
+            foreach (var t in Scene.Objects) t.Hidden = false;
             SetLevel(SubObject.Object);
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; }
