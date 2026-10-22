@@ -133,8 +133,8 @@ public sealed partial class EditorApp
         if (P(ImGuiKey.A) && !ctrl && !shift) { if (alt) SelectNone(); else SelectAll(); return; }
         if (ctrl && !shift && P(ImGuiKey.I)) { SelectInvert(); return; }
         if (ctrl && !shift && P(ImGuiKey.KeypadAdd)) { Grow(); return; }
-        if (!ctrl && !shift && !alt && edit && P(ImGuiKey.UpArrow)) { Grow(); return; }
-        if (!ctrl && !shift && !alt && edit && P(ImGuiKey.DownArrow)) { Shrink(); return; }
+        if (ctrl && !shift && !alt && edit && P(ImGuiKey.UpArrow)) { Grow(); return; }       // Ctrl+arrows: the arrows alone move the camera
+        if (ctrl && !shift && !alt && edit && P(ImGuiKey.DownArrow)) { Shrink(); return; }
         if (ctrl && !shift && P(ImGuiKey.KeypadSubtract)) { Shrink(); return; }
         // transform
         if (!ctrl && !shift && P(ImGuiKey.G)) { if (alt) { if (!edit) ClearTransform(0); } else BeginModal(ModalKind.Translate); return; }
@@ -228,8 +228,8 @@ public sealed partial class EditorApp
         // select
         if (ctrl && !alt && P(ImGuiKey.A)) { if (shift) SelectNone(); else SelectAll(); return; }
         if (ctrl && !shift && !alt && P(ImGuiKey.I)) { SelectInvert(); return; }
-        if (P(ImGuiKey.UpArrow) && none && edit) { Grow(); return; }                            // select_more
-        if (P(ImGuiKey.DownArrow) && none && edit) { Shrink(); return; }                        // select_less
+        if (P(ImGuiKey.UpArrow) && ctrl && !shift && !alt && edit) { Grow(); return; }          // select_more (Ctrl+Up: the arrows alone move the camera)
+        if (P(ImGuiKey.DownArrow) && ctrl && !shift && !alt && edit) { Shrink(); return; }      // select_less
         if (ctrl && !shift && P(ImGuiKey.L) && edit) { SelectLinked(); return; }
         // hide: Ctrl+H hide, Shift+H hide unselected, Alt+H reveal
         if (P(ImGuiKey.H))
@@ -280,9 +280,6 @@ public sealed partial class EditorApp
             if (P(ImGuiKey._2)) { MaxLevel(SubObject.Edge); return; }
             if (P(ImGuiKey._3)) { MaxLevel(SubObject.Border); return; }
             if (P(ImGuiKey._4)) { MaxLevel(SubObject.Polygon); return; }
-            // edit mode: Up / Down arrows grow / shrink the selection (the camera keeps Left / Right and Page Up / Down)
-            if (edit && P(ImGuiKey.UpArrow)) { Grow(); return; }
-            if (edit && P(ImGuiKey.DownArrow)) { Shrink(); return; }
             if (P(ImGuiKey._5)) { MaxLevel(SubObject.Element); return; }
             if (P(ImGuiKey._6)) { if (Level != SubObject.Object) { lastEditLevel = Level; Level = SubObject.Object; } return; }
             if (P(ImGuiKey.Z)) { FrameSelection(); return; }
@@ -326,6 +323,9 @@ public sealed partial class EditorApp
         if (shift && !ctrl && P(ImGuiKey.E) && edit) { BeginModal(ModalKind.Extrude); return; }
         if (shift && ctrl && P(ImGuiKey.E) && edit) { ConnectEdges(); return; }
         if (shift && ctrl && P(ImGuiKey.I)) { SelectInvert(); return; }
+        // edit mode: Ctrl+Up / Ctrl+Down grow / shrink the selection (the arrows alone move the camera)
+        if (ctrl && !shift && !alt && edit && P(ImGuiKey.UpArrow)) { Grow(); return; }
+        if (ctrl && !shift && !alt && edit && P(ImGuiKey.DownArrow)) { Shrink(); return; }
         if (shift && !ctrl && P(ImGuiKey.Z)) { OpenPopup("shading"); return; }
         if (alt && !ctrl && !shift && P(ImGuiKey.Z)) { SelectVisibleOnly = !SelectVisibleOnly; SetStatus(SelectVisibleOnly ? "Visible only: edit-mode selection takes only what you can see" : "Selection goes through the mesh (hidden vertices / faces too)"); return; }
         if (shift && P(ImGuiKey.Tab)) { Snap = !Snap; return; }

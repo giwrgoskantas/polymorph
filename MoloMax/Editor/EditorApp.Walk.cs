@@ -26,8 +26,8 @@ public sealed partial class EditorApp
         if (io.WantTextInput || ModalActive || transforming || dt <= 0) { flyVel = Vector3.Zero; return; }
         bool fly = FlyKeysActive;
         bool K(ImGuiKey k) => ImGui.IsKeyDown(k);
-        // edit mode with a sub-object selection: Up / Down grow / shrink it instead of moving the camera
-        bool arrowsSelect = Level != SubObject.Object && Current != null && !fly;
+        // edit mode: Ctrl+Up / Ctrl+Down grow / shrink the selection, the arrows alone move the camera
+        bool arrowsSelect = Level != SubObject.Object && Current != null && ImGui.GetIO().KeyCtrl;
         bool fwd = K(ImGuiKey.UpArrow) && !arrowsSelect || fly && (K(ImGuiKey.Z) || K(ImGuiKey.W));
         bool back = K(ImGuiKey.DownArrow) && !arrowsSelect || fly && K(ImGuiKey.S);
         bool left = K(ImGuiKey.LeftArrow) || fly && (K(ImGuiKey.Q) || K(ImGuiKey.A));
@@ -37,8 +37,7 @@ public sealed partial class EditorApp
         bool any = fwd || back || left || right || rise || sink;
         if (any && !fly)
         {
-            // Industry keymap: Up / Down grow / shrink the selection in edit mode; lists under the mouse use the arrows
-            if (Level != SubObject.Object && Settings.Keymap == Keymap.Industry && (fwd || back)) any = false;
+            // lists under the mouse use the arrows
             if (io.WantCaptureMouse && ImGui.IsWindowHovered(ImGuiHoveredFlags.AnyWindow)) any = false;
         }
         if (!any && flyVel.LengthSquared() < 1e-4f) { flyVel = Vector3.Zero; return; }

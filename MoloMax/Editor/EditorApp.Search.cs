@@ -50,7 +50,7 @@ public sealed partial class EditorApp
             new("Select All", "Select", SelectAll, Key: () => K("A", "Ctrl+A")),
             new("Select None", "Select", SelectNone, Key: () => K("Alt+A", "Ctrl+Shift+A")),
             new("Select Invert", "Select", SelectInvert, Key: () => "Ctrl+I"),
-            new("Select More", "Select", Grow, Edit, () => K("Ctrl+Numpad +", "Up")),
+            new("Select More", "Select", Grow, Edit, () => K("Ctrl+Numpad +", "Ctrl+Up")),
             new("Select Less", "Select", Shrink, Edit, () => K("Ctrl+Numpad -", "Down")),
             new("Select Linked", "Select", SelectLinked, Edit, () => "Ctrl+L"),
             new("Select Edge Loops", "Select", Loop, Edit),
