@@ -463,12 +463,31 @@ public sealed partial class EditorApp
         SetStatus($"Attached {other.Name} to {target.Name}");
     }
 
+    /// <summary>The faces Separate takes: the selected faces, or in vertex / edge mode the faces whose points are all selected.</summary>
+    HashSet<int> DetachSet(SceneObject o)
+    {
+        var s = SubSel(o); var m = o.Mesh;
+        HashSet<int> verts;
+        switch (Level)
+        {
+            case SubObject.Vertex: verts = s.Verts; break;
+            case SubObject.Edge: case SubObject.Border: verts = new HashSet<int>(s.Edges.SelectMany(e => new[] { e.A, e.B })); break;
+            default: return new HashSet<int>(s.Faces.Where(f => f < m.Faces.Count));
+        }
+        var res = new HashSet<int>();
+        if (verts.Count == 0) return res;
+        for (int i = 0; i < m.Faces.Count; i++) if (m.Faces[i].V.All(verts.Contains)) res.Add(i);
+        return res;
+    }
+
     public void DetachFaces(bool asClone)
     {
-        var o = Current; if (o == null || SubSel(o).Faces.Count == 0) { SetStatus("Select polygons to detach."); return; }
+        var o = Current; if (o == null) return;
+        var detach = DetachSet(o);
+        if (detach.Count == 0) { SetStatus(Level == SubObject.Polygon || Level == SubObject.Element ? "Select polygons to detach." : "Separate takes the faces whose points are all selected: none here."); return; }
         Do("Detach", () =>
         {
-            var faces = new HashSet<int>(SubSel(o).Faces);
+            var faces = detach;
             PolyMesh part;
             if (asClone)
             {

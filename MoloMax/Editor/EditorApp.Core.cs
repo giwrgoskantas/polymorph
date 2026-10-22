@@ -666,6 +666,9 @@ public sealed partial class EditorApp : IDisposable
     }
 
     readonly List<int> nearTick = new();
+    /// <summary>How many vertex ticks the last frame drew (self tests).</summary>
+    int vertexTicksDrawn;
+
     void VertexTicks(ImDrawListPtr dl, Viewport vp, SceneObject o)
     {
         var s = SubSel(o);
@@ -677,17 +680,22 @@ public sealed partial class EditorApp : IDisposable
         Prof("ov ticks project");
         var org = new Vector2(vp.X, vp.Y);
         int n = P.Length;
-        bool big = n > 40000;
+        // every point on screen gets its tick (a GTA room is often 50 000+ points: showing only the ones near the mouse hid
+        // most of the mesh while editing); only past ~150 000 the far ones are left out to keep the frame fast
+        bool big = n > 150000;
         var mouse = Input.Mouse - org;
         var r2 = new Vector2(2f); var r3 = new Vector2(3f);
         if (!big)
         {
+            int drawn = 0;
             for (int i = 0; i < n; i++)
             {
                 if (!Ok[i]) continue;
                 var p = org + P[i];
                 if (s.Verts.Contains(i)) dl.AddRectFilled(p - r3, p + r3, red); else dl.AddRectFilled(p - r2, p + r2, blue);
+                drawn++;
             }
+            vertexTicksDrawn = drawn;
             return;
         }
         // around the mouse; on a very dense mesh only the nearest few thousand (more would be a solid blue patch anyway)
@@ -708,6 +716,7 @@ public sealed partial class EditorApp : IDisposable
             if (i >= n || !Ok[i]) continue;
             var p = org + P[i]; dl.AddRectFilled(p - r3, p + r3, red);
         }
+        vertexTicksDrawn = nearTick.Count;
     }
 
     (int, int, int, int) statsCache; double statsTime = -1; int statsCount = -1;

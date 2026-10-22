@@ -643,6 +643,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Merge at Center", "M")) Collapse();
             if (ImGui.MenuItem("Merge by Distance")) Weld(weldT);
         }
+        if (Level is SubObject.Vertex or SubObject.Edge or SubObject.Border && ImGui.MenuItem("Separate (Detach)", "P")) DetachFaces(false);
         if (ImGui.MenuItem("Make Face", K("F", ""))) MakeFace();
         if (Level is not (SubObject.Edge or SubObject.Border) && ImGui.MenuItem("Loop Cut", "Ctrl+R")) BeginModal(ModalKind.LoopCut); // already in the edge section
         ImGui.Separator();
@@ -743,6 +744,7 @@ public sealed partial class EditorApp
                 if (ImGui.MenuItem("Remove", "Backspace")) MaxRemove();
                 if (ImGui.MenuItem("Swift Loop")) BeginModal(ModalKind.LoopCut);
             }
+            if (Level is SubObject.Vertex or SubObject.Edge or SubObject.Border && ImGui.MenuItem("Detach##ve")) DetachFaces(false);
             if (ImGui.BeginMenu("Make Planar"))
             {
                 if (ImGui.MenuItem("Level (same Z)")) MakePlanar(2);

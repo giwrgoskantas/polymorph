@@ -18,6 +18,7 @@ public sealed partial class EditorApp
         T("USER: faces: click, quick Ctrl+click a 2nd face (no loop over the whole mesh), Ctrl+Up / Down, arrows still move the camera", UserFaceSelection);
         T("USER: knife: cut starting inside a face, 90° step gives a straight cut, straight on world axes", UserKnife);
         T("USER: loop cut: several loops with +, Tab turns the cut the other way", UserLoopCut);
+        T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
     }
 
     const int MkShift = 4, MkCtrl = 8;
@@ -219,5 +220,63 @@ public sealed partial class EditorApp
             SetLevel(SubObject.Object);
         }
         finally { loopCuts = cuts0; loopCross = cross0; UI.ImGuiBackend.SyntheticInput = false; }
+    }
+
+    IEnumerable<object> UserDenseDrawable()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        try
+        {
+            Fresh();
+            // a GTA room mesh: ~49 000 points, inside a Drawable, edited in vertex mode
+            var m = Prim(CreateKind.Box, Vector3.Zero); m.Name = "room_03_high_0";
+            Do("dense", () => { m.Mesh = Primitives.Plane(10, 10, 220, 220); m.Touch(); });
+            SelectOnly(m); CreateDrawable(); yield return Frames(4);
+            m = Scene.Find(m.Id); var node = Scene.Parent(m);
+            Expect(node != null, $"Drawable made ({node?.Name})");
+            if (node == null) yield break;
+            var vp = Viewports[ActiveViewport];
+            vp.Camera.SetView(ViewKind.Perspective); vp.Camera.Pitch = 1.2f; vp.Camera.Frame(new Vector3(-5, -5, 0), new Vector3(5, 5, 0.1f));
+            SelectOnly(m); SetLevel(SubObject.Vertex); yield return Frames(4);
+            int n = m.Mesh.Verts.Count;
+            // mouse far from the mesh (corner of the view): every point must still get its tick
+            PostMouse(0x200, new Vector2(vp.X + 30, vp.Y + vp.H - 30), 0); yield return Frames(4);
+            Expect(vertexTicksDrawn > n * 0.9f, $"every point of a {n}-point mesh is shown, not only near the mouse ({vertexTicksDrawn} drawn)");
+            yield return Shot("user_dense_ticks");
+
+            // Separate in vertex mode: the faces whose points are all selected become a new object
+            var grid = Enumerable.Range(0, n).Where(i => MathF.Abs(m.Mesh.Verts[i].X) < 0.06f && MathF.Abs(m.Mesh.Verts[i].Y) < 0.06f).ToList();
+            SubSel(m).Clear(); foreach (var i in grid) SubSel(m).Verts.Add(i);
+            int faces0 = m.Mesh.Faces.Count, objs0 = Scene.Objects.Count;
+            DetachFaces(false); yield return Frames(3);
+            m = Scene.Find(m.Id);
+            var part = Scene.Objects.LastOrDefault(o => o.Name.StartsWith(m.Name + "_detached"));
+            Expect(part != null && part.Mesh.Faces.Count > 0 && m.Mesh.Faces.Count == faces0 - part.Mesh.Faces.Count,
+                $"Separate from {grid.Count} selected points: {part?.Mesh.Faces.Count ?? 0} faces to a new object ({faces0} -> {m.Mesh.Faces.Count})");
+            DoUndo(); yield return Frames(3); m = Scene.Find(m.Id); node = Scene.Find(node.Id);
+            Expect(m.Mesh.Faces.Count == faces0 && Scene.Objects.Count == objs0, "undo puts the faces back");
+
+            // still in vertex mode: click the Drawable row, then its eye: the mesh is hidden
+            SelectOnly(m); SetLevel(SubObject.Vertex); yield return Frames(6);
+            foreach (var x in ClickAt(TutCentre("row:" + node.Id), moveFrames: 6)) yield return x;
+            yield return Frames(3);
+            Note($"after the row click: selected {string.Join(",", Selected.Select(i => Scene.Find(i)?.Name))}, level {Level}, current {Current?.Name}");
+            foreach (var x in ClickAt(TutCentre("eye:" + node.Id), moveFrames: 6)) yield return x;
+            yield return Frames(4);
+            m = Scene.Find(m.Id); node = Scene.Find(node.Id);
+            Expect(node.Hidden && m.Hidden, $"Drawable row then its eye, from vertex mode: hidden (node {node.Hidden}, mesh {m.Hidden}, level {Level})");
+            yield return Shot("user_dense_eye");
+            foreach (var x in ClickAt(TutCentre("eye:" + node.Id), moveFrames: 6)) yield return x;
+            yield return Frames(3);
+            Expect(!Scene.Find(node.Id).Hidden && !Scene.Find(m.Id).Hidden, "the eye again shows it");
+            // the eye of the Drawable while its mesh is being edited (row not clicked first)
+            SelectOnly(m); SetLevel(SubObject.Vertex); yield return Frames(6);
+            foreach (var x in ClickAt(TutCentre("eye:" + node.Id), moveFrames: 6)) yield return x;
+            yield return Frames(4);
+            Expect(Scene.Find(node.Id).Hidden && Scene.Find(m.Id).Hidden, $"Drawable eye while editing its mesh: hidden (level {Level})");
+            foreach (var t in Scene.Objects) t.Hidden = false;
+            SetLevel(SubObject.Object);
+        }
+        finally { UI.ImGuiBackend.SyntheticInput = false; }
     }
 }
