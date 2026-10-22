@@ -1,5 +1,13 @@
 # Polymorph — journal des versions
 
+## 1.4.4 — octobre 2026
+
+- Un clic tombe toujours là où il est fait, même sans mouvement de souris juste avant (l'œil d'un Drawable cliqué
+  juste après une autre fenêtre allait dans la vue 3D).
+- Mode Vertex : tous les points visibles sont affichés jusqu'à 150 000 points (avant : seulement autour de la souris
+  au-delà de 40 000, gênant sur les pièces GTA).
+- Separate (Detach) en mode Vertex et Edge : prend les faces dont tous les points sont sélectionnés ; dans le clic droit.
+
 ## 1.4.3 — octobre 2026
 
 - **Loop Cut** : plusieurs coupes d'un coup (molette, + / -, curseur du panneau), Tab tourne la coupe dans l'autre sens.
