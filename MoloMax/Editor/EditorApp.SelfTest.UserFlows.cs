@@ -87,6 +87,8 @@ public sealed partial class EditorApp
                 s = SubSel(o);
                 Expect(s.Faces.SetEquals(new[] { order[6] }), $"[{km}] Ctrl+Down shrinks back ({Faces(s.Faces)})");
                 // the arrows alone keep moving the camera in edit mode, and leave the selection alone
+                // the mouse over the view (over a panel the arrows go to its list)
+                PostMouse(0x200, new Vector2(vp.X + vp.W * 0.5f, vp.Y + vp.H * 0.5f), 0); yield return Frames(3);
                 var eye0 = vp.Camera.Eye;
                 foreach (var x in UKey(Keys.Up, hold: 25)) yield return x;
                 yield return Frames(15);
