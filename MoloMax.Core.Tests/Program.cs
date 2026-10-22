@@ -564,6 +564,22 @@ Check("loop cut on a box side ring adds a loop, stays closed", () =>
     var added = MeshOps.LoopCut(b, vert);
     return prev.Count == 4 && added.Count == 4 && b.Faces.Count == 10 && Closed(b);
 });
+Check("loop cut with 3 loops: evenly spaced, level preview, still closed", () =>
+{
+    var b = Primitives.Box(1, 1, 1);
+    var vert = b.BuildEdgeMap().Keys.First(e => MathF.Abs(b.Verts[e.A].Z - b.Verts[e.B].Z) > 0.5f);
+    var prev = MeshOps.LoopCutPreview(b, vert, 3);
+    bool level = prev.All(s => MathF.Abs(s.A.Z - s.B.Z) < 1e-4f);
+    var added = MeshOps.LoopCut(b, vert, 3);
+    return prev.Count == 12 && level && added.Count == 12 && b.Faces.Count == 18 && Closed(b);
+});
+Check("loop cut turned across: the cross edge of a vertical edge is level and cuts upright", () =>
+{
+    var b = Primitives.Box(1, 1, 1);
+    var vert = b.BuildEdgeMap().Keys.First(e => MathF.Abs(b.Verts[e.A].Z - b.Verts[e.B].Z) > 0.5f);
+    var cross = MeshOps.CrossEdge(b, vert);
+    return cross is { } c && MathF.Abs(b.Verts[c.A].Z - b.Verts[c.B].Z) < 1e-4f && MeshOps.LoopCutPreview(b, c, 2).Any(s => MathF.Abs(s.A.Z - s.B.Z) > 0.5f);
+});
 Check("face loop around a box side is 4 faces", () =>
 {
     var b = Primitives.Box(1, 1, 1);

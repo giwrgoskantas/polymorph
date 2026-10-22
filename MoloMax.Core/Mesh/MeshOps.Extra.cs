@@ -118,25 +118,59 @@ public static partial class MeshOps
     }
 
     /// <summary>Loop Cut (Blender Ctrl+R): one new edge loop through the ring of the given edge. Returns the new edges.</summary>
-    public static HashSet<EdgeKey> LoopCut(PolyMesh m, EdgeKey edge)
+    public static HashSet<EdgeKey> LoopCut(PolyMesh m, EdgeKey edge) => LoopCut(m, edge, 1);
+
+    /// <summary>Loop Cut with <paramref name="cuts"/> evenly spaced loops through the ring of the given edge.</summary>
+    public static HashSet<EdgeKey> LoopCut(PolyMesh m, EdgeKey edge, int cuts)
     {
         var ring = EdgeRing(m, edge);
-        return ConnectEdges(m, ring);
+        return ConnectEdges(m, ring, Math.Clamp(cuts, 1, 64));
+    }
+
+    /// <summary>
+    /// The other direction of a loop cut: an edge of the same face that runs across <paramref name="edge"/>
+    /// (the next edge around the face), so its ring cuts the other way. Null when the edge has no face.
+    /// </summary>
+    public static EdgeKey? CrossEdge(PolyMesh m, EdgeKey edge)
+    {
+        foreach (var f in m.Faces)
+        {
+            int n = f.V.Length;
+            for (int i = 0; i < n; i++)
+                if (EdgeKey.Make(f.V[i], f.V[(i + 1) % n]).Equals(edge))
+                    return EdgeKey.Make(f.V[(i + 1) % n], f.V[(i + 2) % n]);
+        }
+        return null;
     }
 
     /// <summary>
     /// The loop a loop cut would create, as segments between edge midpoints (for the yellow preview).
     /// </summary>
-    public static List<(Vector3 A, Vector3 B)> LoopCutPreview(PolyMesh m, EdgeKey edge)
+    public static List<(Vector3 A, Vector3 B)> LoopCutPreview(PolyMesh m, EdgeKey edge) => LoopCutPreview(m, edge, 1);
+
+    /// <summary>The <paramref name="cuts"/> loops a loop cut would create, as segments (for the yellow preview).</summary>
+    public static List<(Vector3 A, Vector3 B)> LoopCutPreview(PolyMesh m, EdgeKey edge, int cuts)
     {
         var ring = EdgeRing(m, edge);
+        int N = Math.Clamp(cuts, 1, 64);
         var res = new List<(Vector3, Vector3)>();
         foreach (var f in m.Faces)
         {
-            var hits = m.FaceEdges(f).Where(ring.Contains).ToList();
+            int n = f.V.Length;
+            // the cut edges of this face, each walked in the face order (from V[i] to V[i+1])
+            var hits = new List<(Vector3 P, Vector3 Q)>();
+            for (int i = 0; i < n; i++)
+            {
+                int a = f.V[i], b = f.V[(i + 1) % n];
+                if (ring.Contains(EdgeKey.Make(a, b))) hits.Add((m.Verts[a], m.Verts[b]));
+            }
             if (hits.Count < 2) continue;
-            Vector3 Mid(EdgeKey e) => (m.Verts[e.A] + m.Verts[e.B]) * 0.5f;
-            res.Add((Mid(hits[0]), Mid(hits[1])));
+            // the two edges run opposite ways around the face: point k of one meets point N-1-k of the other
+            for (int k = 0; k < N; k++)
+            {
+                float t = (k + 1) / (float)(N + 1);
+                res.Add((Vector3.Lerp(hits[0].P, hits[0].Q, t), Vector3.Lerp(hits[1].P, hits[1].Q, 1 - t)));
+            }
         }
         return res;
     }

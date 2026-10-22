@@ -97,6 +97,7 @@ public sealed partial class EditorApp
             case ModalKind.LoopCut:
                 if (cur == null) { SetStatus("Select one object for Loop Cut."); return; }
                 StartModalCommon(kind, vp, Vector3.Zero);
+                loopPreviewKey = "";
                 break;
             case ModalKind.Chamfer:
                 {
@@ -114,8 +115,8 @@ public sealed partial class EditorApp
                 if (cur == null) { SetStatus("Select one object to cut."); return; }
                 StartModalCommon(kind, vp, Vector3.Zero);
                 knifeA = null;
-                modal.Header = "Knife: click two points";
-                SetStatus("Knife: click two points to cut along the line (through the view). Esc to cancel.");
+                KnifeHeader();
+                SetStatus("Knife: click two points to cut along the line. Shift = straight (45° steps), options in the panel. Esc to cancel.");
                 break;
             case ModalKind.Wall:
                 StartModalCommon(kind, vp, Vector3.Zero);
@@ -150,6 +151,26 @@ public sealed partial class EditorApp
         if (modal.Kind == ModalKind.Wall)
         {
             if (P(ImGuiKey.Backspace) && wallPts.Count > 0) wallPts.RemoveAt(wallPts.Count - 1);
+            return;
+        }
+        if (modal.Kind == ModalKind.LoopCut)
+        {
+            // number of loops: mouse wheel, Page Up / Down, + / -; Tab turns the cut the other way
+            int d = 0;
+            if (MathF.Abs(Input.Wheel) > 0 && !ImGui.GetIO().WantCaptureMouse) d = Math.Sign(Input.Wheel);
+            if (P(ImGuiKey.PageUp) || P(ImGuiKey.KeypadAdd) || P(ImGuiKey.Equal)) d = 1;
+            if (P(ImGuiKey.PageDown) || P(ImGuiKey.KeypadSubtract) || P(ImGuiKey.Minus)) d = -1;
+            if (d != 0) loopCuts = Math.Clamp(loopCuts + d, 1, 32);
+            if (P(ImGuiKey.Tab)) loopCross = !loopCross;
+            return;
+        }
+        if (modal.Kind == ModalKind.Knife)
+        {
+            // A = straight cut on the world axes, V = only the faces you see, 1-4 = angle step
+            if (P(ImGuiKey.A)) knifeWorld = !knifeWorld;
+            if (P(ImGuiKey.V)) knifeVisibleOnly = !knifeVisibleOnly;
+            if (P(ImGuiKey._1)) knifeSnap = 0; if (P(ImGuiKey._2)) knifeSnap = 15; if (P(ImGuiKey._3)) knifeSnap = 45; if (P(ImGuiKey._4)) knifeSnap = 90;
+            KnifeHeader();
             return;
         }
         if (modal.Kind == ModalKind.Chamfer)
@@ -382,9 +403,9 @@ public sealed partial class EditorApp
     void KnifeMouse(Viewport hv)
     {
         if (Input.Pressed(MouseButtons.Right)) { CancelModal(); return; }
-        if (hv == null || !Input.Pressed(MouseButtons.Left)) return;
+        if (hv == null || !Input.Pressed(MouseButtons.Left) || ImGui.GetIO().WantCaptureMouse) return;
         if (knifeA == null) { knifeA = Input.Mouse; return; }
-        var cur = Current; var a = knifeA.Value; var b = Input.Mouse;
+        var cur = Current; var a = knifeA.Value; var b = KnifeEnd();
         knifeA = null;
         if (cur == null || Vector2.Distance(a, b) < 3) return;
         // plane through both view rays
@@ -393,6 +414,15 @@ public sealed partial class EditorApp
         var n = Vector3.Cross(pb - pa, hv.Camera.Ortho ? hv.Camera.Forward : (pa - hv.Camera.Eye));
         if (n.LengthSquared() < 1e-10f) return;
         Matrix4x4.Invert(cur.World, out var inv);
+        if (knifeWorld)
+        {
+            // straight: the cut plane turned onto the nearest world axis, through the point clicked on the mesh
+            var wn = Vector3.Normalize(n);
+            var ax = MathF.Abs(wn.X) >= MathF.Abs(wn.Y) && MathF.Abs(wn.X) >= MathF.Abs(wn.Z) ? Vector3.UnitX : MathF.Abs(wn.Y) >= MathF.Abs(wn.Z) ? Vector3.UnitY : Vector3.UnitZ;
+            n = ax;
+            var ha = Picking.PickFace(cur, ra, cullBack: false); var hb = Picking.PickFace(cur, rb, cullBack: false);
+            if (ha is { } h1) pa = h1.Point; else if (hb is { } h2) pa = h2.Point;
+        }
         var lp = Vector3.Transform(pa, inv); var ln = Vector3.Normalize(Vector3.TransformNormal(n, Matrix4x4.Transpose(cur.World)));
         var faces = Level is SubObject.Polygon or SubObject.Element && SubSel(cur).Faces.Count > 0 ? new HashSet<int>(SubSel(cur).Faces) : null;
         // only faces the line actually crosses on screen (a knife, not an infinite slice)
@@ -406,6 +436,7 @@ public sealed partial class EditorApp
             for (int i = 0; i < f.V.Length; i++)
                 if (!hv.Camera.Project(Vector3.Transform(m.Verts[f.V[i]], w), hv.W, hv.H, out poly2[i], out _)) allOn = false;
             if (!allOn) continue;
+            if (knifeVisibleOnly && !FacesCamera(hv, cur, fi)) continue;
             var la = hv.Local(a); var lb = hv.Local(b);
             for (int i = 0; i < poly2.Length && !hit; i++) hit = SegmentsCross(la, lb, poly2[i], poly2[(i + 1) % poly2.Length]);
             // a click inside a face also counts (the line may start or end inside a big face, like Blender's knife)
@@ -445,35 +476,106 @@ public sealed partial class EditorApp
         return d1 * d2 < 0 && d3 * d4 < 0;
     }
 
+    /// <summary>Knife options: angle step on screen (0 = free), straight on the world axes, only the faces turned to you.</summary>
+    int knifeSnap; bool knifeWorld, knifeVisibleOnly;
+
+    /// <summary>The second point of the knife line: the mouse, turned to the angle step (Shift = 45° when the step is off).</summary>
+    Vector2 KnifeEnd()
+    {
+        var b = Input.Mouse;
+        if (knifeA is not { } a) return b;
+        int step = knifeSnap > 0 ? knifeSnap : ImGui.GetIO().KeyShift ? 45 : 0;
+        if (step == 0) return b;
+        var d = b - a; float len = d.Length(); if (len < 1) return b;
+        float ang = MathF.Atan2(d.Y, d.X), st = step * MathF.PI / 180f;
+        ang = MathF.Round(ang / st) * st;
+        return a + new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * len;
+    }
+
+    void KnifeHeader()
+    {
+        var o = new List<string>();
+        if (knifeSnap > 0) o.Add($"{knifeSnap}° steps"); if (knifeWorld) o.Add("straight on axes"); if (knifeVisibleOnly) o.Add("visible faces");
+        modal.Header = "Knife: click two points" + (o.Count > 0 ? "  (" + string.Join(", ", o) + ")" : "");
+    }
+
+    void KnifePanel()
+    {
+        if (modal.Kind != ModalKind.Knife) return;
+        var vp = Viewports[ActiveViewport];
+        ImGui.SetNextWindowPos(new Vector2(vp.X + vp.W - 250, vp.Y + 70), ImGuiCond.Always);
+        ImGui.SetNextWindowBgAlpha(0.92f);
+        ImGui.Begin("##knifepanel", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing);
+        Ui.TextColored(Theme.Gold, "Knife");
+        ImGui.TextDisabled("Angle step (1-4, Shift = 45°)");
+        int[] steps = { 0, 15, 45, 90 };
+        for (int i = 0; i < steps.Length; i++)
+        {
+            if (i > 0) ImGui.SameLine(0, 4);
+            bool on = knifeSnap == steps[i];
+            if (on) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ToggleOn);
+            if (ImGui.Button((steps[i] == 0 ? "Free" : steps[i] + "°") + "##ks", new Vector2(50, 0))) knifeSnap = steps[i];
+            if (on) ImGui.PopStyleColor();
+        }
+        ImGui.Checkbox("Straight on world axes (A)", ref knifeWorld);
+        Theme.Tip("The cut is turned onto the nearest axis (X, Y or Z) through the point you clicked: perfectly level or plumb lines");
+        ImGui.Checkbox("Visible faces only (V)", ref knifeVisibleOnly);
+        Theme.Tip("Off: the cut goes through the whole mesh, the back too. On: only the faces turned towards you");
+        ImGui.End();
+        KnifeHeader();
+    }
+
     // ---------------------------------------------------------------- loop cut
+
+    /// <summary>Loop cut options: how many loops, and the cut turned the other way (across the hovered edge).</summary>
+    int loopCuts = 1; bool loopCross; string loopPreviewKey = "";
+
+    void LoopCutPanel()
+    {
+        if (modal.Kind != ModalKind.LoopCut) return;
+        var vp = Viewports[ActiveViewport];
+        ImGui.SetNextWindowPos(new Vector2(vp.X + vp.W - 250, vp.Y + 70), ImGuiCond.Always);
+        ImGui.SetNextWindowBgAlpha(0.92f);
+        ImGui.Begin("##loopcutpanel", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing);
+        Ui.TextColored(Theme.Gold, "Loop Cut");
+        ImGui.SetNextItemWidth(160); ImGui.SliderInt("Cuts", ref loopCuts, 1, 32);
+        Theme.Tip("Number of loops, evenly spaced (mouse wheel, + / -)");
+        if (ImGui.Button(loopCross ? "Direction: across (Tab)" : "Direction: along (Tab)", new Vector2(200, 0))) loopCross = !loopCross;
+        Theme.Tip("Turns the cut the other way on the same faces");
+        ImGui.End();
+    }
 
     void LoopCutMouse(Viewport hv)
     {
         var cur = Current;
         if (cur == null) { CancelModal(); return; }
-        if (hv == null || ImGui.GetIO().WantCaptureMouse) { modal.Hover = null; modal.Preview.Clear(); }
-        else
+        bool overUi = ImGui.GetIO().WantCaptureMouse;
+        if (hv == null) { modal.Hover = null; modal.Preview.Clear(); loopPreviewKey = ""; }
+        else if (!overUi) // over the panel: the last loop stays shown
         {
             var e = EdgeUnder(hv, cur, hv.Local(Input.Mouse), 14f);
-            if (!e.Equals(modal.Hover))
+            if (e.HasValue && loopCross) e = MeshOps.CrossEdge(cur.Mesh, e.Value) ?? e;
+            modal.Hover = e;
+        }
+        string key = modal.Hover is { } hk ? $"{hk.A}/{hk.B}/{loopCuts}/{cur.Version}" : "";
+        if (key != loopPreviewKey)
+        {
+            loopPreviewKey = key; modal.Preview.Clear();
+            if (modal.Hover is { } he)
             {
-                modal.Hover = e; modal.Preview.Clear();
-                if (e.HasValue)
-                {
-                    var w = cur.World;
-                    foreach (var (a, b) in MeshOps.LoopCutPreview(cur.Mesh, e.Value)) modal.Preview.Add((Vector3.Transform(a, w), Vector3.Transform(b, w)));
-                }
+                var w = cur.World;
+                foreach (var (a, b) in MeshOps.LoopCutPreview(cur.Mesh, he, loopCuts)) modal.Preview.Add((Vector3.Transform(a, w), Vector3.Transform(b, w)));
             }
         }
-        modal.Header = modal.Hover.HasValue ? "Loop Cut: click to cut" : "Loop Cut: hover an edge";
-        SetStatus(modal.Header + "    LMB cut · RMB/Esc cancel");
-        if (Input.Pressed(MouseButtons.Left) && modal.Hover.HasValue)
+        modal.Header = modal.Hover.HasValue ? $"Loop Cut: click to cut ({loopCuts} loop{(loopCuts > 1 ? "s" : "")})" : "Loop Cut: hover an edge";
+        SetStatus(modal.Header + "    LMB cut · wheel / + - loops · Tab direction · RMB/Esc cancel");
+        if (Input.Pressed(MouseButtons.Left) && modal.Hover.HasValue && !overUi)
         {
-            var edge = modal.Hover.Value;
+            var edge = modal.Hover.Value; int cuts = loopCuts;
             modal.Kind = ModalKind.None;
             DoMesh("Loop Cut", (o, m, s) =>
             {
-                var added = MeshOps.LoopCut(m, edge);
+                var added = MeshOps.LoopCut(m, edge, cuts);
                 Level = SubObject.Edge;
                 s.Edges = added;
                 SetStatus($"Loop cut: {added.Count} new edges");
@@ -563,6 +665,7 @@ public sealed partial class EditorApp
         ExtrudeHandleOverlay(dl, vp);
         OpeningOverlay(dl, vp);
         if (modal.Kind == ModalKind.Opening && vp == Viewports[ActiveViewport]) OpeningPanel();
+        if (vp == Viewports[ActiveViewport]) { LoopCutPanel(); KnifePanel(); }
         if (modal.Kind == ModalKind.None || vp != Viewports[ActiveViewport]) return;
         // header strip at the top of the viewport, like Blender's tool header
         var text = modal.Header;
@@ -573,7 +676,7 @@ public sealed partial class EditorApp
         dl.AddText(p, ImGui.ColorConvertFloat4ToU32(Theme.Gold), text);
         if (modal.Kind is ModalKind.Rotate or ModalKind.Scale or ModalKind.Inset or ModalKind.Chamfer)
             dl.AddLine(modal.PivotScreen, Input.Mouse, 0x80FFFFFF, 1f);
-        if (modal.Kind == ModalKind.Knife && knifeA.HasValue) dl.AddLine(knifeA.Value, Input.Mouse, 0xFF40E0FF, 2f);
+        if (modal.Kind == ModalKind.Knife && knifeA.HasValue) dl.AddLine(knifeA.Value, KnifeEnd(), 0xFF40E0FF, 2f);
         WallOverlay(dl, vp);
     }
 }
