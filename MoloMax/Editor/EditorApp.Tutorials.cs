@@ -3344,6 +3344,9 @@ room.Mesh.Faces.Count");
         SetMapMode(true); ClearMapBuild();
         if (game == null && !string.IsNullOrEmpty(gtaFolder)) { Settings.GtaFolder = gtaFolder; if (gameTask == null || gameTask.IsCompleted) StartGameLoad(gtaFolder); }
         yield return Until(() => game != null || gameError != null, 400);
+        // the MAP tests before this one edited game maps (send to MODEL...): those edits are not this folder's, start clean
+        foreach (var md in mapDocs.Values) md.Modified = false;
+        mapDeleted.Clear();
         OpenStreamFolder(dir);
         Expect(stream != null && stream.Ymaps.Count > 0, $"opened: {status}");
         var docs = mapDocs.Values.Where(d => stream.Contains(d.FilePath)).ToList();
@@ -3598,7 +3601,10 @@ room.Mesh.Faces.Count");
         inst = Scene.Find(oi.InstanceId); if (inst == null) { Expect(false, "the MLO instance is gone"); yield break; }
         foreach (var t in RowTargets(inst)) t.Hidden = false;
         yield return Frames(3);
-        Expect(oi.ObjOf.Values.All(id => Scene.Find(id) is { Hidden: false }), "shown again: everything inside comes back");
+        // the interior was read again when the camera came back: its objects are the new ones
+        var cur = interiors.Values.FirstOrDefault(i => i.InstanceId == oi.InstanceId) ?? oi;
+        int stillHidden = cur.ObjOf.Values.Count(id => Scene.Find(id) is not { Hidden: false });
+        Expect(stillHidden == 0, $"shown again: everything inside comes back ({stillHidden} of {cur.ObjOf.Count} still hidden)");
         // one object inside hidden by itself stays hidden when the camera comes back
         var one = Scene.Find(oi.ObjOf.Values.First()); SelectOnly(one); PinPickedMaps(); yield return Frames(3);
         one.Hidden = true; Selected.Clear(); SelectionChanged();

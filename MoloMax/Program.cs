@@ -67,6 +67,7 @@ static class Program
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
 
     static string HangInfo(uint thread)
     {
@@ -85,7 +86,7 @@ static class Program
             {
                 var t = new System.Text.StringBuilder(256); var c = new System.Text.StringBuilder(256);
                 GetWindowText(h, t, 256); GetClassName(h, c, 256);
-                if (IsWindowVisible(h)) sb.AppendLine($"window: {c} '{t}'");
+                if (t.Length > 0 || IsWindowVisible(h)) sb.AppendLine($"window: {c} '{t}' visible {IsWindowVisible(h)} minimised {IsIconic(h)}");
                 return true;
             }, IntPtr.Zero);
             sb.AppendLine("last frame stage: " + Editor.EditorApp.FrameStage);

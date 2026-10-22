@@ -117,6 +117,7 @@ public sealed class MainForm : Form
         Show();
         Application.Idle += (_, _) =>
         {
+            if (!Visible && !IsDisposed && EditorApp.SelfTestDir != null) { EditorApp.FrameStage = "test window was hidden, shown again"; ShowWindow(Handle, 4); }
             while (IsIdle() && !IsDisposed && Visible) Frame();
         };
         Application.Run(this);
@@ -128,8 +129,15 @@ public sealed class MainForm : Form
         // never start a second frame inside the first one.
         if (inFrame || disposed) { if (inFrame && !EditorApp.FrameStage.Contains("nested")) EditorApp.FrameStage += " | Idle raised inside the frame (a nested message loop: dialog, menu, drag)"; return; }
         if (gpu == null || app == null) { System.Threading.Thread.Sleep(15); return; }
+        if (WindowState == FormWindowState.Minimized && EditorApp.SelfTestDir != null)
+        {
+            // a self test needs its frames: someone minimised the test window, bring it back without taking the focus
+            EditorApp.FrameStage = $"test window was minimised ({DateTime.Now:HH:mm:ss}), shown again";
+            ShowWindow(Handle, 4 /* SW_SHOWNOACTIVATE */);
+        }
         if (WindowState == FormWindowState.Minimized)
         {
+            if (!EditorApp.FrameStage.StartsWith("minimised")) EditorApp.FrameStage = $"minimised (since {DateTime.Now:HH:mm:ss})";
             // minimised: nothing to draw, but scripting / MCP calls must still be answered
             inFrame = true;
             try { app.BackgroundTick(); } catch { } finally { inFrame = false; }
@@ -165,6 +173,8 @@ public sealed class MainForm : Form
 
     [DllImport("user32.dll")]
     static extern int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove);
+
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
 
     static bool IsIdle() => PeekMessage(out _, IntPtr.Zero, 0, 0, 0) == 0;
 
