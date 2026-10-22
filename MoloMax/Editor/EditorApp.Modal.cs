@@ -401,13 +401,15 @@ public sealed partial class EditorApp
         for (int fi = 0; fi < m.Faces.Count; fi++)
         {
             if (faces != null && !faces.Contains(fi)) continue;
-            var f = m.Faces[fi]; bool hit = false;
-            for (int i = 0; i < f.V.Length && !hit; i++)
-            {
-                if (!hv.Camera.Project(Vector3.Transform(m.Verts[f.V[i]], w), hv.W, hv.H, out var s0, out _)) continue;
-                if (!hv.Camera.Project(Vector3.Transform(m.Verts[f.V[(i + 1) % f.V.Length]], w), hv.W, hv.H, out var s1, out _)) continue;
-                hit = SegmentsCross(hv.Local(a), hv.Local(b), s0, s1);
-            }
+            var f = m.Faces[fi]; bool hit = false, allOn = true;
+            var poly2 = new Vector2[f.V.Length];
+            for (int i = 0; i < f.V.Length; i++)
+                if (!hv.Camera.Project(Vector3.Transform(m.Verts[f.V[i]], w), hv.W, hv.H, out poly2[i], out _)) allOn = false;
+            if (!allOn) continue;
+            var la = hv.Local(a); var lb = hv.Local(b);
+            for (int i = 0; i < poly2.Length && !hit; i++) hit = SegmentsCross(la, lb, poly2[i], poly2[(i + 1) % poly2.Length]);
+            // a click inside a face also counts (the line may start or end inside a big face, like Blender's knife)
+            if (!hit && (InsidePolygon(la, poly2) || InsidePolygon(lb, poly2)) && FacesCamera(hv, cur, fi)) hit = true;
             if (hit) keep.Add(fi);
         }
         if (keep.Count == 0) { SetStatus("The line does not cross the mesh."); return; }
@@ -415,6 +417,25 @@ public sealed partial class EditorApp
         DoMesh("Knife", (o, mm, s) => { cut = MeshOps.Slice(mm, lp, ln, keep); });
         if (cut != null && Level is SubObject.Edge or SubObject.Border) SubSel(cur).Edges = cut;
         SetStatus($"Knife: {cut?.Count ?? 0} new edge(s). Click two more points, or Esc / right click to stop.");
+    }
+
+    static bool InsidePolygon(Vector2 p, Vector2[] poly)
+    {
+        bool inside = false;
+        for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            if ((poly[i].Y > p.Y) != (poly[j].Y > p.Y) && p.X < (poly[j].X - poly[i].X) * (p.Y - poly[i].Y) / (poly[j].Y - poly[i].Y) + poly[i].X)
+                inside = !inside;
+        return inside;
+    }
+
+    /// <summary>The face is turned towards the camera (a click inside it is on its visible side, not through the mesh).</summary>
+    static bool FacesCamera(Viewport hv, SceneObject o, int fi)
+    {
+        var w = o.World;
+        var c = Vector3.Transform(o.Mesh.FaceCenter(fi), w);
+        var n = Vector3.Normalize(Vector3.TransformNormal(o.Mesh.FaceNormal(fi), w));
+        var toCam = hv.Camera.Ortho ? -hv.Camera.Forward : hv.Camera.Eye - c;
+        return Vector3.Dot(n, toCam) > 0;
     }
 
     static bool SegmentsCross(Vector2 p1, Vector2 p2, Vector2 q1, Vector2 q2)

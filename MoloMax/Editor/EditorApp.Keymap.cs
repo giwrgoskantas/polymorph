@@ -133,6 +133,8 @@ public sealed partial class EditorApp
         if (P(ImGuiKey.A) && !ctrl && !shift) { if (alt) SelectNone(); else SelectAll(); return; }
         if (ctrl && !shift && P(ImGuiKey.I)) { SelectInvert(); return; }
         if (ctrl && !shift && P(ImGuiKey.KeypadAdd)) { Grow(); return; }
+        if (!ctrl && !shift && !alt && edit && P(ImGuiKey.UpArrow)) { Grow(); return; }
+        if (!ctrl && !shift && !alt && edit && P(ImGuiKey.DownArrow)) { Shrink(); return; }
         if (ctrl && !shift && P(ImGuiKey.KeypadSubtract)) { Shrink(); return; }
         // transform
         if (!ctrl && !shift && P(ImGuiKey.G)) { if (alt) { if (!edit) ClearTransform(0); } else BeginModal(ModalKind.Translate); return; }
@@ -278,6 +280,9 @@ public sealed partial class EditorApp
             if (P(ImGuiKey._2)) { MaxLevel(SubObject.Edge); return; }
             if (P(ImGuiKey._3)) { MaxLevel(SubObject.Border); return; }
             if (P(ImGuiKey._4)) { MaxLevel(SubObject.Polygon); return; }
+            // edit mode: Up / Down arrows grow / shrink the selection (the camera keeps Left / Right and Page Up / Down)
+            if (edit && P(ImGuiKey.UpArrow)) { Grow(); return; }
+            if (edit && P(ImGuiKey.DownArrow)) { Shrink(); return; }
             if (P(ImGuiKey._5)) { MaxLevel(SubObject.Element); return; }
             if (P(ImGuiKey._6)) { if (Level != SubObject.Object) { lastEditLevel = Level; Level = SubObject.Object; } return; }
             if (P(ImGuiKey.Z)) { FrameSelection(); return; }

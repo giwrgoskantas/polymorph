@@ -324,7 +324,9 @@ public sealed partial class EditorApp
                 else
                 {
                     // Blender: Alt+click loop (Ctrl+Alt ring); Industry and 3ds Max: double-click loop
-                    bool loop = blender ? Input.Alt : lmbDouble;
+                    // faces: a quick second click is a second face (Ctrl / Shift adds it), never a face loop that runs over
+                    // the whole mesh (a stair is one strip): whole parts are the Element level, Alt+click still loops in Standard keys
+                    bool loop = blender ? Input.Alt : lmbDouble && Level is not (SubObject.Polygon or SubObject.Element) && !Input.Ctrl && !Input.Shift;
                     if (loop && Level != SubObject.Object) LoopSelect(boxViewport, boxStart, ring: blender && Input.Ctrl);
                     else ClickSelect(boxViewport, boxStart);
                 }

@@ -26,8 +26,10 @@ public sealed partial class EditorApp
         if (io.WantTextInput || ModalActive || transforming || dt <= 0) { flyVel = Vector3.Zero; return; }
         bool fly = FlyKeysActive;
         bool K(ImGuiKey k) => ImGui.IsKeyDown(k);
-        bool fwd = K(ImGuiKey.UpArrow) || fly && (K(ImGuiKey.Z) || K(ImGuiKey.W));
-        bool back = K(ImGuiKey.DownArrow) || fly && K(ImGuiKey.S);
+        // edit mode with a sub-object selection: Up / Down grow / shrink it instead of moving the camera
+        bool arrowsSelect = Level != SubObject.Object && Current != null && !fly;
+        bool fwd = K(ImGuiKey.UpArrow) && !arrowsSelect || fly && (K(ImGuiKey.Z) || K(ImGuiKey.W));
+        bool back = K(ImGuiKey.DownArrow) && !arrowsSelect || fly && K(ImGuiKey.S);
         bool left = K(ImGuiKey.LeftArrow) || fly && (K(ImGuiKey.Q) || K(ImGuiKey.A));
         bool right = K(ImGuiKey.RightArrow) || fly && K(ImGuiKey.D);
         bool rise = K(ImGuiKey.PageUp) || fly && (K(ImGuiKey.E) || K(ImGuiKey.Space));

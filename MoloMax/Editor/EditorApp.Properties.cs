@@ -589,7 +589,7 @@ public sealed partial class EditorApp
         {
             float w2 = (ImGui.GetContentRegionAvail().X - 4) / 2;
             if (ImGui.Button("Smart UV Project", new Vector2(w2, 0))) SmartUv();
-            ImGui.SameLine(); if (ImGui.Button("UV Editor", new Vector2(w2, 0))) OpenUvEditor();
+            ImGui.SameLine(); if (ImGui.Button("UV Editor##meshtools", new Vector2(w2, 0))) OpenUvEditor();
             Theme.Tip("Unwrap: cuts the mesh into flat islands (66° angle limit) packed in 0..1. Use it before painting or baking. Works on the selected faces in Poly mode, else the whole object.");
             ImGui.SetNextItemWidth(w2); ImGui.DragFloat("##tile", ref boxTile, 0.05f, 0.05f, 100, "%.2f m / tile"); ImGui.SameLine();
             if (ImGui.Button("Cube Projection", new Vector2(w2, 0))) BoxMap(boxTile, boxMapWorld);
@@ -617,7 +617,7 @@ public sealed partial class EditorApp
             if (ImGui.Button("Chamfer (Ctrl+B)", new Vector2(w2, 0))) BeginModal(ModalKind.Chamfer); ImGui.SameLine();
             if (ImGui.Button("Knife (" + K("K", "Shift+K") + ")", new Vector2(w2, 0))) BeginModal(ModalKind.Knife);
             if (ImGui.Button("Bridge", new Vector2(w2, 0))) Bridge(); ImGui.SameLine();
-            if (ImGui.Button("UV Editor", new Vector2(w2, 0))) OpenUvEditor();
+            if (ImGui.Button("UV Editor##uvmaps", new Vector2(w2, 0))) OpenUvEditor();
             ImGui.SetNextItemWidth(w2); ImGui.DragFloat("##weldt", ref weldT, 0.001f, 0.0001f, 10f, "%.4f m"); ImGui.SameLine();
             if (ImGui.Button("Merge by Distance", new Vector2(w2, 0))) Weld(weldT);
             if (ImGui.Button("Select More", new Vector2(w2, 0))) Grow(); ImGui.SameLine();
