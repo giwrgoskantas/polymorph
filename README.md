@@ -73,11 +73,6 @@ All of them, with chapters, on the [website](https://molossen.github.io/polymorp
 **Built to hold up** — every release runs 276 automatic tests, plus random "chaos" runs: thousands of modelling operations,
 GTA and `.glb` export round trips, and thousands of random clicks and keys in the real window.
 
-## AI 3D models with Tripo
-
-Polymorph has Tripo built in (Tripo tab): a picture or a sentence becomes a prop at GTA scale, ready to retouch and export.
-Get Tripo here: https://tripo.pxf.io/0G7AVP (signing up with this link supports Polymorph, which stays free).
-
 ## Install
 
 1. [Download the installer](https://molossen.github.io/polymorph/Polymorph-Setup-1.4.2.exe) and run it (no admin rights needed).
