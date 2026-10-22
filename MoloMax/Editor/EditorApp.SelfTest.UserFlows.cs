@@ -153,7 +153,9 @@ public sealed partial class EditorApp
             var a = ScreenOf(vp, c3 + new Vector3(0, 0, sz)); var b = ScreenOf(vp, c3 - new Vector3(0, 0, sz)) + new Vector2(30, 0);
             BeginModal(ModalKind.Knife); yield return Frames(2);
             foreach (var x in UClick(a)) yield return x;
+            Note($"first click at {a:0}: line started {knifeA.HasValue}, modal {modal.Kind}");
             foreach (var x in UClick(b)) yield return x;
+            Note($"second click at {b:0}: line open {knifeA.HasValue}, faces {o.Mesh.Faces.Count}, status '{status}'");
             var pts = o.Mesh.Verts.Skip(v0).Select(v => Vector3.Transform(v, o.World)).ToList();
             float Spread(Func<Vector3, float> f) => pts.Count == 0 ? 99 : pts.Max(f) - pts.Min(f);
             float best = MathF.Min(Spread(p => p.X), MathF.Min(Spread(p => p.Y), Spread(p => p.Z)));
