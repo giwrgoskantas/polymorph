@@ -150,7 +150,7 @@ public sealed partial class EditorApp
             yield return Frames(3);
             v0 = o.Mesh.Verts.Count;
             var c3 = Vector3.Transform((mn + mx) / 2, o.World);
-            var a = ScreenOf(vp, c3 + new Vector3(0, 0, sz)); var b = ScreenOf(vp, c3 - new Vector3(0, 0, sz)) + new Vector2(30, 0);
+            var a = ScreenOf(vp, c3 + new Vector3(0, 0, sz / 2)) - new Vector2(0, 40); var b = ScreenOf(vp, c3 - new Vector3(0, 0, sz / 2)) + new Vector2(30, 40); // inside the view, a slanted line
             BeginModal(ModalKind.Knife); yield return Frames(2);
             foreach (var x in UClick(a)) yield return x;
             Note($"first click at {a:0}: line started {knifeA.HasValue}, modal {modal.Kind}");
