@@ -1,5 +1,17 @@
 # Polymorph — journal des versions
 
+## 1.4.3 — octobre 2026
+
+- **Loop Cut** : plusieurs coupes d'un coup (molette, + / -, curseur du panneau), Tab tourne la coupe dans l'autre sens.
+- **Knife** : panneau d'options — pas d'angle (libre, 15°, 45°, 90° ; Shift = 45°), coupe droite sur les axes du monde,
+  faces visibles seulement. Une coupe peut commencer au milieu d'une face.
+- **Sélection de faces** : un 2e clic rapide ajoute une face, il ne prend plus toute la boucle (sur un escalier, tout l'objet).
+- **Ctrl + ↑ / Ctrl + ↓** agrandit / réduit la sélection ; Ctrl + ↓ juste après Ctrl + ↑ revient à la sélection d'avant.
+  Les flèches seules déplacent toujours la caméra.
+- Réduire la sélection marche sur les objets ouverts (escaliers, bandes) et en mode arêtes.
+- Boutons UV Editor : erreur « conflicting ID » corrigée, et 20 autres libellés en double.
+- Tests : chaque bug remonté devient un test qui rejoue les gestes de l'utilisateur.
+
 ## 1.4.0 — octobre 2026
 
 - **Scans en Gaussian splats** : import .ply (3DGS ou nuage de points), .spz (v1 à v4) et .splat. Le scan s'affiche
