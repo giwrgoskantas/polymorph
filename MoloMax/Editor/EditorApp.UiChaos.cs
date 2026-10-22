@@ -45,6 +45,10 @@ public sealed partial class EditorApp
     };
     static readonly Keys[] ChaosCtrlKeys = { Keys.Z, Keys.Y, Keys.A, Keys.D, Keys.B, Keys.R, Keys.J, Keys.I, Keys.H };
 
+    string chaosLast = "";
+    /// <summary>The action about to run, in chaos_last.txt: when the run hangs, the file says what hung it.</summary>
+    void ChaosMark(string what) { try { File.WriteAllText(StPath("chaos_last.txt"), chaosLast + " " + what + "\n"); } catch { } }
+
     IEnumerable<object> UiChaos()
     {
         int seeds = 10, actions = 400;
@@ -76,6 +80,7 @@ public sealed partial class EditorApp
                 double r = rnd.NextDouble();
 
                 if (Scene.Objects.Count(o => o.Mesh != null) < 2) Setup(rnd);
+                chaosLast = $"seed {seed} #{a}";
 
                 if (r < 0.30)
                 {
@@ -83,6 +88,7 @@ public sealed partial class EditorApp
                     var c = cmds[rnd.Next(cmds.Count)];
                     if (rnd.NextDouble() < 0.5) { RandomPick(rnd); yield return Frames(2); }
                     what = "command " + c.Name;
+                    ChaosMark(what);
                     if (c.Enabled != null && !SafeBool(c.Enabled)) { what += " (disabled)"; }
                     else
                     {
@@ -112,6 +118,7 @@ public sealed partial class EditorApp
                     var k = ctrl ? ChaosCtrlKeys[rnd.Next(ChaosCtrlKeys.Length)] : ChaosKeys[rnd.Next(ChaosKeys.Length)];
                     if (alt && k is >= Keys.F1 and <= Keys.F24) alt = false;
                     what = $"key {(ctrl ? "Ctrl+" : "")}{(shift ? "Shift+" : "")}{(alt ? "Alt+" : "")}{k}";
+                    ChaosMark(what);
                     var mods = new List<Keys>();
                     if (ctrl) mods.Add(Keys.ControlKey); if (shift) mods.Add(Keys.ShiftKey); if (alt) mods.Add(Keys.Menu);
                     foreach (var m in mods) PostKey(m, true);
@@ -139,6 +146,7 @@ public sealed partial class EditorApp
                         bool right = rnd.NextDouble() < 0.12;
                         int mod = rnd.NextDouble() < 0.2 ? 0x08 : rnd.NextDouble() < 0.2 ? 0x04 : 0;
                         what = $"{(right ? "right " : "")}click {(mod == 8 ? "Ctrl " : mod == 4 ? "Shift " : "")}at {p.X:0},{p.Y:0}";
+                        ChaosMark(what);
                         if (mod == 8) PostKey(Keys.ControlKey, true); if (mod == 4) PostKey(Keys.ShiftKey, true);
                         PostMouse(right ? 0x204 : 0x201, p, (right ? 2 : 1) | mod); yield return Frames(2);
                         PostMouse(right ? 0x205 : 0x202, p, mod); yield return Frames(2);
@@ -161,6 +169,7 @@ public sealed partial class EditorApp
                         int down = b == 0 ? 0x201 : 0x207, up = b == 0 ? 0x202 : 0x208, mask = b == 0 ? 1 : 0x10;
                         if (b == 2) { down = 0x201; up = 0x202; mask = 1; }
                         what = $"drag {(b == 0 ? "left" : b == 1 ? "middle" : "left (after gizmo pick)")}{(alt ? " Alt" : "")} {p.X:0},{p.Y:0} -> {q.X:0},{q.Y:0}";
+                        ChaosMark(what);
                         if (b == 2 && Selected.Count > 0) { var c = Scene.Find(ActiveId); if (c != null) p = ScreenOf(vp, Vector3.Transform(Vector3.Zero, c.World)) + new Vector2(30, 0); }
                         if (alt) PostKey(Keys.Menu, true);
                         PostMouse(down, p, mask); yield return Frames(2);
@@ -173,6 +182,7 @@ public sealed partial class EditorApp
                 else if (r < 0.95)
                 {
                     what = RandomPick(rnd);
+                    ChaosMark(what);
                     yield return Frames(3);
                 }
                 else
@@ -182,6 +192,7 @@ public sealed partial class EditorApp
                     foreach (var x in MouseTo(p, 3)) yield return x;
                     int delta = (rnd.NextDouble() < 0.5 ? 120 : -120) * (1 + rnd.Next(3));
                     what = $"wheel {delta}";
+                    ChaosMark(what);
                     PostMessage(form.Handle, 0x20A, (IntPtr)(delta << 16), (IntPtr)(((int)(p.Y + form.Location.Y) << 16) | ((int)(p.X + form.Location.X) & 0xFFFF)));
                     yield return Frames(2);
                 }
