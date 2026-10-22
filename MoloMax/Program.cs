@@ -36,12 +36,13 @@ static class Program
             var auto = Path.Combine(autoDir, "untitled_autosave.mmx");
             Core.Scenes.SceneIO.Save(sc, auto);
             File.WriteAllText(Path.Combine(autoDir, "session.json"), System.Text.Json.JsonSerializer.Serialize(new { Autosave = auto, Original = (string)null, Time = DateTime.Now }));
+            uint mainThreadId = GetCurrentThreadId();
             var hb = -1; var watch = new System.Threading.Thread(() =>
             {
                 while (true)
                 {
                     System.Threading.Thread.Sleep(240_000);
-                    if (Editor.EditorApp.SelfTestHeartbeat == hb) { File.AppendAllText(Path.Combine(dir, "report.txt"), "\nHUNG: no frame for 4 minutes (a dialog or a deadlock)\n"); Environment.Exit(4); }
+                    if (Editor.EditorApp.SelfTestHeartbeat == hb) { File.AppendAllText(Path.Combine(dir, "report.txt"), "\nHUNG: no frame for 4 minutes (a dialog or a deadlock)\n" + HangInfo(mainThreadId) + "\n"); Environment.Exit(4); }
                     hb = Editor.EditorApp.SelfTestHeartbeat;
                 }
             }) { IsBackground = true };
@@ -54,6 +55,43 @@ static class Program
             form.Run();
         }
         catch (Exception e) { Crash(e); }
+    }
+
+    // ---- what the UI thread is stuck in, when a self test hangs (a menu or move loop, a dialog window...)
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct GuiThreadInfo { public int cbSize; public uint flags; public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret; public int l, t, r, b; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool EnumThreadWindows(uint thread, EnumProc f, IntPtr l);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+
+    static string HangInfo(uint thread)
+    {
+        try
+        {
+            var gi = new GuiThreadInfo { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<GuiThreadInfo>() };
+            var sb = new System.Text.StringBuilder();
+            if (GetGUIThreadInfo(thread, ref gi))
+            {
+                var f = new List<string>();
+                if ((gi.flags & 0x1) != 0) f.Add("caret blinking"); if ((gi.flags & 0x2) != 0) f.Add("IN MOVE/SIZE LOOP");
+                if ((gi.flags & 0x4) != 0) f.Add("IN MENU MODE"); if ((gi.flags & 0x8) != 0) f.Add("IN SYSTEM MENU"); if ((gi.flags & 0x10) != 0) f.Add("IN POPUP MENU");
+                sb.AppendLine("UI thread: " + (f.Count > 0 ? string.Join(", ", f) : "no menu / move loop") + $", capture {gi.hwndCapture}, active {gi.hwndActive}");
+            }
+            EnumThreadWindows(thread, (h, _) =>
+            {
+                var t = new System.Text.StringBuilder(256); var c = new System.Text.StringBuilder(256);
+                GetWindowText(h, t, 256); GetClassName(h, c, 256);
+                if (IsWindowVisible(h)) sb.AppendLine($"window: {c} '{t}'");
+                return true;
+            }, IntPtr.Zero);
+            sb.AppendLine("last frame stage: " + Editor.EditorApp.FrameStage);
+            return sb.ToString();
+        }
+        catch (Exception e) { return "hang info failed: " + e.Message; }
     }
 
     /// <summary>Polymorph was called MoloMax: settings, autosave, add-ons and extracted game files are copied to the new folders once.</summary>

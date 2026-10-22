@@ -126,7 +126,7 @@ public sealed class MainForm : Form
     {
         // Modal dialogs opened from the UI run their own message loop, which raises Idle again:
         // never start a second frame inside the first one.
-        if (inFrame || disposed) return;
+        if (inFrame || disposed) { if (inFrame && !EditorApp.FrameStage.Contains("nested")) EditorApp.FrameStage += " | Idle raised inside the frame (a nested message loop: dialog, menu, drag)"; return; }
         if (gpu == null || app == null) { System.Threading.Thread.Sleep(15); return; }
         if (WindowState == FormWindowState.Minimized)
         {
@@ -141,7 +141,9 @@ public sealed class MainForm : Form
         {
             double now = clock.Elapsed.TotalSeconds;
             float dt = (float)(now - last); last = now;
+            EditorApp.FrameStage = $"inside a frame (started {DateTime.Now:HH:mm:ss.fff})";
             if (!app.Frame(dt)) System.Threading.Thread.Sleep(30); // window hidden: do not spin
+            EditorApp.FrameStage = $"between frames (last ended {DateTime.Now:HH:mm:ss.fff})";
         }
         catch (Exception e)
         {

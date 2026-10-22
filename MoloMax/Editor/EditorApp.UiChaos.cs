@@ -14,6 +14,8 @@ namespace MoloMax.Editor;
 public sealed partial class EditorApp
 {
     public static int FrameErrorCount;
+    /// <summary>Where the UI thread was last seen (written in a hang report).</summary>
+    public static volatile string FrameStage = "";
     public static string LastFrameError;
 
     static readonly string[] ChaosCommands =
