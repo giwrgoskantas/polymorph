@@ -78,6 +78,7 @@ public sealed partial class EditorApp
         RememberWalkDistance(cam);
         cam.Distance = Math.Clamp(cam.Distance, 0.5f, MapMode ? 12f : 6f);
         cam.Target = eye + cam.Forward * cam.Distance;
+        walkDistance[cam] = (walkDistance[cam].Before, cam.Distance);
     }
 
     /// <summary>Mouse look while the right button is held (turns around the eye, the camera stays where it is).</summary>
@@ -91,17 +92,24 @@ public sealed partial class EditorApp
         RememberWalkDistance(cam);
         cam.Distance = Math.Clamp(cam.Distance, 0.5f, MapMode ? 12f : 6f);
         cam.Target = eye + cam.Forward * cam.Distance;
+        walkDistance[cam] = (walkDistance[cam].Before, cam.Distance);
     }
 
     // ---- leaving the walk mode: the orbit distance from before the walk comes back (the eye stays where it is)
-    readonly Dictionary<Camera, float> walkDistance = new();
-    void RememberWalkDistance(Camera cam) { if (!walkDistance.ContainsKey(cam)) walkDistance[cam] = cam.Distance; }
+    /// <summary>Per camera: the orbit distance before the walk, and the short distance the walk left (if the camera's
+    /// distance is no longer that one, something else moved the view: the entry is stale and starts again).</summary>
+    readonly Dictionary<Camera, (float Before, float Walk)> walkDistance = new();
+    void RememberWalkDistance(Camera cam)
+    {
+        if (!walkDistance.TryGetValue(cam, out var w) || MathF.Abs(w.Walk - cam.Distance) > 1e-3f) walkDistance[cam] = (cam.Distance, cam.Distance);
+    }
     /// <summary>Called when the view is moved by orbit / pan / zoom: the walk is over, the orbit pivot goes back to its distance.</summary>
     void EndWalk(Camera cam)
     {
-        if (cam == null || !walkDistance.Remove(cam, out var d)) return;
+        if (cam == null || !walkDistance.Remove(cam, out var w)) return;
         flyVel = Vector3.Zero;
-        if (cam.Ortho || d <= cam.Distance) return;
+        float d = w.Before;
+        if (cam.Ortho || MathF.Abs(w.Walk - cam.Distance) > 1e-3f || d <= cam.Distance) return;
         var eye = cam.Eye;
         cam.Distance = d;
         cam.Target = eye + cam.Forward * d;
