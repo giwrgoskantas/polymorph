@@ -1913,6 +1913,7 @@ room.Mesh.Faces.Count");
     IEnumerable<object> EyeRealTest()
     {
         Fresh(); paintMode = false; SculptMode = false; Tool = Tool.Select;
+        var keymapBefore = Settings.Keymap;
         Settings.Keymap = Keymap.Max; // Ctrl adds a row (another test may have left the Blender keymap, where Ctrl makes a range)
         UI.ImGuiBackend.SyntheticInput = true;
         var meshes = new List<SceneObject>();
@@ -1963,6 +1964,7 @@ room.Mesh.Faces.Count");
         foreach (var x in ClickAt(new Vector2(ev.X + ev.W * 0.5f, ev.Y + ev.H * 0.85f), moveFrames: 6)) yield return x;
         SelectNone(); yield return Frames(3);
         UI.ImGuiBackend.SyntheticInput = false;
+        Settings.Keymap = keymapBefore;
     }
 
     /// <summary>A heavy scene: middle drag with the Move tool where nothing selected is under the mouse must only navigate, quickly.</summary>

@@ -26,9 +26,10 @@ public sealed class InputState
     public readonly List<char> Chars = new();
     public void KeyChar(char c) { if (!char.IsControl(c)) charsAcc.Add(c); }
 
-    public bool Ctrl => keysDown.Contains(Keys.ControlKey) || (Control.ModifierKeys & Keys.Control) != 0;
-    public bool Shift => keysDown.Contains(Keys.ShiftKey) || (Control.ModifierKeys & Keys.Shift) != 0;
-    public bool Alt => (Control.ModifierKeys & Keys.Alt) != 0;
+    // self test: the posted keys only (the real keyboard of a person working on the same PC must not leak in)
+    public bool Ctrl => keysDown.Contains(Keys.ControlKey) || !UI.ImGuiBackend.SyntheticInput && (Control.ModifierKeys & Keys.Control) != 0;
+    public bool Shift => keysDown.Contains(Keys.ShiftKey) || !UI.ImGuiBackend.SyntheticInput && (Control.ModifierKeys & Keys.Shift) != 0;
+    public bool Alt => UI.ImGuiBackend.SyntheticInput ? keysDown.Contains(Keys.Menu) : (Control.ModifierKeys & Keys.Alt) != 0;
 
     public void MouseDown(MouseEventArgs e)
     {

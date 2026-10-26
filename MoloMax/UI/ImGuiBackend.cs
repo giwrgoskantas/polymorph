@@ -246,7 +246,8 @@ float4 PSMain(PS_INPUT i) : SV_Target { return i.col * texture0.Sample(sampler0,
         if (e.KeyCode == Keys.ControlKey) synCtrl = down;
         if (e.KeyCode == Keys.ShiftKey) synShift = down;
         if (e.KeyCode == Keys.Menu) synAlt = down;
-        io.AddKeyEvent(ImGuiKey.ModCtrl, e.Control || SyntheticInput && synCtrl); io.AddKeyEvent(ImGuiKey.ModShift, e.Shift || SyntheticInput && synShift); io.AddKeyEvent(ImGuiKey.ModAlt, e.Alt || SyntheticInput && synAlt);
+        // self test: only the posted keys count (a person typing on the same PC held Ctrl / Shift and broke the tests)
+        io.AddKeyEvent(ImGuiKey.ModCtrl, SyntheticInput ? synCtrl : e.Control); io.AddKeyEvent(ImGuiKey.ModShift, SyntheticInput ? synShift : e.Shift); io.AddKeyEvent(ImGuiKey.ModAlt, SyntheticInput ? synAlt : e.Alt);
         var k = Map(e.KeyCode);
         if (k != ImGuiKey.None) io.AddKeyEvent(k, down);
     }
