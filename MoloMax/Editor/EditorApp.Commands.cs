@@ -695,26 +695,55 @@ public sealed partial class EditorApp
         foreach (var o in Scene.Objects) if (!keep.Contains(o.Id)) o.Hidden = true;
     }
 
-    /// <summary>Ctrl+J: attach every selected object into the active one.</summary>
+    /// <summary>Ctrl+J: attach every selected object into the active one. Works on game meshes only: a Drawable node in the
+    /// selection brings its meshes (the node itself has no mesh and never receives one: the active node gives its first mesh,
+    /// or a new "_high_0" mesh under it). Hidden objects, collisions and lights are left out. A Drawable whose meshes were all
+    /// joined away is removed.</summary>
     public void JoinSelected()
     {
-        var target = Current ?? SelObjects().FirstOrDefault();
-        var others = SelObjects().Where(o => o != target).ToList();
-        if (target == null || others.Count == 0) { SetStatus("Select two or more objects to join (the active one receives them)."); return; }
+        static bool Joinable(SceneObject o) => o.Mesh != null && o.GtaType is not (GtaObjectType.Model or GtaObjectType.Collision or GtaObjectType.CollisionGroup or GtaObjectType.Light);
+        IEnumerable<SceneObject> MeshesOf(SceneObject o) => o.GtaType == GtaObjectType.Model ? Scene.Descendants(o).Where(d => Joinable(d) && !d.Hidden) : Joinable(o) && !o.Hidden ? new[] { o } : Array.Empty<SceneObject>();
+        var active = Current ?? SelObjects().FirstOrDefault();
+        if (active == null) { SetStatus("Select two or more objects to join (the active one receives them)."); return; }
+        var pieces = new List<SceneObject>();
+        foreach (var o in SelObjects()) foreach (var m in MeshesOf(o)) if (!pieces.Contains(m)) pieces.Add(m);
+        int skippedHidden = SelObjects().Count(o => o.Hidden && Joinable(o));
+        SceneObject target = Joinable(active) && !active.Hidden ? active : active.GtaType == GtaObjectType.Model ? Scene.Descendants(active).FirstOrDefault(d => Joinable(d) && !d.Hidden) : null;
+        bool newTarget = target == null && active.GtaType == GtaObjectType.Model;
+        if (target == null && !newTarget) target = pieces.FirstOrDefault();
+        var others = pieces.Where(o => o != target).ToList();
+        if ((target == null && !newTarget) || others.Count == 0 || newTarget && others.Count < 1)
+        { SetStatus("Select two or more visible meshes to join (the active one receives them)."); return; }
+        var touchedNodes = new HashSet<int>();
         Do("Join", () =>
         {
+            if (newTarget)
+            {
+                target = Scene.Add(active.Name + "_high_0", new PolyMesh(), Vector3.Zero, GtaObjectType.Drawable);
+                Scene.SetParent(target, active); target.Folder = active.Folder;
+                target.Position = Vector3.Zero; target.Rotation = Quaternion.Identity; target.Scale = Vector3.One;
+            }
             Matrix4x4.Invert(target.World, out var inv);
             foreach (var other in others)
             {
                 var copy = other.Mesh.Clone();
                 copy.Transform(other.World * inv);
                 target.Mesh.Append(copy);
+                if (Scene.Parent(other) is { GtaType: GtaObjectType.Model } pn) touchedNodes.Add(pn.Id);
+                foreach (var k in Scene.Objects.Where(k => Scene.Parent(k) == other).ToList()) Scene.SetParent(k, Scene.Parent(other)); // its children stay
                 Scene.RemoveObjects(x => x == other);
                 Selected.Remove(other.Id);
             }
+            // Drawable nodes left with nothing in them go too (not the one that received the join)
+            var targetNode = Scene.Parent(target);
+            foreach (var id in touchedNodes)
+                if (Scene.Find(id) is { } node && node != targetNode && !Scene.Descendants(node).Any())
+                { Scene.RemoveObjects(x => x == node); Selected.Remove(node.Id); }
             target.Touch();
+            Selected.Clear(); Selected.Add(target.Id); ActiveId = target.Id;
         });
-        SetStatus($"Joined {others.Count} object(s) into {target.Name}");
+        SelectionChanged();
+        SetStatus($"Joined {others.Count} mesh(es) into {target.Name}" + (skippedHidden > 0 ? $" ({skippedHidden} hidden left out)" : ""));
     }
 
     public void RecalcNormals(bool inside)

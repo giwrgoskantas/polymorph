@@ -5,6 +5,9 @@
 - Mode marche (flèches) : dès qu'on bouge la vue autrement (orbite, pan, zoom à la molette), il s'enlève — la
   distance d'orbite d'avant revient, la caméra ne saute pas.
 - Ctrl ou Alt + flèche ne fait jamais marcher la caméra (raccourcis seulement).
+- **Join (Ctrl+J)** avec des Drawables sélectionnés : les meshes vont dans un mesh du Drawable actif (plus jamais dans
+  le nœud Drawable lui-même, où le bâtiment devenait impossible à sélectionner) ; les objets cachés, collisions et
+  lumières restent à part ; les Drawables vidés sont supprimés ; le résultat est sélectionné.
 - Ctrl n'allume plus le snap (points jaunes, accroche) quand on le tient pour sélectionner ou déplacer au gizmo ; il ne
   l'inverse que pendant un déplacement G / R / S au clavier.
 - Matériau : une miniature de chaque texture (Diffuse, Normal, Specular, Detail) à côté de son chemin ; au survol, en grand.

@@ -22,6 +22,7 @@ public sealed partial class EditorApp
         T("USER: walk with the arrows, then orbit with the mouse: the walk mode leaves (orbit distance back); Ctrl+arrow never walks", UserWalkLeaves);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
+        T("USER: Join (Ctrl+J) with Drawable nodes selected: the meshes join into a mesh, never into the node; hidden ones stay out", UserJoinNodes);
         T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
         T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
     }
@@ -344,6 +345,45 @@ public sealed partial class EditorApp
             yield return Shot("user_detach_eye");
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; SetLevel(SubObject.Object); }
+    }
+
+    IEnumerable<object> UserJoinNodes()
+    {
+        Fresh(); paintMode = false; SculptMode = false;
+        var meshes = new List<SceneObject>();
+        for (int i = 0; i < 4; i++)
+        {
+            var q = Prim(CreateKind.Box, new Vector3(i * 3, 0, 0)); q.Name = $"room_{i:00}_high_0";
+            SelectOnly(q); CreateDrawable(); yield return Frames(2);
+            meshes.Add(Scene.Find(q.Id));
+        }
+        var nodes = meshes.Select(m => Scene.Parent(Scene.Find(m.Id))).ToList();
+        int faces = meshes.Take(3).Sum(m => m.Mesh.Faces.Count);
+        Scene.Find(meshes[3].Id).Hidden = true; // a hidden one in the range
+        // the user selects the Drawable rows (a Shift range), the first one active
+        Selected.Clear(); foreach (var n in nodes) Selected.Add(n.Id); foreach (var m in meshes) Selected.Add(m.Id); ActiveId = nodes[0].Id; SelectionChanged();
+        yield return Frames(2);
+        JoinSelected(); yield return Frames(4);
+        var nodeFaces = Scene.Objects.Where(o => o.GtaType == GtaObjectType.Model).Sum(o => o.Mesh?.Faces.Count ?? 0);
+        var target = Scene.Find(meshes[0].Id);
+        Note($"after the join: {string.Join(", ", Scene.Objects.Select(o => $"{o.Name}({o.Mesh?.Faces.Count}{(o.Hidden ? ",H" : "")})"))}");
+        Expect(nodeFaces == 0, $"no Drawable node holds faces ({nodeFaces})");
+        Expect(target != null && target.Mesh.Faces.Count == faces, $"the active Drawable's mesh received the visible meshes ({target?.Mesh.Faces.Count} of {faces} faces)");
+        Expect(Scene.Find(meshes[3].Id) is { Hidden: true } && Scene.Find(nodes[3].Id) != null, "the hidden mesh and its Drawable are left alone");
+        Expect(Scene.Find(nodes[1].Id) == null && Scene.Find(nodes[2].Id) == null, "the emptied Drawables are removed");
+        Expect(Selected.Count == 1 && Selected.Contains(meshes[0].Id), "the joined mesh is selected (it can be clicked in the view)");
+        DoUndo(); yield return Frames(3);
+        Expect(Scene.Find(nodes[1].Id) != null && Scene.Find(meshes[1].Id) != null, "undo brings everything back");
+        // only the node selected (no mesh of its own yet): a new mesh under it receives the others
+        Fresh();
+        var a = Prim(CreateKind.Box, Vector3.Zero); a.Name = "a_high_0"; SelectOnly(a); CreateDrawable(); yield return Frames(2);
+        var na = Scene.Parent(Scene.Find(a.Id));
+        Scene.RemoveObjects(x => x.Id == a.Id); // an empty Drawable
+        var b = Prim(CreateKind.Box, new Vector3(3, 0, 0)); var c = Prim(CreateKind.Box, new Vector3(6, 0, 0));
+        Selected.Clear(); Selected.Add(na.Id); Selected.Add(b.Id); Selected.Add(c.Id); ActiveId = na.Id; SelectionChanged();
+        JoinSelected(); yield return Frames(3);
+        var kid = Scene.Objects.FirstOrDefault(o => Scene.Parent(o) == Scene.Find(na.Id));
+        Expect(Scene.Find(na.Id).Mesh.Faces.Count == 0 && kid != null && kid.Mesh.Faces.Count == b.Mesh.Faces.Count * 2, $"empty Drawable active: a new mesh under it gets the faces ({kid?.Name}, {kid?.Mesh.Faces.Count})");
     }
 
     IEnumerable<object> UserCtrlNoSnap()
