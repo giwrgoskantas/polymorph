@@ -329,6 +329,7 @@ public sealed partial class EditorApp
         {
             Fresh(); Settings.Keymap = Keymap.Blender;
             Prim(CreateKind.Box, Vector3.Zero);
+            Selected.Clear(); SelectionChanged(); // nothing selected: the middle button navigates (on a selection it moves it)
             var vp = Viewports[ActiveViewport]; var cam = vp.Camera;
             cam.SetView(ViewKind.Perspective); cam.Frame(new Vector3(-20, -20, 0), new Vector3(20, 20, 5));
             var mid = new Vector2(vp.X + vp.W * 0.5f, vp.Y + vp.H * 0.5f);
