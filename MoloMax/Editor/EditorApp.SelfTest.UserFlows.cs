@@ -347,7 +347,9 @@ public sealed partial class EditorApp
             Expect(dWalk <= 6.01f && d0 > 6.01f, $"walking: orbit distance {d0:0.0} -> {dWalk:0.0} m");
             // a middle-button orbit: the walk mode leaves, the distance comes back, the eye does not jump
             var eye = cam.Eye;
+            Note($"before the orbit: remembered {walkDistance.Count}, fly speed {flyVel.Length():0.00}, nav {nav}, selected {Selected.Count}, tool {Tool}");
             PostMouse(0x207, mid, 0x10); yield return Frames(2);
+            Note($"middle pressed: nav {nav}, remembered {walkDistance.Count}, distance {cam.Distance:0.0}, hovered {Hovered() != null}, ui {ImGuiNET.ImGui.GetIO().WantCaptureMouse}");
             PostMouse(0x200, mid + new Vector2(1, 0), 0x10); yield return Frames(2);
             PostMouse(0x208, mid + new Vector2(1, 0), 0); yield return Frames(3);
             Expect(MathF.Abs(cam.Distance - d0) < 0.5f, $"after a middle-button orbit the walk mode is gone: distance {cam.Distance:0.0} m (was {d0:0.0})");
