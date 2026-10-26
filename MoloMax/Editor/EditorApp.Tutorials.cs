@@ -3053,7 +3053,7 @@ room.Mesh.Faces.Count");
         foreach (var x in Say("1. Mask \"Picked parts\"", "A blue paint layer, shown only on the parts you click", 25)) yield return x;
         var blue = new PaintLayer { Name = "Blue paint", Kind = LayerKind.Fill, Color = new Vector3(0.12f, 0.3f, 0.62f), Rough = 0.4f, Mask = MaskGen.Parts, MaskPartScope = FillScope.Element };
         AddLayer(ts, blue); Up(shelf, ts);
-        partPick = true; yield return Frames(20);
+        partPick = true; paintMode = true; yield return Frames(20); // (the film's start pressed Escape, which stops painting)
         foreach (var x in Say("2. Click the parts on the model", "Each click adds the piece under the mouse (again: takes it out)", 10)) yield return x;
         var boardZ = new[] { 0.15f, 0.75f, 1.35f };
         foreach (var bi in new[] { 0, 2 })

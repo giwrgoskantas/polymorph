@@ -603,7 +603,7 @@ public sealed partial class EditorApp
             int sc = l.MaskPartScope switch { FillScope.Face => 0, FillScope.UvIsland => 2, _ => 1 };
             ImGui.SetNextItemWidth(-90);
             if (ImGui.Combo("Part##mps", ref sc, "Face\0Connected piece\0UV island\0")) { l.MaskPartScope = sc switch { 0 => FillScope.Face, 2 => FillScope.UvIsland, _ => FillScope.Element }; l.MaskParts.Clear(); mc = true; }
-            if (Theme.Toggle(partPick ? "Picking: click the parts (click here to stop)" : "Pick the parts on the model", partPick, new Vector2(-1, 0))) partPick = !partPick;
+            if (Theme.Toggle(partPick ? "Picking: click the parts (click here to stop)" : "Pick the parts on the model", partPick, new Vector2(-1, 0))) { partPick = !partPick; if (partPick) paintMode = true; } // clicks reach the model only while painting
             Theme.Tip("Each click on the model adds the part under the mouse to this layer's mask (again: takes it out). Like a colour-ID mask, without making an ID map.");
             Ui.TextDisabled($"{l.MaskParts?.Count ?? 0} part(s) picked");
             ImGui.SameLine(); if (ImGui.SmallButton("Clear##mp")) { l.MaskParts.Clear(); mc = true; }
