@@ -3055,13 +3055,16 @@ room.Mesh.Faces.Count");
         AddLayer(ts, blue); Up(shelf, ts);
         partPick = true; yield return Frames(20);
         foreach (var x in Say("2. Click the parts on the model", "Each click adds the piece under the mouse (again: takes it out)", 10)) yield return x;
-        int FrontFace((int From, int To) r) => Enumerable.Range(r.From, r.To - r.From).OrderByDescending(f => Vector3.Dot(shelf.Mesh.FaceNormal(f), -cam.Forward)).First();
+        var boardZ = new[] { 0.15f, 0.75f, 1.35f };
         foreach (var bi in new[] { 0, 2 })
         {
-            int f = FrontFace(boards[bi]);
-            foreach (var x in ClickAt(FaceScreen(vp, shelf, f), false, 26)) yield return x;
+            // the top of the board, a bit in front of its middle (seen from above the shelf)
+            var at = ScreenOf(vp, new Vector3(0.25f, -0.08f, boardZ[bi] + 0.026f));
+            Note($"click on board {bi} at {at.X:0},{at.Y:0}");
+            foreach (var x in ClickAt(at, false, 26)) yield return x;
             Up(shelf, ts); yield return Frames(30);
         }
+        Expect(blue.MaskParts.Count == 2, $"two boards picked by clicking ({blue.MaskParts.Count})");
         foreach (var x in Say("Face, connected piece or UV island", "Like a colour-ID mask, without making an ID map", 10)) yield return x;
         for (int i = 0; i < 70; i++) { cam.Orbit(0.5f, 0); yield return Frames(1); }
         partPick = false;
