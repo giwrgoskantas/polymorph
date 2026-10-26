@@ -887,7 +887,9 @@ public sealed partial class EditorApp
 
     float SnapValue(float v, float step) => step > 0 ? MathF.Round(v / step) * step : v;
     bool ctrlLatch;
-    bool SnapActive => Snap ^ (Input.Ctrl && !ctrlLatch && Settings.Keymap != Keymap.Max); // Ctrl inverts snapping while dragging, like Blender
+    /// <summary>Snapping in effect. Ctrl flips it only inside a G / R / S (or extrude...) modal move, like Blender: holding
+    /// Ctrl anywhere else (Ctrl+click to add to the selection, Ctrl+arrows...) never turns the snap on.</summary>
+    bool SnapActive => Snap ^ (ModalActive && Input.Ctrl && !ctrlLatch && Settings.Keymap != Keymap.Max);
 
     void UpdateTransform()
     {

@@ -22,6 +22,7 @@ public sealed partial class EditorApp
         T("USER: walk with the arrows, then orbit with the mouse: the walk mode leaves (orbit distance back); Ctrl+arrow never walks", UserWalkLeaves);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
+        T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
         T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
     }
 
@@ -343,6 +344,28 @@ public sealed partial class EditorApp
             yield return Shot("user_detach_eye");
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; SetLevel(SubObject.Object); }
+    }
+
+    IEnumerable<object> UserCtrlNoSnap()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        var keymap0 = Settings.Keymap; bool snap0 = Snap;
+        try
+        {
+            foreach (var km in new[] { Keymap.Industry, Keymap.Blender })
+            {
+                Fresh(); Settings.Keymap = km; Snap = false;
+                var b = Prim(CreateKind.Box, Vector3.Zero); SelectOnly(b); yield return Frames(3);
+                PostKey(Keys.ControlKey, true); yield return Frames(4);
+                Expect(!SnapActive, $"[{km}] Ctrl held, snap off: the snap stays off ({SnapActive})");
+                PostKey(Keys.ControlKey, false); yield return Frames(3);
+                Snap = true; PostKey(Keys.ControlKey, true); yield return Frames(4);
+                Expect(SnapActive, $"[{km}] Ctrl held, snap on: it stays on ({SnapActive})");
+                PostKey(Keys.ControlKey, false); yield return Frames(3);
+                Snap = false;
+            }
+        }
+        finally { Settings.Keymap = keymap0; Snap = snap0; UI.ImGuiBackend.SyntheticInput = false; }
     }
 
     IEnumerable<object> UserShiftEye()
