@@ -22,6 +22,7 @@ public sealed partial class EditorApp
         T("USER: walk with the arrows, then orbit with the mouse: the walk mode leaves (orbit distance back); Ctrl+arrow never walks", UserWalkLeaves);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
+        T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
     }
 
     const int MkShift = 4, MkCtrl = 8;
@@ -342,6 +343,51 @@ public sealed partial class EditorApp
             yield return Shot("user_detach_eye");
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; SetLevel(SubObject.Object); }
+    }
+
+    IEnumerable<object> UserShiftEye()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        var keymap0 = Settings.Keymap;
+        try
+        {
+            foreach (var km in new[] { Keymap.Max, Keymap.Industry, Keymap.Blender })
+            foreach (bool holdShift in new[] { false, true })
+            {
+                Fresh(); Settings.Keymap = km; paintMode = false; SculptMode = false; Tool = Tool.Select;
+                var meshes = new List<SceneObject>();
+                for (int i = 0; i < 4; i++)
+                {
+                    var q = Prim(CreateKind.Box, new Vector3(i * 3, 0, 0)); q.Name = $"ext_{i:00}_high_0";
+                    SelectOnly(q); CreateDrawable(); yield return Frames(2);
+                    meshes.Add(Scene.Find(q.Id));
+                }
+                SelectNone(); yield return Frames(10);
+                string tag = $"[{km}{(holdShift ? ", Shift held on the eye" : "")}]";
+                // click mesh 0, Shift+click mesh 2: a range of rows (meshes and the Drawable rows between)
+                foreach (var x in UClick(TutCentre("row:" + meshes[0].Id))) yield return x;
+                yield return Frames(20);
+                foreach (var x in UClick(TutCentre("row:" + meshes[2].Id), MkShift)) yield return x;
+                yield return Frames(20);
+                var sel = Selected.ToList();
+                Note($"{tag} selected: {string.Join(", ", sel.Select(i => Scene.Find(i)?.Name))}");
+                Expect(sel.Contains(meshes[0].Id) && sel.Contains(meshes[2].Id) && sel.Count >= 3, $"{tag} Shift+click selects the range ({sel.Count})");
+                // the eye of mesh 1 (inside the range)
+                var eye = TutCentre("eye:" + meshes[1].Id);
+                if (holdShift) { PostKey(Keys.ShiftKey, true); yield return Frames(2); }
+                foreach (var x in UClick(eye, holdShift ? MkShift : 0)) yield return x;
+                if (holdShift) { PostKey(Keys.ShiftKey, false); yield return Frames(2); }
+                yield return Frames(6);
+                string St() => string.Join(" ", meshes.Select(m => Scene.Find(m.Id).Hidden ? "H" : "v"));
+                Note($"{tag} after the eye: {St()}, selected {Selected.Count}");
+                Expect(sel.All(i => Scene.Find(i)?.Hidden == true) && !Scene.Find(meshes[3].Id).Hidden, $"{tag} the eye hides every selected row, not the 4th ({St()})");
+                if (km == Keymap.Max && !holdShift) yield return Shot("user_shift_eye");
+                foreach (var x in UClick(eye, holdShift ? MkShift : 0)) yield return x;
+                yield return Frames(6);
+                Expect(meshes.All(m => !Scene.Find(m.Id).Hidden), $"{tag} the eye again shows them ({St()})");
+            }
+        }
+        finally { Settings.Keymap = keymap0; UI.ImGuiBackend.SyntheticInput = false; }
     }
 
     IEnumerable<object> UserBigSelection()

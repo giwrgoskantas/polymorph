@@ -1913,6 +1913,7 @@ room.Mesh.Faces.Count");
     IEnumerable<object> EyeRealTest()
     {
         Fresh(); paintMode = false; SculptMode = false; Tool = Tool.Select;
+        Settings.Keymap = Keymap.Max; // Ctrl adds a row (another test may have left the Blender keymap, where Ctrl makes a range)
         UI.ImGuiBackend.SyntheticInput = true;
         var meshes = new List<SceneObject>();
         for (int i = 0; i < 6; i++)
