@@ -23,6 +23,7 @@ public sealed partial class EditorApp
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
         T("USER: Join (Ctrl+J) with Drawable nodes selected: the meshes join into a mesh, never into the node; hidden ones stay out", UserJoinNodes);
+        T("USER: MODEL scene to MAP with its .ymap: the dialog finds the .ymap and the models go where it places them", UserPlaceFromYmap);
         T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
         T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
     }
@@ -384,6 +385,35 @@ public sealed partial class EditorApp
         JoinSelected(); yield return Frames(3);
         var kid = Scene.Objects.FirstOrDefault(o => Scene.Parent(o) == Scene.Find(na.Id));
         Expect(Scene.Find(na.Id).Mesh.Faces.Count == 0 && kid != null && kid.Mesh.Faces.Count == b.Mesh.Faces.Count * 2, $"empty Drawable active: a new mesh under it gets the faces ({kid?.Name}, {kid?.Mesh.Faces.Count})");
+    }
+
+    IEnumerable<object> UserPlaceFromYmap()
+    {
+        var dir = Path.Combine(SelfTestDir, "place_ymap"); Directory.CreateDirectory(Path.Combine(dir, "stream"));
+        var src = new Scene();
+        var node = src.Add("pm_a", new MoloMax.Core.Mesh.PolyMesh(), new Vector3(2, 0, 0), GtaObjectType.Model);
+        var mesh = src.Add("pm_a_high_0", Primitives.Box(1, 1, 1), Vector3.Zero, GtaObjectType.Drawable); src.SetParent(mesh, node);
+        mesh.Position = Vector3.Zero; mesh.Rotation = Quaternion.Identity;
+        var b = src.Add("pm_b", Primitives.Box(1, 1, 1), new Vector3(6, 0, 0), GtaObjectType.Drawable);
+        // the .ymap of that resource: the scene turned 90° and moved to 100, 200, 30
+        var place = Matrix4x4.CreateRotationZ(MathF.PI / 2) * Matrix4x4.CreateTranslation(100, 200, 30);
+        var y = MoloMax.Core.Gta.Map.MapDocument.New("pm_test");
+        foreach (var o in new[] { node, b }) { Matrix4x4.Decompose(o.World * place, out _, out var r, out var t); y.Add(o.Name, t, r, Vector3.One); }
+        var ypath = Path.Combine(dir, "stream", "pm_test.ymap");
+        File.WriteAllBytes(ypath, y.Save());
+        var (m, n, info) = PlacementFromYmap(src, ypath);
+        Note($"placement from the .ymap: {info}");
+        Expect(m != null && n == 2, $"both models found in the .ymap ({n})");
+        if (m != null)
+        {
+            var at = Vector3.Transform(Vector3.Zero, b.World * m.Value);
+            Expect(Vector3.Distance(at, new Vector3(100, 206, 30)) < 0.01f, $"pm_b goes to 100, 206, 30 ({at.X:0.00}, {at.Y:0.00}, {at.Z:0.00})");
+        }
+        AskPlaceOnMap(src, "test scene", dir); yield return Frames(4);
+        Expect(pendingPlace is { Mode: 0, FromYmap: not null } && pendingPlace.Ymaps.Count == 1, $"the dialog found the .ymap by itself and picked it ({pendingPlace?.Ymaps.Count} found, mode {pendingPlace?.Mode})");
+        yield return Shot("user_place_ymap");
+        placeCancel = true; yield return Frames(3);
+        Expect(pendingPlace == null && !ImGuiNET.ImGui.IsPopupOpen("Put on the map###mapplace", ImGuiNET.ImGuiPopupFlags.AnyPopupId), "Cancel closes it");
     }
 
     IEnumerable<object> UserCtrlNoSnap()

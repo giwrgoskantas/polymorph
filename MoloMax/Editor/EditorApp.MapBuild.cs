@@ -164,7 +164,7 @@ public sealed partial class EditorApp
         ImGui.SameLine(0, 4);
         var ms = otherMode?.Scene;
         ImGui.BeginDisabled(ms == null || ms.Objects.Count == 0);
-        if (ImGui.Button("My MODEL scene here", new Vector2(w2, 0)) && ms != null) ImportSceneOnMap(ms, "MODEL scene");
+        if (ImGui.Button("My MODEL scene here", new Vector2(w2, 0)) && ms != null) AskPlaceOnMap(ms, "MODEL scene", string.IsNullOrEmpty(CurrentFile) ? null : Path.GetDirectoryName(CurrentFile));
         ImGui.EndDisabled();
         Theme.Tip("A copy of what you modeled in MODEL mode, on the ground at the middle of the view.");
         var n = MapBuildObjects().Count;
@@ -184,7 +184,7 @@ public sealed partial class EditorApp
         {
             Scene src;
             try { src = MoloMax.Core.Scenes.SceneIO.Load(path); } catch (Exception e) { SetStatus("Could not open the scene: " + e.Message); return; }
-            ImportSceneOnMap(src, Path.GetFileNameWithoutExtension(path));
+            AskPlaceOnMap(src, Path.GetFileNameWithoutExtension(path), Path.GetDirectoryName(path));
             return;
         }
         var g = MapGround();
@@ -196,7 +196,7 @@ public sealed partial class EditorApp
     }
 
     /// <summary>Copies a whole scene onto the map, its lowest point on the ground at the middle of the view.</summary>
-    public List<SceneObject> ImportSceneOnMap(Scene src, string label)
+    public List<SceneObject> ImportSceneOnMap(Scene src, string label, Matrix4x4? place = null)
     {
         var res = new List<SceneObject>();
         var items = src.Objects.Where(o => o.Mesh != null && !(o.Gta.Role == GtaRole.Ignore && o.Name.StartsWith("ped_scale"))).ToList();
@@ -219,7 +219,16 @@ public sealed partial class EditorApp
             {
                 var c = o.Clone(); c.Id = Scene.NextObjectId++; idMap[o.Id] = c.Id;
                 foreach (var f in c.Mesh.Faces) if (matMap.TryGetValue(f.MatId, out var nm)) f.MatId = nm;
-                if (o.ParentId < 0) c.Position += shift;
+                if (o.ParentId < 0)
+                {
+                    if (place is { } pl)
+                    {
+                        // where a .ymap (or the scene's GTA position) puts it: scene coordinates x placement
+                        Matrix4x4.Decompose(o.World * pl, out var sc, out var r, out var t);
+                        c.Position = t; c.Rotation = Quaternion.Normalize(r); c.Scale = sc;
+                    }
+                    else c.Position += shift;
+                }
                 c.Folder = ""; c.Gta.MapArchetype = null;
                 Scene.Objects.Add(c); MapAdopt(c); res.Add(c);
             }
@@ -228,7 +237,8 @@ public sealed partial class EditorApp
             Selected.Clear(); foreach (var c in res.Where(c => c.ParentId < 0)) Selected.Add(c.Id); SelectionChanged();
         });
         renderer.Collect(Scene);
-        SetStatus($"{label}: {res.Count} object(s) on the map at {shift.X:0}, {shift.Y:0}. Saved with the map.");
+        var at = place?.Translation ?? shift;
+        SetStatus($"{label}: {res.Count} object(s) on the map at {at.X:0}, {at.Y:0}{(place != null ? ", where its .ymap / GTA position puts it" : "")}. Saved with the map.");
         return res;
     }
 

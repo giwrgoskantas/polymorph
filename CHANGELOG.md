@@ -1,5 +1,12 @@
 # Polymorph — journal des versions
 
+## 1.4.7 — octobre 2026
+
+- MAP : « My MODEL scene here » et « Import a 3D scene here » (.mmx) demandent où la mettre. S'il y a déjà un .ymap
+  (et son .ytyp) à côté de la scène — ressource exportée, map Sollumz / CodeWalker, .ymap ou .ymap.xml — il est trouvé
+  et proposé : les modèles vont là où ce .ymap les place (par nom de modèle ; un MLO par son entité d'intérieur).
+  Sinon : la position GTA de la scène, ou le sol au milieu de la vue. La vue va à l'endroit.
+
 ## 1.4.6 — octobre 2026
 
 - Mode marche (flèches) : dès qu'on bouge la vue autrement (orbite, pan, zoom à la molette), il s'enlève — la

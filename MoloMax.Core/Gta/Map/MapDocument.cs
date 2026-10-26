@@ -70,6 +70,20 @@ public sealed class MapDocument
         return new MapDocument { Name = name, Ymap = y, Modified = true };
     }
 
+    /// <summary>A .ymap from disk, binary or CodeWalker / Sollumz XML (.ymap.xml).</summary>
+    public static MapDocument LoadFile(string path, Func<uint, string> names = null)
+    {
+        if (path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+        {
+            var doc = new System.Xml.XmlDocument(); doc.Load(path);
+            var data = Cw.XmlMeta.GetData(doc, Cw.MetaFormat.RSC, Path.GetDirectoryName(path)) ?? throw new InvalidDataException("CodeWalker could not read this XML.");
+            var d = Load(data, Path.GetFileName(path).Replace(".xml", "", StringComparison.OrdinalIgnoreCase), names);
+            d.FilePath = path; return d;
+        }
+        var b = Load(File.ReadAllBytes(path), Path.GetFileName(path), names);
+        b.FilePath = path; return b;
+    }
+
     public static MapDocument Load(byte[] data, string name, Func<uint, string> names = null)
     {
         var y = new Cw.YmapFile();
