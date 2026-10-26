@@ -3035,7 +3035,7 @@ room.Mesh.Faces.Count");
         var ts = wall.Paint?.Cur;
         if (ts == null) { Expect(false, "paint did not start"); yield break; }
         void Up() { ts.Refresh(true); UploadPaint(wall, ts, true); }
-        IEnumerable<object> Turn(int n, float speed = 0.35f) { for (int i = 0; i < n; i++) { cam.Orbit(speed, 0); yield return Frames(1); } }
+        IEnumerable<object> Turn(int n, float speed = 0.35f) { for (int i = 0; i < n; i++) { cam.Orbit(MathF.Sin(cam.Yaw + 1.75f) > 0.35f ? -MathF.Abs(speed) : speed, 0); yield return Frames(1); } } // stays facing the wall
         void Pick(PaintLayer l) { ts.SelectedLayer = ts.Layers.IndexOf(l); }
         foreach (var x in StartFilm("21_paint_patterns", 7)) yield return x;
         foreach (var x in Say("Molo Paint: new from ArmorPaint", "Procedural patterns, 14 blend modes, new filters, new smart materials", 80)) yield return x;

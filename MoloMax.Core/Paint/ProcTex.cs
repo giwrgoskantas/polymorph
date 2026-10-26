@@ -178,7 +178,7 @@ public static class ProcTex
             case FillPattern.Brick: return Brick(PlaneUv(p, n), scale).Mortar;
             case FillPattern.Checker: return Checker(p, scale);
             case FillPattern.Wave: return Wave(p, scale * 0.05f, false, 2, 1, 3);
-            case FillPattern.Rings: return Wave(p, scale * 0.05f, true, 1, 1, 2);
+            case FillPattern.Rings: return Wave(p, scale * 0.4f, true, 2, 0.5f, 2); // wood: rings a few cm apart around Z, wobbly
             case FillPattern.Magic: return Magic(p, scale * 0.2f, 1, 2);
             case FillPattern.Perlin: return Perlin(p, scale, detail, 0.5f, 0, seed);
             default: return 0;
