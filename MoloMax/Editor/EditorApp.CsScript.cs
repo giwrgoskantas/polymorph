@@ -67,7 +67,9 @@ public sealed partial class EditorApp
         // things the quick signature does not see, like a light's settings)
         if (run.Error?.StartsWith("Compile error") != true)
         {
-            if (!run.Ok && ScriptSceneSig() == sig0) Undo.DropLast();
+            // a script that only read (nothing changed, no editor step) leaves the scene as it was: no undo step, not "modified"
+            // (it marked the scene dirty, so closing afterwards waited on a "save changes?" dialog, and swapped the scene objects)
+            if (ScriptSceneSig() == sig0 && Undo.LastStamp == scriptStamp) Undo.DropLast();
             else { Dirty = true; AfterSceneSwap(); ResetSelectionBaseline(); }
         }
         run.Output = g.Out.ToString();

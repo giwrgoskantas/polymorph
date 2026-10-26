@@ -131,9 +131,10 @@ public sealed partial class EditorApp
             mode = Level.ToString(), resource = Scene.Gta.ResourceName,
         });
 
-        A.Add("app.quit", "Close Polymorph. discard=true closes without asking to save (unsaved changes are lost).", new[] { new P("discard", "bool", "close without saving") }, p =>
+        A.Add("app.quit", "Close Polymorph. A scene that has a file is saved to it first (no dialog left waiting for a click); discard=true closes without saving (unsaved changes are lost). A new scene never saved still asks.", new[] { new P("discard", "bool", "close without saving") }, p =>
         {
             if (Bool(p, "discard")) Dirty = false;
+            else if (Dirty && CurrentFile != null) { BakeAllPaint(); SceneIO.Save(Scene, CurrentFile); Dirty = false; AddRecent(CurrentFile); }
             form.BeginInvoke(new Action(() => form.Close()));
             return true;
         });

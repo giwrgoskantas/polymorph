@@ -1,5 +1,11 @@
 # Polymorph — journal des versions
 
+## 1.4.9 — octobre 2026
+
+- MCP : un script C# qui ne fait que lire ne marque plus la scène « modifiée » (et ne remplace plus les objets) ;
+  app_quit enregistre la scène dans son fichier avant de fermer : plus de fenêtre « Enregistrer ? » qui bloquait les
+  mises à jour.
+
 ## 1.4.8 — octobre 2026
 
 - **Molo Paint, phase 2 (ArmorPaint)** :
