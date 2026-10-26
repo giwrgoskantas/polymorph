@@ -211,6 +211,7 @@ public sealed partial class EditorApp
         T("PHOTO: photo render of the office scene (path traced in the background, simple settings, picture shown)", PhotoTest);
         T("MCP HOUSE: Claude's MCP server builds a classic house interior with Python (rooms, doors, windows, lights, GTA check)", McpHouseTest);
         T("TUTO 20 terrain painting: a game parking lot with 4 textures", TutTerrainPaint);
+        T("TUTO 21 Molo Paint patterns, blend modes and filters (ArmorPaint)", TutPaintPatterns);
         T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
         T("TERRAIN 4 LAYERS: terrain material, PAINT TERRAIN LAYERS, paint texture 3 with the real mouse", TerrainLayerTest);
         T("PYTHON: embedded Python like bpy (import poly, objects, mesh tools, materials, lights, errors, undo, API, add-ons, editor window)", PythonTest);
@@ -3012,6 +3013,101 @@ room.Mesh.Faces.Count");
         Up(true);
         for (int i = 0; i < 24; i++) { float t = Ease(i / 23f); cam.Distance = 2.4f + (3.4f - 2.4f) * t; yield return Frames(1); }
         for (int i = 0; i < 110; i++) { cam.Orbit(1.3f, 0); yield return Frames(1); }
+        ShowPanel = false;
+    }
+
+    /// <summary>Film: the Molo Paint additions taken from ArmorPaint, on a wall - procedural patterns in a fill, warp, pattern
+    /// masks, the new blend modes and filters, the new smart materials.</summary>
+    IEnumerable<object> TutPaintPatterns()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true;
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; vp.Shading = ShadingMode.Realistic; vp.Camera.Ortho = false;
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "wall";
+        Do("wall", () => { wall.Mesh = MoloMax.Core.Mesh.Primitives.Box(3.2f, 0.3f, 2.2f); wall.Touch(); });
+        SelectOnly(wall);
+        propTab = PropTab.Paint; paintTab = 1; paintRes = 1024;
+        DoMesh("Smart UV Project", (oo, mm, s2) => UvUnwrap.SmartProject(mm));
+        wall = Scene.Find(wall.Id);
+        StartPaint(wall);
+        cam.Target = new Vector3(0, 0, 1.1f); cam.Distance = 4.6f; cam.Pitch = 0.12f; cam.Yaw = -1.75f;
+        yield return Frames(10);
+        var ts = wall.Paint?.Cur;
+        if (ts == null) { Expect(false, "paint did not start"); yield break; }
+        void Up() { ts.Refresh(true); UploadPaint(wall, ts, true); }
+        IEnumerable<object> Turn(int n, float speed = 0.35f) { for (int i = 0; i < n; i++) { cam.Orbit(speed, 0); yield return Frames(1); } }
+        void Pick(PaintLayer l) { ts.SelectedLayer = ts.Layers.IndexOf(l); }
+        foreach (var x in StartFilm("21_paint_patterns", 7)) yield return x;
+        foreach (var x in Say("Molo Paint: new from ArmorPaint", "Procedural patterns, 14 blend modes, new filters, new smart materials", 80)) yield return x;
+
+        // 1. a smart material made of a pattern: the brick wall
+        foreach (var x in Say("1. Smart material: Red brick wall", "Bricks, mortar, a tint per brick, relief - all procedural", 20)) yield return x;
+        ts.Layers.Clear(); foreach (var l in SmartMaterials.Make("Red brick wall", 3)) AddLayer(ts, l);
+        var bricks = ts.Layers[0]; Pick(bricks); Up();
+        foreach (var x in Turn(70)) yield return x;
+
+        // 2. every pattern of the fill
+        foreach (var x in Say("2. Pattern of a fill layer", "Layers tab > the layer > Pattern", 20)) yield return x;
+        foreach (var (pat, name, c2, scale) in new (FillPattern, string, Vector3, float)[]
+        {
+            (FillPattern.Voronoi, "Cells (voronoi)", new(0.75f, 0.55f, 0.35f), 5), (FillPattern.Cracks, "Cracks", new(0.08f, 0.06f, 0.05f), 4),
+            (FillPattern.Checker, "Checker", new(0.9f, 0.9f, 0.85f), 4), (FillPattern.Wave, "Waves", new(0.15f, 0.3f, 0.55f), 3),
+            (FillPattern.Rings, "Rings (wood grain)", new(0.3f, 0.17f, 0.07f), 5), (FillPattern.Magic, "Magic", new(0.2f, 0.6f, 0.75f), 4),
+            (FillPattern.Perlin, "Noise (Perlin)", new(0.2f, 0.2f, 0.22f), 3), (FillPattern.Brick, "Bricks", new(0.62f, 0.6f, 0.55f), 13),
+        })
+        {
+            bricks.Pattern = pat; bricks.PatternColor = c2; bricks.PatternScale = scale; Pick(bricks); Up();
+            tutSub = "Pattern: " + name;
+            foreach (var x in Turn(38, 0.25f)) yield return x;
+        }
+
+        // 3. warp
+        foreach (var x in Say("3. Warp: the pattern bends with noise", "Straight lines become hand-made", 10)) yield return x;
+        for (int i = 0; i <= 12; i++) { bricks.Warp = 0.012f * i; bricks.WarpScale = 2.5f; bricks.MaskChanged(); Up(); yield return Frames(4); }
+        foreach (var x in Turn(40, 0.25f)) yield return x;
+        bricks.Warp = 0.04f; Up();
+
+        // 4. pattern masks: moss in the cracks, clouds of dirt
+        foreach (var x in Say("4. The same patterns as masks", "Where: Cracks, Cells, Brick mortar, Clouds (Perlin)...", 20)) yield return x;
+        var moss = new PaintLayer { Name = "Moss", Kind = LayerKind.Fill, Color = new Vector3(0.16f, 0.3f, 0.08f), Rough = 0.95f, Mask = MaskGen.Cracks, MaskNoiseScale = 3.5f, MaskThreshold = 0.45f, MaskContrast = 5 };
+        AddLayer(ts, moss); Pick(moss); Up();
+        foreach (var x in Turn(45, 0.25f)) yield return x;
+        moss.Mask = MaskGen.Perlin; moss.MaskNoiseScale = 2.2f; moss.MaskThreshold = 0.55f; moss.MaskChanged(); Up();
+        tutSub = "Where: Clouds (Perlin)";
+        foreach (var x in Turn(45, 0.25f)) yield return x;
+
+        // 5. blend modes
+        foreach (var x in Say("5. 14 more blend modes", "Darken, Lighten, Colour burn / dodge, Soft / Hard / Linear light, Difference, Hue, Colour...", 20)) yield return x;
+        var tint = new PaintLayer { Name = "Tint", Kind = LayerKind.Fill, Color = new Vector3(0.95f, 0.55f, 0.15f), Opacity = 0.8f, UseRough = false };
+        AddLayer(ts, tint); Pick(tint);
+        foreach (var (bm, name) in new (PaintBlend, string)[] { (PaintBlend.Multiply, "Multiply"), (PaintBlend.SoftLight, "Soft light"), (PaintBlend.HardLight, "Hard light"), (PaintBlend.Difference, "Difference"), (PaintBlend.Hue, "Hue"), (PaintBlend.Color, "Colour") })
+        {
+            tint.Blend = bm; Up(); tutSub = "Blend: " + name;
+            foreach (var x in Turn(32, 0.2f)) yield return x;
+        }
+        ts.Layers.Remove(tint); Up();
+
+        // 6. filters
+        foreach (var x in Say("6. New filters", "Posterize, Colour ramp, Gamma, Brightness / contrast", 15)) yield return x;
+        Pick(bricks);
+        var post = new PaintFilter { Kind = FilterKind.Posterize, OnMask = false, Steps = 4 }; bricks.Filters.Add(post); Up(); tutSub = "Posterize (colour)";
+        foreach (var x in Turn(35, 0.2f)) yield return x;
+        bricks.Filters.Remove(post);
+        var ramp = new PaintFilter { Kind = FilterKind.ColorRamp, OnMask = false, RampA = new Vector3(0.08f, 0.1f, 0.2f), RampB = new Vector3(0.95f, 0.85f, 0.6f) };
+        bricks.Filters.Add(ramp); Up(); tutSub = "Colour ramp (colour)";
+        foreach (var x in Turn(35, 0.2f)) yield return x;
+        bricks.Filters.Remove(ramp); Up();
+
+        // 7. the new smart materials
+        foreach (var x in Say("7. New smart materials", "Cracked mud, Wood grain, Stone paving", 15)) yield return x;
+        foreach (var name in new[] { "Cracked mud", "Wood grain", "Stone paving" })
+        {
+            ts.Layers.Clear(); foreach (var l in SmartMaterials.Make(name, 5)) AddLayer(ts, l);
+            Pick(ts.Layers[0]); Up(); tutSub = name;
+            foreach (var x in Turn(55, 0.3f)) yield return x;
+        }
+        foreach (var x in Say("Export straight to GTA (DDS)", "Export tab: diffuse, normal, specular - ready for the .ydr", 60)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
         ShowPanel = false;
     }
 
