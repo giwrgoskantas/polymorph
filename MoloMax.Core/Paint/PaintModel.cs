@@ -9,7 +9,7 @@ namespace MoloMax.Core.Paint;
 
 public enum LayerKind { Fill, Paint, Folder }
 public enum PaintBlend { Normal, Multiply, Overlay, Screen, Add, Darken, Lighten, ColorBurn, ColorDodge, SoftLight, HardLight, LinearLight, Difference, Subtract, Divide, Hue, Saturation, Color, Value }
-public enum MaskGen { None, Painted, AmbientOcclusion, Edges, Cavity, Top, Bottom, GradientZ, Noise, Streaks, Tiles, Voronoi, Cracks, Brick, Checker, Wave, Magic, Perlin }
+public enum MaskGen { None, Painted, AmbientOcclusion, Edges, Cavity, Top, Bottom, GradientZ, Noise, Streaks, Tiles, Voronoi, Cracks, Brick, Checker, Wave, Magic, Perlin, Parts }
 public enum PaintChannel { Color, Height, Roughness, Metal }
 public enum PaintView { Final, Roughness, Metal, Height, AmbientOcclusion, Curvature, LayerMask, Emissive, Opacity }
 /// <summary>What a stroke does: paint the brush values, copy another place (clone) or drag the colours along (smudge).</summary>
@@ -23,6 +23,8 @@ public enum PaintExportFormat { Dds, Png, Tga, Sollumz }
 public sealed class PaintBrush
 {
     public bool Erase;
+    /// <summary>Particle brush (ArmorPaint): each print may let drops run down the surface, thinner as they go (0 = off).</summary>
+    public float Drips, DripLength = 0.3f;
     public BrushMode Mode;
     public float Radius = 0.08f, Strength = 0.6f, Hardness = 0.5f, Spacing = 0.15f;
     public bool Color = true, Height, Roughness = true, Metal, Emissive, Alpha;
@@ -111,6 +113,10 @@ public sealed class PaintLayer
     public float MaskThreshold = 0.5f, MaskContrast = 4f, MaskBreakup, MaskNoiseScale = 12f;
     public bool MaskInvert;
     public int Seed;
+    /// <summary>Mask "picked parts" (ArmorPaint's colour-ID mask, without an ID map to make): the parts clicked on the model,
+    /// as faces, connected elements or UV islands.</summary>
+    public List<int> MaskParts = new();
+    public FillScope MaskPartScope = FillScope.Element;
     public List<PaintFilter> Filters = new();
 
     // paint buffers (compact texels of the TexelMap); null until painted
@@ -133,6 +139,7 @@ public sealed class PaintLayer
         c.PaintedMask = (float[])PaintedMask?.Clone(); c.MaskPaint = (float[])MaskPaint?.Clone(); c.maskCache = null; c.maskDirty = true;
         c.texColor = null; c.texRough = null; c.texHeight = null; c.texDirty = true;
         c.Filters = Filters.Select(f => f.Copy()).ToList();
+        c.MaskParts = new List<int>(MaskParts ?? new());
         return c;
     }
 
@@ -280,6 +287,7 @@ public sealed class TextureSet
         var m = l.maskCache != null && l.maskCache.Length == n ? l.maskCache : new float[n];
         var (zmin, zmax) = (Map.Min.Z, Map.Max.Z);
         float zr = MathF.Max(zmax - zmin, 1e-5f);
+        var parts = l.Mask == MaskGen.Parts && l.MaskParts is { Count: > 0 } ? new HashSet<int>(l.MaskParts) : null;
         Parallel.For(0, n, t =>
         {
             var wp = l.Warp > 0 ? ProcTex.Warp(Map.Pos[t], l.Warp, l.WarpScale, l.Seed) : Map.Pos[t];
@@ -305,9 +313,10 @@ public sealed class TextureSet
                 MaskGen.Wave => ProcTex.Wave(wp, l.MaskNoiseScale * 0.05f, false, 2, 1, 3),
                 MaskGen.Magic => ProcTex.Magic(wp, l.MaskNoiseScale * 0.2f),
                 MaskGen.Perlin => ProcTex.Perlin(wp, l.MaskNoiseScale, 6, 0.5f, 0.3f, l.Seed),
+                MaskGen.Parts => parts != null && parts.Contains(PartId(t, l.MaskPartScope)) ? 1f : 0f,
                 _ => 1f,
             };
-            if (l.Mask is not (MaskGen.None or MaskGen.Painted))
+            if (l.Mask is not (MaskGen.None or MaskGen.Painted or MaskGen.Parts))
             {
                 if (l.MaskBreakup > 0) g += (Noise.Fbm(Map.Pos[t] * l.MaskNoiseScale, l.Seed + 7) - 0.5f) * l.MaskBreakup * 2;
                 g = Math.Clamp((g - l.MaskThreshold) * l.MaskContrast + 0.5f, 0, 1);
@@ -319,6 +328,28 @@ public sealed class TextureSet
         foreach (var f in l.Filters) if (f.Enabled && f.OnMask) ApplyMaskFilter(f, m);
         l.maskCache = m; l.maskDirty = false;
         return m;
+    }
+
+    /// <summary>The part a texel belongs to: its face, connected element or UV island.</summary>
+    public int PartId(int t, FillScope scope) => scope switch { FillScope.Face => Map.FaceOf[t], FillScope.UvIsland => Map.IslandOf[t], _ => Map.ElementOf[t] };
+
+    /// <summary>The part of a face (-1: the face is not in this texture set).</summary>
+    public int PartOfFace(int face, FillScope scope)
+    {
+        if (scope == FillScope.Face) return Array.IndexOf(Map.FaceOf, face) >= 0 ? face : -1;
+        int t = Array.IndexOf(Map.FaceOf, face);
+        return t < 0 ? -1 : PartId(t, scope);
+    }
+
+    /// <summary>Adds the part under a face to the layer's picked-parts mask, or takes it out when it is in.</summary>
+    public bool TogglePart(PaintLayer l, int face)
+    {
+        int id = PartOfFace(face, l.MaskPartScope);
+        if (id < 0) return false;
+        l.MaskParts ??= new();
+        if (!l.MaskParts.Remove(id)) l.MaskParts.Add(id);
+        l.Mask = MaskGen.Parts; l.MaskChanged();
+        return true;
     }
 
     static float Grout(Vector3 p, Vector3 n, float perMetre)

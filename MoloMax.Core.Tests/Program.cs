@@ -1619,6 +1619,29 @@ Console.WriteLine("Molo Paint: ArmorPaint procedural textures, blend modes, filt
         ts.Layers.Add(l); ts.Refresh(true);
         return NearC(ts.CColor[0], V(1, 0, 0));
     });
+    Check("mask 'picked parts': a clicked face shows the layer only there, a second click takes it out", () =>
+    {
+        ts.Layers.Clear();
+        var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, MaskPartScope = FillScope.Face };
+        ts.Layers.Add(l);
+        int face = ts.Map.FaceOf[ts.Map.Count / 2];
+        bool on = ts.TogglePart(l, face);
+        var m = ts.MaskOf(l);
+        bool only = Enumerable.Range(0, ts.Map.Count).All(t => (ts.Map.FaceOf[t] == face) == (m[t] > 0.5f));
+        ts.TogglePart(l, face);
+        var m2 = ts.MaskOf(l);
+        return on && only && m2.All(x => x < 0.5f) && l.Mask == MaskGen.Parts;
+    });
+    Check("picked parts by UV island: the whole island of the clicked face", () =>
+    {
+        ts.Layers.Clear();
+        var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, MaskPartScope = FillScope.UvIsland };
+        ts.Layers.Add(l);
+        int t0 = ts.Map.Count / 3, isl = ts.Map.IslandOf[t0];
+        ts.TogglePart(l, ts.Map.FaceOf[t0]);
+        var m = ts.MaskOf(l);
+        return Enumerable.Range(0, ts.Map.Count).All(t => (ts.Map.IslandOf[t] == isl) == (m[t] > 0.5f));
+    });
     Check("smart materials with patterns build their layers", () => new[] { "Red brick wall", "Cracked mud", "Wood grain", "Stone paving" }.All(n => SmartMaterials.Make(n, 1).Count >= 2));
 }
 

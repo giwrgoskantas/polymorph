@@ -1,5 +1,6 @@
 using System.Numerics;
 using MoloMax.Core.Mesh;
+using MoloMax.Core.Paint;
 using MoloMax.Core.Scenes;
 using MoloMax.Rendering;
 using Keys = System.Windows.Forms.Keys;
@@ -24,6 +25,7 @@ public sealed partial class EditorApp
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
         T("USER: Join (Ctrl+J) with Drawable nodes selected: the meshes join into a mesh, never into the node; hidden ones stay out", UserJoinNodes);
         T("USER: after an undo / redo (the objects are new copies), the eye of a row still hides the real object", UserEyeAfterUndo);
+        T("USER: Molo Paint drips: a print near the top of a wall lets drops run down it", UserPaintDrips);
         T("USER: MODEL scene to MAP with its .ymap: the dialog finds the .ymap and the models go where it places them", UserPlaceFromYmap);
         T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
         T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
@@ -417,6 +419,37 @@ public sealed partial class EditorApp
             }
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; }
+    }
+
+    IEnumerable<object> UserPaintDrips()
+    {
+        Fresh();
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "drip_wall";
+        Do("wall", () => { wall.Mesh = Primitives.Box(3f, 0.3f, 2.4f); wall.Touch(); });
+        SelectOnly(wall);
+        DoMesh("Smart UV Project", (oo, mm, s2) => UvUnwrap.SmartProject(mm));
+        wall = Scene.Find(wall.Id);
+        paintRes = 1024; StartPaint(wall); yield return Frames(4);
+        var ts = wall.Paint?.Cur;
+        Expect(ts != null, "paint started");
+        if (ts == null) yield break;
+        AddLayer(ts, new PaintLayer { Name = "Rust drips", Kind = LayerKind.Paint });
+        var keep = (brush.Drips, brush.DripLength, brush.Radius, brush.ColorValue, brush.Strength);
+        paintTool = PaintTool.Brush; brush.Erase = false; brush.Stamp = null; brush.Tip = null;
+        brush.Drips = 1; brush.DripLength = 1.2f; brush.Radius = 0.12f; brush.Strength = 1; brush.ColorValue = new Vector3(0.45f, 0.2f, 0.07f);
+        // the front face (-Y): prints along a line near the top
+        float front = wall.Mesh.Verts.Min(v => v.Y);
+        for (int i = 0; i < 12; i++) StampAll(wall, ts, new Vector3(-1.2f + i * 0.2f, front, 2.1f), -Vector3.UnitY, brush.Radius, new Vector3(-1.2f + i * 0.2f, front, 2.1f));
+        ts.Refresh(true); UploadPaint(wall, ts, true);
+        var l = ts.Current;
+        int low = 0;
+        for (int t = 0; t < ts.Map.Count; t++) if (l.Cover?[t] > 0.3f && ts.Map.Pos[t].Z < 1.7f && ts.Map.Nrm[t].Y < -0.5f) low++;
+        Note($"painted texels well below the prints (z < 1.7 m): {low}");
+        Expect(low > 20, $"drops ran down the wall ({low} texels below the prints)");
+        var vp = Viewports[ActiveViewport]; vp.Camera.SetView(ViewKind.Perspective); vp.Camera.Target = new Vector3(0, 0, 1.2f); vp.Camera.Distance = 4.5f; vp.Camera.Yaw = -MathF.PI / 2; vp.Camera.Pitch = 0.1f;
+        yield return Frames(4);
+        yield return Shot("user_paint_drips");
+        (brush.Drips, brush.DripLength, brush.Radius, brush.ColorValue, brush.Strength) = keep;
     }
 
     IEnumerable<object> UserPlaceFromYmap()

@@ -1,5 +1,14 @@
 # Polymorph — journal des versions
 
+## 1.4.8 — octobre 2026
+
+- **Molo Paint, phase 2 (ArmorPaint)** :
+  - masque « Picked parts » : on clique les parties du modèle (face, morceau connecté ou îlot UV) où le calque se
+    montre — comme un masque ID couleur, sans carte ID à faire ;
+  - pinceau à particules « Drips » : des gouttes coulent le long de la surface depuis les coups de pinceau (rouille,
+    peinture, eau), plus fines en descendant, avec leur longueur réglable.
+- Motif « bois » : des cernes de quelques centimètres (ils faisaient plus d'un mètre).
+
 ## 1.4.7 — octobre 2026
 
 - **L'œil (et le gel, le renommage) de la liste n'agissait plus après un Undo / Redo** : la liste gardait les anciennes

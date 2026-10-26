@@ -44,6 +44,7 @@ public sealed partial class EditorApp
         ("Waves", MaskGen.Wave, false),
         ("Magic", MaskGen.Magic, false),
         ("Cloudy noise (Perlin)", MaskGen.Perlin, false),
+        ("Picked parts (click them)", MaskGen.Parts, false),
     };
     static readonly (string Label, Vector3 Colour)[] Swatches =
     {
@@ -259,6 +260,9 @@ public sealed partial class EditorApp
         ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Spacing", ref brush.Spacing, 0.02f, 1f);
         ImGui.SetNextItemWidth(-90); ImGui.DragFloat("Lazy mouse", ref brush.Lazy, 0.002f, 0, 2, brush.Lazy <= 0 ? "off" : "%.2f m");
         Theme.Tip("The brush trails behind the cursor: clean lines and curves.");
+        ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Drips", ref brush.Drips, 0, 1, brush.Drips <= 0 ? "off" : "%.2f");
+        Theme.Tip("Particle brush: drops run down the surface from the strokes (paint, rust, water). Their length below.");
+        if (brush.Drips > 0) { ImGui.SetNextItemWidth(-90); ImGui.SliderFloat("Drip length", ref brush.DripLength, 0.02f, 2, "%.2f m"); }
         Ui.TextDisabled("Symmetry"); ImGui.SameLine();
         ImGui.Checkbox("X##sx", ref brush.SymX); ImGui.SameLine(); ImGui.Checkbox("Y##sy", ref brush.SymY); ImGui.SameLine(); ImGui.Checkbox("Z##sz", ref brush.SymZ);
         Theme.Tip("Mirrors the strokes across the object's axes (through its pivot).");
@@ -594,7 +598,19 @@ public sealed partial class EditorApp
         if (where < 0) where = 0;
         ImGui.SetNextItemWidth(-90);
         if (ImGui.Combo("Where", ref where, WhereChoices.Select(w => w.Label).ToArray(), WhereChoices.Length)) { l.Mask = WhereChoices[where].Mask; l.MaskInvert = WhereChoices[where].Invert; mc = true; }
-        if (l.Mask is not (MaskGen.None or MaskGen.Painted))
+        if (l.Mask == MaskGen.Parts)
+        {
+            int sc = l.MaskPartScope switch { FillScope.Face => 0, FillScope.UvIsland => 2, _ => 1 };
+            ImGui.SetNextItemWidth(-90);
+            if (ImGui.Combo("Part##mps", ref sc, "Face\0Connected piece\0UV island\0")) { l.MaskPartScope = sc switch { 0 => FillScope.Face, 2 => FillScope.UvIsland, _ => FillScope.Element }; l.MaskParts.Clear(); mc = true; }
+            if (Theme.Toggle(partPick ? "Picking: click the parts (click here to stop)" : "Pick the parts on the model", partPick, new Vector2(-1, 0))) partPick = !partPick;
+            Theme.Tip("Each click on the model adds the part under the mouse to this layer's mask (again: takes it out). Like a colour-ID mask, without making an ID map.");
+            Ui.TextDisabled($"{l.MaskParts?.Count ?? 0} part(s) picked");
+            ImGui.SameLine(); if (ImGui.SmallButton("Clear##mp")) { l.MaskParts.Clear(); mc = true; }
+            mc |= ImGui.Checkbox("Invert##mpi", ref l.MaskInvert);
+        }
+        else partPick = false;
+        if (l.Mask is not (MaskGen.None or MaskGen.Painted or MaskGen.Parts))
         {
             float amount = 1 - l.MaskThreshold;
             ImGui.SetNextItemWidth(-90); if (ImGui.SliderFloat("Amount", ref amount, 0, 1)) { l.MaskThreshold = 1 - amount; mc = true; }

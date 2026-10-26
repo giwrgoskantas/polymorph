@@ -36,6 +36,8 @@ public sealed partial class EditorApp
     readonly Dictionary<int, int> paintMeshVersion = new();
     int aoRays = 48;
     readonly Random paintRnd = new();
+    /// <summary>Clicks on the model pick the parts of the selected layer's mask instead of painting.</summary>
+    bool partPick;
     Vector3? cloneSource;
     ShadingMode? shadingBeforeVertex;
     static readonly int[] PaintSizes = { 512, 1024, 2048, 4096 };
@@ -255,6 +257,13 @@ public sealed partial class EditorApp
         {
             // Ctrl+click with the clone tool: the source
             if (paintTool == PaintTool.Clone && Input.Ctrl) { cloneSource = pl; brush.CloneSourceSet = false; SetStatus("Clone source set. Paint where the copy goes."); return true; }
+            if (partPick && ts?.Current is { } pl0)
+            {
+                // picking the parts of a "picked parts" mask: a click adds or removes the part under the mouse
+                if (ts.TogglePart(pl0, face)) { ts.Refresh(); Dirty = true; SetStatus($"{pl0.MaskParts.Count} part(s) picked for '{pl0.Name}'. Click again to take one out."); }
+                else SetStatus("That face belongs to another texture set.");
+                return true;
+            }
             if (paintTool == PaintTool.Fill) { PaintFillClick(o, ts, face); return true; }
             if (paintTool == PaintTool.VertexColour)
             {
@@ -351,8 +360,49 @@ public sealed partial class EditorApp
             if (brush.SizeJitter > 0) rr = r * MathF.Max(0.1f, 1 + ((float)paintRnd.NextDouble() - 0.5f) * 2 * brush.SizeJitter);
             if (brush.AngleJitter > 0) ang += ((float)paintRnd.NextDouble() - 0.5f) * 2 * brush.AngleJitter;
         }
-        foreach (var (mp, mn, mprev) in Mirrors(p, n, prev)) ts.Stamp(brush, mp, mn, rr, ang, mprev);
+        foreach (var (mp, mn, mprev) in Mirrors(p, n, prev))
+        {
+            ts.Stamp(brush, mp, mn, rr, ang, mprev);
+            if (brush.Drips > 0 && !brush.Erase && paintTool == PaintTool.Brush && paintRnd.NextDouble() < brush.Drips * 0.25) Drip(o, ts, mp, mn, rr);
+        }
     }
+
+    /// <summary>A drop that runs down the surface from a print (gravity laid on the surface), thinner as it goes, until the
+    /// surface turns flat or ends. Object space; the surface is found again under the drop at every step.</summary>
+    void Drip(SceneObject o, TextureSet ts, Vector3 p, Vector3 n, float r)
+    {
+        var down = Vector3.TransformNormal(-Vector3.UnitZ, InverseOf(o.World));
+        if (down.LengthSquared() < 1e-10f) return;
+        down = Vector3.Normalize(down);
+        float len = brush.DripLength / ObjScale(o) * (0.4f + 0.6f * (float)paintRnd.NextDouble());
+        float rad = r * (0.18f + 0.12f * (float)paintRnd.NextDouble());
+        float step = MathF.Max(rad * 0.5f, 1e-4f), run = 0;
+        var prev = p; var b0 = brush.Strength; brush.Strength = MathF.Min(1, b0 * 1.2f);
+        try
+        {
+            while (run < len && rad > r * 0.03f)
+            {
+                var d = down - n * Vector3.Dot(down, n);
+                if (d.LengthSquared() < 0.04f) break; // a flat top: the drop stops
+                var q = p + Vector3.Normalize(d) * step;
+                // back onto the surface: a short ray from above the new point, along the normal
+                var wo = Vector3.Transform(q + n * step * 2, o.World); var wd = Vector3.Normalize(Vector3.TransformNormal(-n, o.World));
+                var h = Picking.PickFace(o, new Ray(wo, wd));
+                if (h is not { } hit) break;
+                var ql = Vector3.Transform(hit.Point, InverseOf(o.World));
+                if (Vector3.Distance(ql, q) > step * 4) break; // fell off an edge
+                var nn = Vector3.Normalize(o.Mesh.FaceNormal(hit.Face));
+                if (Vector3.Dot(nn, n) < 0.2f) break;         // around a sharp corner
+                ts.Stamp(brush, ql, nn, rad, brush.StampAngle, p);
+                run += Vector3.Distance(p, ql); prev = p; p = ql; n = nn;
+                rad *= 0.985f;
+            }
+            if (run > step * 3) ts.Stamp(brush, p, n, rad * 1.6f, brush.StampAngle, prev); // the bead at the end
+        }
+        finally { brush.Strength = b0; }
+    }
+
+    static Matrix4x4 InverseOf(Matrix4x4 m) { Matrix4x4.Invert(m, out var inv); return inv; }
 
     IEnumerable<(Vector3 P, Vector3 N, Vector3 Prev)> Mirrors(Vector3 p, Vector3 n, Vector3 prev)
     {
