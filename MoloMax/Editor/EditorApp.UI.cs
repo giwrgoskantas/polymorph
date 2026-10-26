@@ -49,6 +49,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S")) Save(true);
             ImGui.Separator();
             if (ImGui.MenuItem("Import model (GLB, glTF, OBJ)...", "Ctrl+Shift+O")) ImportDialog();
+            if (ImGui.MenuItem("Export models (.ydr / .yft)...")) OpenModelExport();
             if (ImGui.MenuItem("Export OBJ (all)...")) ExportObj(false);
             if (ImGui.MenuItem("Export OBJ (selected)...", null, false, Selected.Count > 0)) ExportObj(true);
             ImGui.Separator();
@@ -141,6 +142,7 @@ public sealed partial class EditorApp
             if (ImGui.MenuItem("Import MLO (.ytyp)...")) ImportMloDialog();
             if (ImGui.MenuItem("MLO Room Builder (floor plan)...")) OpenRoomBuilder();
             ImGui.Separator();
+            if (ImGui.MenuItem("Export models (.ydr / .yft)...")) OpenModelExport();
             if (ImGui.MenuItem("Export FiveM resource...")) OpenHub(1);
             if (ImGui.MenuItem("MLO builder")) OpenHub(2);
             if (ImGui.MenuItem("Object properties")) OpenHub(3);

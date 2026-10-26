@@ -342,7 +342,9 @@ public sealed partial class EditorApp
             else { rmbTracking = true; rmbStart = Input.Mouse; }
         }
         // right button held and moved: game-style look (fly); a click without moving still opens the menu
-        if (rmbTracking && Input.Down(MouseButtons.Right) && Vector2.Distance(rmbStart, Input.Mouse) >= 6 && hv != null)
+        // (not in the flat Top / Front / Left views: a small slip of the mouse during a right-click turned them into a
+        // perspective camera far back; and 10 px so a shaky click still opens the menu)
+        if (rmbTracking && Input.Down(MouseButtons.Right) && Vector2.Distance(rmbStart, Input.Mouse) >= 10 && hv != null && !hv.Camera.Ortho)
         {
             rmbTracking = false;
             StartNav(hv, NavMode.Fly, MouseButtons.Right);
@@ -351,7 +353,7 @@ public sealed partial class EditorApp
         if (rmbTracking && (Input.Released(MouseButtons.Right) || !Input.Down(MouseButtons.Right)))
         {
             rmbTracking = false;
-            if (Vector2.Distance(rmbStart, Input.Mouse) < 6) { quadCenter = Input.Mouse; OpenPopup("context"); }
+            if (Vector2.Distance(rmbStart, Input.Mouse) < 10 || hv is { Camera.Ortho: true }) { quadCenter = Input.Mouse; OpenPopup("context"); }
         }
     }
 

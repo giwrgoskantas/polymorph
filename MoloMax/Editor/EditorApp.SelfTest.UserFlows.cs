@@ -18,6 +18,7 @@ public sealed partial class EditorApp
         T("USER: faces: click, quick Ctrl+click a 2nd face (no loop over the whole mesh), Ctrl+Up / Down, arrows still move the camera", UserFaceSelection);
         T("USER: knife: cut starting inside a face, 90° step gives a straight cut, straight on world axes", UserKnife);
         T("USER: loop cut: several loops with +, Tab turns the cut the other way", UserLoopCut);
+        T("USER: select 90 heavy objects at once: the views stay fast; Hide on a Drawable hides its meshes", UserBigSelection);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
     }
 
@@ -290,5 +291,32 @@ public sealed partial class EditorApp
             SetLevel(SubObject.Object);
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; }
+    }
+
+    IEnumerable<object> UserBigSelection()
+    {
+        Fresh();
+        var objs = new List<SceneObject>();
+        for (int i = 0; i < 90; i++)
+        {
+            var o = Prim(CreateKind.Box, new Vector3((i % 10) * 3, (i / 10) * 3, 0)); o.Name = $"piece_{i:00}";
+            o.Mesh = Primitives.Plane(2, 2, 100, 100); o.Touch(); // 10 201 points each, ~920 000 in all
+            objs.Add(o);
+        }
+        Maximized = false; // the four views, like a Classic layout
+        foreach (var v in Viewports) v.Camera.Frame(new Vector3(-2, -2, -1), new Vector3(30, 30, 2));
+        Selected.Clear(); SelectionChanged(); yield return Frames(10);
+        double before = FrameProfile.GetValueOrDefault("viewports");
+        foreach (var o in objs) Selected.Add(o.Id); SelectionChanged();
+        yield return Frames(40); // past the first frames that build the outlines once
+        double after = FrameProfile.GetValueOrDefault("viewports");
+        yield return Shot("user_big_selection");
+        Expect(after < Math.Max(40, before * 4), $"90 objects selected: views {before:0.0} ms -> {after:0.0} ms per frame (outline meshes kept, not rebuilt every frame)");
+        // Hide on a selected Drawable hides its meshes
+        SelectOnly(objs[0]); CreateDrawable(); yield return Frames(3);
+        var node = Scene.Parent(Scene.Find(objs[0].Id));
+        SelectOnly(node); HideSelection(); yield return Frames(3);
+        Expect(Scene.Find(node.Id).Hidden && Scene.Find(objs[0].Id).Hidden, "Hide on a selected Drawable hides it and its mesh");
+        UnhideAll(); Maximized = true; yield return Frames(2);
     }
 }

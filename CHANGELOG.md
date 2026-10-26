@@ -1,5 +1,18 @@
 # Polymorph — journal des versions
 
+## 1.4.5 — octobre 2026
+
+- **File > Export models** (et menu GTA) : export à la façon GIMS — liste des modèles avec une case chacun (la
+  sélection est cochée), options (format .ydr / .yft, collisions oui / non, dossier), un fichier par modèle à son nom,
+  textures intégrées, chaque modèle garde son pivot. Les meshes « _high_0 » prennent le nom de leur modèle.
+- Grosse sélection : plus de chute à quelques images par seconde (les contours étaient reconstruits à chaque image
+  au-delà de 48 objets) ; au-delà de 1,5 million de points sélectionnés, seulement les coins de sélection.
+- Hide sur un Drawable cache aussi ses meshes ; Hide Unselected garde les meshes et le Drawable de la sélection.
+- Clic droit : plus de saut de caméra dans les vues Top / Front / Left (un petit glissement en faisait une vue
+  perspective reculée) ; il faut glisser de 10 px pour tourner la vue.
+- Menus clic droit : Hide Selection / Hide Unselected retirés (en doublon avec l'œil) ; restent Isolate Selection et
+  Unhide All.
+
 ## 1.4.4 — octobre 2026
 
 - Un clic tombe toujours là où il est fait, même sans mouvement de souris juste avant (l'œil d'un Drawable cliqué

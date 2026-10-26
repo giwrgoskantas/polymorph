@@ -102,8 +102,6 @@ public sealed class OutlineRenderer : IDisposable
             m.Ib = Buffer.Create(device, BindFlags.IndexBuffer, idx.ToArray());
         }
         meshes[id] = m;
-        if (meshes.Count > 64)
-            foreach (var k in meshes.Keys.Where(k => k != id).Take(meshes.Count - 48).ToList()) { meshes[k].Dispose(); meshes.Remove(k); }
         return m;
     }
 
@@ -122,6 +120,13 @@ public sealed class OutlineRenderer : IDisposable
         ctx.Rasterizer.State = noCull;
         var blendCol = new SharpDX.Mathematics.Interop.RawColor4(0, 0, 0, 0);
         var list = items.Select(it => (it, Get(it.Id, it.Version, it.Source))).Where(x => x.Item2.Count > 0).ToList();
+        // forget only the meshes that are no longer outlined: with more than a few dozen selected objects the old
+        // "keep 48" rule threw away and rebuilt every outline mesh each frame (a big selection fell to a few fps)
+        if (meshes.Count > items.Count + 32)
+        {
+            var used = items.Select(it => it.Id).ToHashSet();
+            foreach (var k in meshes.Keys.Where(k => !used.Contains(k)).ToList()) { meshes[k].Dispose(); meshes.Remove(k); }
+        }
         // pass 1: stamp
         ctx.OutputMerger.SetDepthStencilState(stamp, 1);
         ctx.OutputMerger.SetBlendState(noColour, blendCol, -1);

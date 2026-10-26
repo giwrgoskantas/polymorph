@@ -568,7 +568,7 @@ public static class GtaExporter
     /// Quick export of the given objects as ONE model file (.ydr or .yft), textures embedded, like Sollumz's
     /// "export selected". The model origin is the first object's origin; collision from the prop setting.
     /// </summary>
-    public static string ExportModelFile(Scene scene, IReadOnlyList<SceneObject> objects, string path, Func<string, RgbaImage> imageLoader, IEnumerable<string> textureFolders = null)
+    public static string ExportModelFile(Scene scene, IReadOnlyList<SceneObject> objects, string path, Func<string, RgbaImage> imageLoader, IEnumerable<string> textureFolders = null, bool collisions = true)
     {
         if (objects.Count == 0) throw new InvalidOperationException("Nothing selected.");
         // a parent exports with its whole hierarchy (child meshes + collision), like GIMS
@@ -593,13 +593,16 @@ public static class GtaExporter
         if (!fragment) BuildLods(model, scene, highItems, manualLods, first.Gta, new ExportReport());
         int colType = Math.Clamp(first.Gta.CollisionMaterial, 0, CollisionMaterials.Names.Length - 1);
         var col = new CollisionMesh();
-        foreach (var o in objects)
+        if (collisions)
         {
-            if (o.GtaType == GtaObjectType.Collision) col.AddCollisionObject(o, o.World * toLocal);
+            foreach (var o in objects)
+            {
+                if (o.GtaType == GtaObjectType.Collision) col.AddCollisionObject(o, o.World * toLocal);
+            }
+            bool hasColChild = !col.IsEmpty;
+            if (!hasColChild) foreach (var o in objects) if (o.GtaType == GtaObjectType.Drawable && o.Gta.PropCollision == GtaPropCollision.Mesh) col.AddObject(o, o.World * toLocal, colType, _ => 0);
+            if (col.IsEmpty && (fragment || first.Gta.PropCollision == GtaPropCollision.Box)) col = CollisionMesh.Box(model.Min, model.Max, colType);
         }
-        bool hasColChild = !col.IsEmpty;
-        if (!hasColChild) foreach (var o in objects) if (o.GtaType == GtaObjectType.Drawable && o.Gta.PropCollision == GtaPropCollision.Mesh) col.AddObject(o, o.World * toLocal, colType, _ => 0);
-        if (col.IsEmpty && (fragment || first.Gta.PropCollision == GtaPropCollision.Box)) col = CollisionMesh.Box(model.Min, model.Max, colType);
         var bank = new TextureBank { ImageLoader = imageLoader };
         if (textureFolders != null) bank.SearchFolders.AddRange(textureFolders);
         string xml; List<ExportTexture> tex;

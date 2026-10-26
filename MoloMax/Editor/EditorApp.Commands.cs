@@ -361,7 +361,8 @@ public sealed partial class EditorApp
 
     public void HideSelection()
     {
-        foreach (var id in Selected) { var o = Scene.Find(id); if (o != null) o.Hidden = true; }
+        // a Drawable node hides with its meshes (it has no geometry of its own: hiding the node alone showed no change)
+        foreach (var id in Selected) { var o = Scene.Find(id); if (o == null) continue; o.Hidden = true; foreach (var d in Scene.Descendants(o)) d.Hidden = true; }
         Selected.Clear(); Level = SubObject.Object; SelectionChanged();
     }
     public void UnhideAll()
@@ -376,8 +377,7 @@ public sealed partial class EditorApp
         bool any = Selected.Count > 0, hiddenSome = Scene.Objects.Any(o => o.Hidden);
         if (ImGuiNET.ImGui.MenuItem("Isolate Selection", K("/", "Shift+I", "Alt+Q"), false, any)) IsolateSelection(forceOn: true);
         if (isolated && ImGuiNET.ImGui.MenuItem("End Isolate", K("/", "Shift+I", "Alt+Q"))) EndIsolate();
-        if (ImGuiNET.ImGui.MenuItem("Hide Selection", K("H", "Ctrl+H", ""), false, any)) HideSelection();
-        if (ImGuiNET.ImGui.MenuItem("Hide Unselected", K("Shift+H", "Shift+H", ""), false, any)) HideUnselected();
+        // Hide Selection / Hide Unselected left the menus (the eye and Isolate do it; their keys still work)
         if (ImGuiNET.ImGui.MenuItem("Unhide All", K("Alt+H", "Alt+H", ""), false, hiddenSome)) UnhideAll();
     }
 
@@ -684,7 +684,15 @@ public sealed partial class EditorApp
 {
     public void HideUnselected()
     {
-        foreach (var o in Scene.Objects) if (!Selected.Contains(o.Id)) o.Hidden = true;
+        // what is selected stays, with its meshes (a selected Drawable) and the nodes above it (a selected mesh inside a Drawable)
+        var keep = new HashSet<int>();
+        foreach (var o in SelObjects())
+        {
+            keep.Add(o.Id);
+            foreach (var d in Scene.Descendants(o)) keep.Add(d.Id);
+            for (var p = Scene.Parent(o); p != null && keep.Add(p.Id); p = Scene.Parent(p)) { }
+        }
+        foreach (var o in Scene.Objects) if (!keep.Contains(o.Id)) o.Hidden = true;
     }
 
     /// <summary>Ctrl+J: attach every selected object into the active one.</summary>

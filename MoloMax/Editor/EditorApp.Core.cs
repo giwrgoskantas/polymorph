@@ -134,6 +134,7 @@ public sealed partial class EditorApp : IDisposable
             DrawYcdWindow();
             DrawMaterialEditor();
             DrawDialogs();
+            DrawModelExport();
             DrawPopups();
             if (cubeProj != null) DrawCubeProjectionPanel(); else if (lastMeshOp != null) DrawMeshOpPanel(); else DrawAdjustPanel();
             DrawImportPanel();
@@ -393,6 +394,12 @@ public sealed partial class EditorApp : IDisposable
         HashSet<int> nodeKids = null;
         foreach (var id in Selected)
             if (Scene.Find(id) is { GtaType: GtaObjectType.Model } node) { nodeKids ??= new(); foreach (var d in Scene.Descendants(node)) nodeKids.Add(d.Id); }
+        // a very heavy selection (millions of points) gets its corner brackets only: drawing every selected mesh twice more
+        // for the silhouette, in every view, made the frame crawl
+        long selPts = 0;
+        foreach (var id in Selected) if (Scene.Find(id) is { } so) selPts += so.Mesh?.Verts.Count ?? 0;
+        if (nodeKids != null) foreach (var id in nodeKids) if (Scene.Find(id) is { } ko) selPts += ko.Mesh?.Verts.Count ?? 0;
+        bool outlineSel = selPts <= 1_500_000;
         foreach (var o in MapMode ? MapLive() : Scene.Objects) // MAP: what is within draw distance (selected objects always are)
         {
             if (o.Hidden) continue;
@@ -403,7 +410,7 @@ public sealed partial class EditorApp : IDisposable
             bool editing = Level != SubObject.Object && o == cur;
             // object mode: a selected object gets an outline (its silhouette), not all its edges; Edged Faces (F4) shows the edges
             Vector4 selCol = o.Id == ActiveId ? Theme.ActiveWire : Theme.SelectWire;
-            if (sel && !editing && !wireOnly(vp) && !vp.EdgedFaces && o.Mesh != null && o.SplatFile == null)
+            if (sel && outlineSel && !editing && !wireOnly(vp) && !vp.EdgedFaces && o.Mesh != null && o.SplatFile == null)
             {
                 var obj = o;
                 outlineItems.Add(new OutlineRenderer.Item(o.Id, o.Version, o.World, () => obj.Evaluated(), selCol));
@@ -427,7 +434,7 @@ public sealed partial class EditorApp : IDisposable
                     foreach (var d in Scene.Descendants(node))
                     {
                         if (d.Mesh == null || d.Hidden || d.Mesh.Verts.Count == 0) continue;
-                        var (a0, b0) = d.Mesh.Bounds();
+                        var (a0, b0) = d.LocalBounds(); // cached per mesh version (Mesh.Bounds walked every point, every frame, every view)
                         for (int c = 0; c < 8; c++)
                         {
                             var wp = Vector3.Transform(new Vector3((c & 1) != 0 ? b0.X : a0.X, (c & 2) != 0 ? b0.Y : a0.Y, (c & 4) != 0 ? b0.Z : a0.Z), d.World);
