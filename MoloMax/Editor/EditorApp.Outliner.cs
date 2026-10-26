@@ -119,7 +119,9 @@ public sealed partial class EditorApp
         {
         outlinerSigTime = ImGui.GetTime();
         sig = Scene.Objects.Count * 7L + (filtering ? 1 : 0) + closedFolders.Count * 131L + closedObjs.Count * 8191L;
-        foreach (var o in Scene.Objects) sig = sig * 1000003 + o.Id * 31L + o.ParentId * 17L + (o.Folder?.GetHashCode() ?? 0) + (o.InstanceKey == null ? 0 : 5);
+        // the object itself counts, not only its id: an undo / redo or a script gives back new objects with the same ids,
+        // and rows kept on the old ones made the eye, freeze and rename act on copies nobody sees (the eye "did nothing")
+        foreach (var o in Scene.Objects) sig = sig * 1000003 + o.Id * 31L + o.ParentId * 17L + (o.Folder?.GetHashCode() ?? 0) + (o.InstanceKey == null ? 0 : 5) + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(o);
         foreach (var f in Scene.Folders) sig = sig * 31 + f.GetHashCode();
         foreach (var f in closedFolders) sig += f.GetHashCode();
         foreach (var id in closedObjs) sig += id * 92821L;
@@ -156,6 +158,12 @@ public sealed partial class EditorApp
                 for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
                 {
                     var r = orows[i];
+                    // a row on an object that was replaced (big scenes check the structure 4 times a second): the live one
+                    if (r.Obj != null && !ReferenceEquals(Scene.Find(r.Obj.Id), r.Obj))
+                    {
+                        outlinerSigTime = -1; // rebuild on the next frame
+                        if (Scene.Find(r.Obj.Id) is { } live) r.Obj = live; else continue;
+                    }
                     float ind = r.Depth * ImGui.GetStyle().IndentSpacing;
                     if (ind > 0) ImGui.Indent(ind);
                     if (r.Obj == null) FolderRow(r.Folder, r.FolderObjs); else ObjectRow(r.Obj, r.Kids);

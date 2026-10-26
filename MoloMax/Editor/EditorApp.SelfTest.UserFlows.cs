@@ -23,6 +23,7 @@ public sealed partial class EditorApp
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
         T("USER: Join (Ctrl+J) with Drawable nodes selected: the meshes join into a mesh, never into the node; hidden ones stay out", UserJoinNodes);
+        T("USER: after an undo / redo (the objects are new copies), the eye of a row still hides the real object", UserEyeAfterUndo);
         T("USER: MODEL scene to MAP with its .ymap: the dialog finds the .ymap and the models go where it places them", UserPlaceFromYmap);
         T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
         T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
@@ -385,6 +386,37 @@ public sealed partial class EditorApp
         JoinSelected(); yield return Frames(3);
         var kid = Scene.Objects.FirstOrDefault(o => Scene.Parent(o) == Scene.Find(na.Id));
         Expect(Scene.Find(na.Id).Mesh.Faces.Count == 0 && kid != null && kid.Mesh.Faces.Count == b.Mesh.Faces.Count * 2, $"empty Drawable active: a new mesh under it gets the faces ({kid?.Name}, {kid?.Mesh.Faces.Count})");
+    }
+
+    IEnumerable<object> UserEyeAfterUndo()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        try
+        {
+            Fresh(); paintMode = false; SculptMode = false; Tool = Tool.Select;
+            var meshes = new List<SceneObject>();
+            for (int i = 0; i < 3; i++)
+            {
+                var q = Prim(CreateKind.Box, new Vector3(i * 3, 0, 0)); q.Name = $"room_{i:00}_high_0";
+                SelectOnly(q); CreateDrawable(); yield return Frames(2);
+                meshes.Add(Scene.Find(q.Id));
+            }
+            SelectNone(); yield return Frames(6);
+            foreach (var (what, act) in new (string, Action)[] { ("undo", () => { Do("move", () => Scene.Find(meshes[2].Id).Position += Vector3.UnitZ); DoUndo(); }), ("redo", () => DoRedo()) })
+            {
+                act(); yield return Frames(6);
+                var live = Scene.Find(meshes[1].Id);
+                Note($"after {what}: the object is {(ReferenceEquals(live, meshes[1]) ? "the same" : "a new copy")}");
+                SelectOnly(live); yield return Frames(6);
+                foreach (var x in ClickAt(TutCentre("eye:" + live.Id), moveFrames: 6)) yield return x;
+                yield return Frames(6);
+                Expect(Scene.Find(live.Id).Hidden && !drawList.Any(o => o.Id == live.Id), $"after {what}: the eye of the selected mesh row hides it (hidden {Scene.Find(live.Id).Hidden})");
+                foreach (var x in ClickAt(TutCentre("eye:" + live.Id), moveFrames: 6)) yield return x;
+                yield return Frames(4);
+                Expect(!Scene.Find(live.Id).Hidden, $"after {what}: the eye again shows it");
+            }
+        }
+        finally { UI.ImGuiBackend.SyntheticInput = false; }
     }
 
     IEnumerable<object> UserPlaceFromYmap()

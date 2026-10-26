@@ -2,6 +2,8 @@
 
 ## 1.4.7 — octobre 2026
 
+- **L'œil (et le gel, le renommage) de la liste n'agissait plus après un Undo / Redo** : la liste gardait les anciennes
+  copies des objets, l'œil cachait une copie invisible. La liste suit maintenant les vrais objets.
 - MAP : « My MODEL scene here » et « Import a 3D scene here » (.mmx) demandent où la mettre. S'il y a déjà un .ymap
   (et son .ytyp) à côté de la scène — ressource exportée, map Sollumz / CodeWalker, .ymap ou .ymap.xml — il est trouvé
   et proposé : les modèles vont là où ce .ymap les place (par nom de modèle ; un MLO par son entité d'intérieur).
