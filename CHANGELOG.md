@@ -1,5 +1,11 @@
 # Polymorph — journal des versions
 
+## 1.4.6 — octobre 2026
+
+- Mode marche (flèches) : dès qu'on bouge la vue autrement (orbite, pan, zoom à la molette), il s'enlève — la
+  distance d'orbite d'avant revient, la caméra ne saute pas.
+- Ctrl ou Alt + flèche ne fait jamais marcher la caméra (raccourcis seulement).
+
 ## 1.4.5 — octobre 2026
 
 - **File > Export models** (et menu GTA) : export à la façon GIMS — liste des modèles avec une case chacun (la

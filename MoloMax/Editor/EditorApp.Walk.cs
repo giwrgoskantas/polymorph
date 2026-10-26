@@ -27,7 +27,8 @@ public sealed partial class EditorApp
         bool fly = FlyKeysActive;
         bool K(ImGuiKey k) => ImGui.IsKeyDown(k);
         // edit mode: Ctrl+Up / Ctrl+Down grow / shrink the selection, the arrows alone move the camera
-        bool arrowsSelect = Level != SubObject.Object && Current != null && ImGui.GetIO().KeyCtrl;
+        // Ctrl or Alt held: the arrows are a shortcut (grow / shrink, other tools), never a walk
+        bool arrowsSelect = io.KeyCtrl || io.KeyAlt;
         bool fwd = K(ImGuiKey.UpArrow) && !arrowsSelect || fly && (K(ImGuiKey.Z) || K(ImGuiKey.W));
         bool back = K(ImGuiKey.DownArrow) && !arrowsSelect || fly && K(ImGuiKey.S);
         bool left = K(ImGuiKey.LeftArrow) || fly && (K(ImGuiKey.Q) || K(ImGuiKey.A));
@@ -72,7 +73,9 @@ public sealed partial class EditorApp
         // smooth start / stop (about 0.1 s), like a game camera
         flyVel = Vector3.Lerp(flyVel, target, 1 - MathF.Exp(-12f * dt));
         eye += flyVel * dt;
-        // short orbit distance while moving: a later orbit turns around what is just ahead, the map streams around the eye
+        // short orbit distance while moving (the map streams around the eye); the distance before is kept and comes
+        // back as soon as the view is moved another way (orbit, pan, zoom): the walk mode then leaves by itself
+        RememberWalkDistance(cam);
         cam.Distance = Math.Clamp(cam.Distance, 0.5f, MapMode ? 12f : 6f);
         cam.Target = eye + cam.Forward * cam.Distance;
     }
@@ -85,8 +88,23 @@ public sealed partial class EditorApp
         cam.Kind = ViewKind.Perspective;
         cam.Yaw -= d.X * 0.0035f; // mouse right = turn right (yaw grows counter-clockwise, seen from above)
         cam.Pitch = Math.Clamp(cam.Pitch + d.Y * 0.0035f, -1.55f, 1.55f);
+        RememberWalkDistance(cam);
         cam.Distance = Math.Clamp(cam.Distance, 0.5f, MapMode ? 12f : 6f);
         cam.Target = eye + cam.Forward * cam.Distance;
+    }
+
+    // ---- leaving the walk mode: the orbit distance from before the walk comes back (the eye stays where it is)
+    readonly Dictionary<Camera, float> walkDistance = new();
+    void RememberWalkDistance(Camera cam) { if (!walkDistance.ContainsKey(cam)) walkDistance[cam] = cam.Distance; }
+    /// <summary>Called when the view is moved by orbit / pan / zoom: the walk is over, the orbit pivot goes back to its distance.</summary>
+    void EndWalk(Camera cam)
+    {
+        if (cam == null || !walkDistance.Remove(cam, out var d)) return;
+        flyVel = Vector3.Zero;
+        if (cam.Ortho || d <= cam.Distance) return;
+        var eye = cam.Eye;
+        cam.Distance = d;
+        cam.Target = eye + cam.Forward * d;
     }
 
     /// <summary>Speed shown for a moment after the wheel changed it while flying.</summary>

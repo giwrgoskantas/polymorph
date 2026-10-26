@@ -19,6 +19,7 @@ public sealed partial class EditorApp
         T("USER: knife: cut starting inside a face, 90° step gives a straight cut, straight on world axes", UserKnife);
         T("USER: loop cut: several loops with +, Tab turns the cut the other way", UserLoopCut);
         T("USER: select 90 heavy objects at once: the views stay fast; Hide on a Drawable hides its meshes", UserBigSelection);
+        T("USER: walk with the arrows, then orbit with the mouse: the walk mode leaves (orbit distance back); Ctrl+arrow never walks", UserWalkLeaves);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
     }
 
@@ -318,5 +319,39 @@ public sealed partial class EditorApp
         SelectOnly(node); HideSelection(); yield return Frames(3);
         Expect(Scene.Find(node.Id).Hidden && Scene.Find(objs[0].Id).Hidden, "Hide on a selected Drawable hides it and its mesh");
         UnhideAll(); Maximized = true; yield return Frames(2);
+    }
+
+    IEnumerable<object> UserWalkLeaves()
+    {
+        var keymap0 = Settings.Keymap;
+        UI.ImGuiBackend.SyntheticInput = true;
+        try
+        {
+            Fresh(); Settings.Keymap = Keymap.Blender;
+            Prim(CreateKind.Box, Vector3.Zero);
+            var vp = Viewports[ActiveViewport]; var cam = vp.Camera;
+            cam.SetView(ViewKind.Perspective); cam.Frame(new Vector3(-20, -20, 0), new Vector3(20, 20, 5));
+            var mid = new Vector2(vp.X + vp.W * 0.5f, vp.Y + vp.H * 0.5f);
+            PostMouse(0x200, mid, 0); yield return Frames(3);
+            float d0 = cam.Distance;
+            // Ctrl + Up in object mode: no walk
+            var e0 = cam.Eye;
+            foreach (var x in UKey(Keys.Up, ctrl: true, hold: 20)) yield return x;
+            yield return Frames(10);
+            Expect(Vector3.Distance(e0, cam.Eye) < 0.01f, $"Ctrl+Up does not walk ({Vector3.Distance(e0, cam.Eye):0.00} m)");
+            // walk with Up: the orbit distance gets short
+            foreach (var x in UKey(Keys.Up, hold: 20)) yield return x;
+            yield return Frames(15);
+            float dWalk = cam.Distance;
+            Expect(dWalk <= 6.01f && d0 > 6.01f, $"walking: orbit distance {d0:0.0} -> {dWalk:0.0} m");
+            // a middle-button orbit: the walk mode leaves, the distance comes back, the eye does not jump
+            var eye = cam.Eye;
+            PostMouse(0x207, mid, 0x10); yield return Frames(2);
+            PostMouse(0x200, mid + new Vector2(1, 0), 0x10); yield return Frames(2);
+            PostMouse(0x208, mid + new Vector2(1, 0), 0); yield return Frames(3);
+            Expect(MathF.Abs(cam.Distance - d0) < 0.5f, $"after a middle-button orbit the walk mode is gone: distance {cam.Distance:0.0} m (was {d0:0.0})");
+            Expect(Vector3.Distance(eye, cam.Eye) < 1.5f, $"the camera does not jump back ({Vector3.Distance(eye, cam.Eye):0.00} m)");
+        }
+        finally { Settings.Keymap = keymap0; UI.ImGuiBackend.SyntheticInput = false; }
     }
 }

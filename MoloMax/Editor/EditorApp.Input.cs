@@ -221,7 +221,7 @@ public sealed partial class EditorApp
         }
         // MAP mode: a prop follows the mouse until it is dropped (takes the wheel to turn it)
         if (MapMode && MapPlacementInput(hv, uiMouse)) return;
-        if (hv != null && !uiMouse && MathF.Abs(Input.Wheel) > 0 && modal.Kind is not (ModalKind.Chamfer or ModalKind.LoopCut)) hv.Camera.Zoom(Input.Wheel);
+        if (hv != null && !uiMouse && MathF.Abs(Input.Wheel) > 0 && modal.Kind is not (ModalKind.Chamfer or ModalKind.LoopCut)) { EndWalk(hv.Camera); hv.Camera.Zoom(Input.Wheel); }
 
         // ---- modal tools take the buttons
         if (modalOn) { ModalMouse(hv); return; }
@@ -364,6 +364,7 @@ public sealed partial class EditorApp
 
     void StartNav(Viewport vp, NavMode mode, MouseButtons button)
     {
+        if (mode != NavMode.Fly) EndWalk(vp.Camera); // orbit / pan / zoom: the walk mode leaves
         nav = mode; navViewport = vp; navButton = button; navTravel = 0; navDouble = false;
         ActiveViewport = Array.IndexOf(Viewports, vp);
     }
