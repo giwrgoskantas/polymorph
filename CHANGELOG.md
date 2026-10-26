@@ -5,6 +5,16 @@
 - Mode marche (flèches) : dès qu'on bouge la vue autrement (orbite, pan, zoom à la molette), il s'enlève — la
   distance d'orbite d'avant revient, la caméra ne saute pas.
 - Ctrl ou Alt + flèche ne fait jamais marcher la caméra (raccourcis seulement).
+- **Molo Paint, un cran plus puissant (repris d'ArmorPaint, licence zlib)** :
+  - textures procédurales dans un calque de remplissage (« Pattern ») : cellules (voronoi), fissures, briques avec
+    joints et teinte par brique, damier, vagues, cernes de bois, magic, bruit Perlin — avec 2e couleur, relief,
+    rugosité propre et Warp (déformation par bruit) ;
+  - les mêmes en masque (« Where ») + Warp sur tous les masques ;
+  - 14 modes de fusion de plus : Darken, Lighten, Colour burn / dodge, Soft / Hard / Linear light, Difference,
+    Subtract, Divide, Hue, Saturation, Colour, Value ;
+  - filtres : Luminosité / contraste, Gamma, Postérisation (masque et couleur), Rampe de couleurs ;
+  - matériaux intelligents : Mur de briques rouges, Boue craquelée, Veinage bois, Pavés ; masques : Fissures,
+    Joints de briques, Nuages, Taches.
 
 ## 1.4.5 — octobre 2026
 

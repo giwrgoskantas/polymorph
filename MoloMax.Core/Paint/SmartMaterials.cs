@@ -16,6 +16,7 @@ public static class SmartMaterials
     public static readonly string[] GtaNames =
     {
         "Asphalt", "Dirty tiles", "Yellow industrial paint", "Wet concrete", "Pallet wood", "Street furniture plastic", "Galvanised metal", "Interior plaster",
+        "Red brick wall", "Cracked mud", "Wood grain", "Stone paving",
     };
 
     public static IEnumerable<string> All => Names.Concat(GtaNames);
@@ -120,6 +121,32 @@ public static class SmartMaterials
                 Inv(Fill("Scuffs at the bottom", new Vector3(0.55f, 0.52f, 0.47f), 0.9f, 0, MaskGen.GradientZ, 0.1f, 6, 0.5f)),
                 Fill("Corner shadow dirt", new Vector3(0.6f, 0.57f, 0.52f), 0.9f, 0, MaskGen.AmbientOcclusion, 0.4f, 3, 0.3f),
             },
+            // ---- procedural (patterns ported from ArmorPaint)
+            "Red brick wall" => new List<PaintLayer>
+            {
+                new() { Name = "Bricks", Kind = LayerKind.Fill, Color = new Vector3(0.48f, 0.18f, 0.11f), Rough = 0.9f, UseHeight = true, Height = 0.6f, ColorNoise = 0.15f, NoiseScale = 20,
+                        Pattern = FillPattern.Brick, PatternColor = new Vector3(0.62f, 0.6f, 0.55f), PatternScale = 13, PatternRelief = 0.5f, PatternRough = 0.95f },
+                Fill("Soot in the joints", new Vector3(0.15f, 0.13f, 0.11f), 0.95f, 0, MaskGen.AmbientOcclusion, 0.35f, 3, 0.4f),
+                Inv(Fill("Damp at the bottom", new Vector3(0.25f, 0.22f, 0.18f), 0.8f, 0, MaskGen.GradientZ, 0.15f, 5, 0.5f)),
+            },
+            "Cracked mud" => new List<PaintLayer>
+            {
+                new() { Name = "Dry mud", Kind = LayerKind.Fill, Color = new Vector3(0.5f, 0.4f, 0.28f), Rough = 0.95f, UseHeight = true, Height = 0.6f, ColorNoise = 0.2f, NoiseScale = 12,
+                        Pattern = FillPattern.Cracks, PatternColor = new Vector3(0.18f, 0.13f, 0.09f), PatternScale = 6, PatternRelief = 0.7f, Warp = 0.04f, WarpScale = 6 },
+                Fill("Lighter crust", new Vector3(0.62f, 0.52f, 0.38f), 0.95f, 0, MaskGen.Perlin, 0.55f, 4, 0, false),
+            },
+            "Wood grain" => new List<PaintLayer>
+            {
+                new() { Name = "Wood", Kind = LayerKind.Fill, Color = new Vector3(0.55f, 0.35f, 0.18f), Rough = 0.5f, UseHeight = true, Height = 0.5f,
+                        Pattern = FillPattern.Rings, PatternColor = new Vector3(0.32f, 0.18f, 0.08f), PatternScale = 4, PatternRelief = 0.1f, Warp = 0.03f, WarpScale = 3 },
+                Fill("Worn edges", new Vector3(0.68f, 0.5f, 0.32f), 0.7f, 0, MaskGen.Edges, 0.4f, 5, 0.5f),
+            },
+            "Stone paving" => new List<PaintLayer>
+            {
+                new() { Name = "Stones", Kind = LayerKind.Fill, Color = new Vector3(0.5f, 0.49f, 0.46f), Rough = 0.85f, UseHeight = true, Height = 0.6f, ColorNoise = 0.15f, NoiseScale = 15,
+                        Pattern = FillPattern.Cracks, PatternColor = new Vector3(0.2f, 0.19f, 0.17f), PatternScale = 3, PatternRelief = 0.8f, PatternRough = 1f },
+                Fill("Moss between", new Vector3(0.18f, 0.25f, 0.1f), 0.95f, 0, MaskGen.Cavity, 0.3f, 4, 0.5f),
+            },
             _ => SmartLibrary.Load(name) ?? new List<PaintLayer>(),
         };
         l.RemoveAll(x => x == null);
@@ -147,6 +174,10 @@ public static class SmartMasks
         new("Cavity grime", "Grime deep in the cavities", l => Set(l, MaskGen.Cavity, 0.25f, 6, 0.3f, 16)),
         new("Patches", "Random patches", l => Set(l, MaskGen.Noise, 0.55f, 5, 0.2f, 8)),
         new("Tile grout", "Grout lines (4 tiles per metre)", l => Set(l, MaskGen.Tiles, 0.5f, 6, 0, 4)),
+        new("Cracks", "Cracked paint or ground (cell borders)", l => Set(l, MaskGen.Cracks, 0.5f, 6, 0.2f, 5)),
+        new("Brick joints", "Mortar between bricks (13 rows per metre)", l => Set(l, MaskGen.Brick, 0.5f, 6, 0, 13)),
+        new("Clouds", "Soft cloudy noise (Perlin)", l => Set(l, MaskGen.Perlin, 0.5f, 3, 0, 4)),
+        new("Spots", "Random cells, half of them shown", l => Set(l, MaskGen.Voronoi, 0.5f, 20, 0, 6)),
     };
 
     static void Set(PaintLayer l, MaskGen g, float th, float contrast, float breakup, float scale)

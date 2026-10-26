@@ -1541,6 +1541,87 @@ Console.WriteLine("Molo Paint 2: bake, channels, folders, masks, filters, tools,
     });
 }
 
+Console.WriteLine("Molo Paint: ArmorPaint procedural textures, blend modes, filters");
+{
+    var V = (float x, float y, float z) => new System.Numerics.Vector3(x, y, z);
+    var rnd = new Random(3);
+    var pts = Enumerable.Range(0, 4000).Select(_ => V((float)rnd.NextDouble() * 3, (float)rnd.NextDouble() * 3, (float)rnd.NextDouble() * 3)).ToArray();
+    bool Range01(Func<System.Numerics.Vector3, float> f, out float sd)
+    {
+        var v = pts.Select(f).ToArray(); float mean = v.Average(); sd = MathF.Sqrt(v.Select(x => (x - mean) * (x - mean)).Average());
+        return v.All(x => x >= 0 && x <= 1 && !float.IsNaN(x));
+    }
+    foreach (var (name, fn) in new (string, Func<System.Numerics.Vector3, float>)[]
+    {
+        ("voronoi cells", p => ProcTex.Voronoi(p, 4).Cell), ("voronoi edges", p => ProcTex.Voronoi(p, 4).Edge), ("checker", p => ProcTex.Checker(p, 4)),
+        ("perlin", p => ProcTex.Perlin(p, 4)), ("wave", p => ProcTex.Wave(p, 0.2f, false)), ("rings", p => ProcTex.Wave(p, 0.2f, true)), ("magic", p => ProcTex.Magic(p, 1)),
+        ("brick mortar", p => ProcTex.Brick(new System.Numerics.Vector2(p.X, p.Y), 13).Mortar),
+    })
+        Check($"procedural {name}: values in 0..1, not flat", () => Range01(fn, out var sd) && sd > 0.05f);
+    Check("bricks: most of the wall is brick, a thin part is mortar; each brick gets its own tint", () =>
+    {
+        float mortar = pts.Average(p => ProcTex.Brick(new System.Numerics.Vector2(p.X, p.Y), 13).Mortar > 0.5f ? 1f : 0f);
+        int tints = pts.Select(p => ProcTex.Brick(new System.Numerics.Vector2(p.X, p.Y), 13).Tint).Distinct().Count();
+        Console.WriteLine($"       mortar {mortar:P0}, {tints} tints");
+        return mortar > 0.03f && mortar < 0.35f && tints > 50;
+    });
+    Check("checker: neighbours across a cell border differ", () => ProcTex.Checker(V(0.1f, 0.1f, 0.1f), 1) != ProcTex.Checker(V(1.1f, 0.1f, 0.1f), 1));
+    Check("warp moves the lookup by at most the amount (per axis)", () => pts.Take(200).All(p => { var d = ProcTex.Warp(p, 0.2f, 2, 1) - p; return MathF.Abs(d.X) <= 0.2001f && MathF.Abs(d.Y) <= 0.2001f && d.Length() > 0; }));
+
+    var box = Primitives.Box(1, 1, 1); MoloMax.Core.Mesh.UvUnwrap.SmartProject(box);
+    var ts = TextureSet.Create(box, 128, 4);
+    var baseC = V(0.6f, 0.3f, 0.2f); var topC = V(0.2f, 0.5f, 0.9f);
+    System.Numerics.Vector3 Mix(PaintBlend mode, float op = 1)
+    {
+        ts.Layers.Clear();
+        ts.Layers.Add(new PaintLayer { Id = 1, Kind = LayerKind.Fill, Color = baseC });
+        ts.Layers.Add(new PaintLayer { Id = 2, Kind = LayerKind.Fill, Color = topC, Blend = mode, Opacity = op });
+        ts.Refresh(true);
+        return ts.CColor[ts.Map.Count / 2];
+    }
+    bool NearC(System.Numerics.Vector3 a, System.Numerics.Vector3 b) => System.Numerics.Vector3.Distance(a, b) < 0.02f;
+    Check("blend Darken / Lighten / Difference / Subtract give the ArmorPaint result", () =>
+        NearC(Mix(PaintBlend.Darken), V(0.2f, 0.3f, 0.2f)) && NearC(Mix(PaintBlend.Lighten), V(0.6f, 0.5f, 0.9f))
+        && NearC(Mix(PaintBlend.Difference), V(0.4f, 0.2f, 0.7f)) && NearC(Mix(PaintBlend.Subtract), V(0.4f, 0, 0)));
+    Check("every blend mode stays in 0..1 and 0 % opacity changes nothing", () =>
+        Enum.GetValues<PaintBlend>().All(m => { var c = Mix(m); var z = Mix(m, 0); return c.X >= 0 && c.X <= 1 && c.Y >= 0 && c.Y <= 1 && c.Z >= 0 && c.Z <= 1 && NearC(z, baseC); }));
+    Check("blend Hue takes the layer's hue, keeps the brightness below", () =>
+    {
+        var c = Mix(PaintBlend.Hue); var (h, _, v) = TextureSet.ToHsv(c); var (th, _, _) = TextureSet.ToHsv(topC); var (_, _, bv) = TextureSet.ToHsv(baseC);
+        return MathF.Abs(h - th) < 0.02f && MathF.Abs(v - bv) < 0.02f;
+    });
+    Check("fill pattern Bricks: mortar colour in the joints, brick colour elsewhere", () =>
+    {
+        ts.Layers.Clear();
+        ts.Layers.Add(new PaintLayer { Id = 1, Kind = LayerKind.Fill, Color = V(0.5f, 0.15f, 0.1f), Pattern = FillPattern.Brick, PatternColor = V(0.7f, 0.7f, 0.7f), PatternScale = 8 });
+        ts.Refresh(true);
+        int grey = 0, red = 0;
+        for (int t = 0; t < ts.Map.Count; t++) { var c = ts.CColor[t]; if (MathF.Abs(c.X - c.Z) < 0.05f && c.X > 0.6f) grey++; else if (c.X > c.Z + 0.2f) red++; }
+        Console.WriteLine($"       {grey} mortar texels, {red} brick texels");
+        return grey > 0 && red > grey * 2;
+    });
+    Check("mask Cracks + filters Posterize / Gamma / Brightness-contrast keep the mask in 0..1", () =>
+    {
+        ts.Layers.Clear();
+        var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, Mask = MaskGen.Cracks, MaskNoiseScale = 5, Warp = 0.05f };
+        l.Filters.Add(new PaintFilter { Kind = FilterKind.Posterize, Steps = 3 });
+        l.Filters.Add(new PaintFilter { Kind = FilterKind.Gamma, Gamma = 2 });
+        l.Filters.Add(new PaintFilter { Kind = FilterKind.BrightnessContrast, Contrast = 1, Brightness = 0.1f });
+        ts.Layers.Add(l);
+        var m = ts.MaskOf(l);
+        return m.All(x => x >= 0 && x <= 1) && m.Distinct().Count() <= 4 && m.Any(x => x > 0.5f) && m.Any(x => x < 0.5f);
+    });
+    Check("colour filter Colour ramp maps dark to A and bright to B", () =>
+    {
+        ts.Layers.Clear();
+        var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, Color = V(1, 1, 1) };
+        l.Filters.Add(new PaintFilter { Kind = FilterKind.ColorRamp, OnMask = false, RampA = V(0, 0, 0), RampB = V(1, 0, 0) });
+        ts.Layers.Add(l); ts.Refresh(true);
+        return NearC(ts.CColor[0], V(1, 0, 0));
+    });
+    Check("smart materials with patterns build their layers", () => new[] { "Red brick wall", "Cracked mud", "Wood grain", "Stone paving" }.All(n => SmartMaterials.Make(n, 1).Count >= 2));
+}
+
 Console.WriteLine("Molo texture library in Molo Paint");
 if (Directory.Exists("/tmp/molomax_libsample"))
 {

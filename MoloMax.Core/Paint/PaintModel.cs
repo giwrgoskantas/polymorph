@@ -8,15 +8,15 @@ using MoloMax.Core.Mesh;
 namespace MoloMax.Core.Paint;
 
 public enum LayerKind { Fill, Paint, Folder }
-public enum PaintBlend { Normal, Multiply, Overlay, Screen, Add }
-public enum MaskGen { None, Painted, AmbientOcclusion, Edges, Cavity, Top, Bottom, GradientZ, Noise, Streaks, Tiles }
+public enum PaintBlend { Normal, Multiply, Overlay, Screen, Add, Darken, Lighten, ColorBurn, ColorDodge, SoftLight, HardLight, LinearLight, Difference, Subtract, Divide, Hue, Saturation, Color, Value }
+public enum MaskGen { None, Painted, AmbientOcclusion, Edges, Cavity, Top, Bottom, GradientZ, Noise, Streaks, Tiles, Voronoi, Cracks, Brick, Checker, Wave, Magic, Perlin }
 public enum PaintChannel { Color, Height, Roughness, Metal }
 public enum PaintView { Final, Roughness, Metal, Height, AmbientOcclusion, Curvature, LayerMask, Emissive, Opacity }
 /// <summary>What a stroke does: paint the brush values, copy another place (clone) or drag the colours along (smudge).</summary>
 public enum BrushMode { Paint, Clone, Smudge }
 /// <summary>Fill tool: how much of the model one click fills.</summary>
 public enum FillScope { Face, Element, UvIsland, All }
-public enum FilterKind { Blur, Sharpen, Levels, HueSaturation, Invert }
+public enum FilterKind { Blur, Sharpen, Levels, HueSaturation, Invert, BrightnessContrast, Gamma, Posterize, ColorRamp }
 public enum PaintExportFormat { Dds, Png, Tga, Sollumz }
 
 /// <summary>Brush settings (radius in metres, like a 3D brush in Substance).</summary>
@@ -61,11 +61,15 @@ public sealed class PaintFilter
     public float Radius = 2f, Amount = 1f;
     public float Black, White = 1f, Gamma = 1f;
     public float Hue, Saturation = 1f, Brightness;
+    public float Contrast; public int Steps = 4;
+    /// <summary>Colour ramp: dark values become A, bright values B (on a mask: the ramp of A..B greys).</summary>
+    public Vector3 RampA = new(0.1f, 0.06f, 0.03f), RampB = new(0.9f, 0.8f, 0.6f);
     public PaintFilter Copy() => (PaintFilter)MemberwiseClone();
     [JsonIgnore] public string Label => Kind switch
     {
         FilterKind.Blur => $"Blur {Radius:0} px", FilterKind.Sharpen => $"Sharpen {Amount:0.0}", FilterKind.Levels => "Levels",
-        FilterKind.HueSaturation => "Hue / saturation", _ => "Invert",
+        FilterKind.HueSaturation => "Hue / saturation", FilterKind.BrightnessContrast => "Brightness / contrast", FilterKind.Gamma => $"Gamma {Gamma:0.00}",
+        FilterKind.Posterize => $"Posterize {Steps}", FilterKind.ColorRamp => "Colour ramp", _ => "Invert",
     } + (OnMask ? " (mask)" : " (colour)");
 }
 
@@ -88,6 +92,12 @@ public sealed class PaintLayer
     public float Height = 0.5f, Rough = 0.6f, Metal, Emissive, Alpha = 1f;
     /// <summary>Procedural variation of the fill: colour and height noise.</summary>
     public float ColorNoise, HeightNoise, NoiseScale = 8f;
+    /// <summary>Procedural pattern of the fill (ArmorPaint textures): Color where the pattern is 0, PatternColor where it is 1.</summary>
+    public FillPattern Pattern;
+    public Vector3 PatternColor = new(0.15f, 0.12f, 0.1f);
+    public float PatternScale = 4f, PatternRelief, PatternRough = -1f;
+    /// <summary>Warp (ArmorPaint warp node): bends the pattern and the mask with noise; amount in metres.</summary>
+    public float Warp, WarpScale = 2f;
 
     // texture fill (Molo library material or any image), projected triplanar in object space
     public string TexDiffuse, TexSpec, TexHeight;
@@ -272,6 +282,7 @@ public sealed class TextureSet
         float zr = MathF.Max(zmax - zmin, 1e-5f);
         Parallel.For(0, n, t =>
         {
+            var wp = l.Warp > 0 ? ProcTex.Warp(Map.Pos[t], l.Warp, l.WarpScale, l.Seed) : Map.Pos[t];
             float g = l.Mask switch
             {
                 MaskGen.None => 1f,
@@ -282,11 +293,18 @@ public sealed class TextureSet
                 MaskGen.Top => Map.Nrm[t].Z * 0.5f + 0.5f,
                 MaskGen.Bottom => 0.5f - Map.Nrm[t].Z * 0.5f,
                 MaskGen.GradientZ => (Map.Pos[t].Z - zmin) / zr,
-                MaskGen.Noise => Noise.Fbm(Map.Pos[t] * l.MaskNoiseScale, l.Seed),
+                MaskGen.Noise => Noise.Fbm(wp * l.MaskNoiseScale, l.Seed),
                 // leaks: noise stretched along Z, stronger under the top of the model
                 MaskGen.Streaks => Noise.Fbm(new Vector3(Map.Pos[t].X * l.MaskNoiseScale, Map.Pos[t].Y * l.MaskNoiseScale, Map.Pos[t].Z * l.MaskNoiseScale * 0.06f), l.Seed) * (0.4f + 0.6f * (Map.Pos[t].Z - zmin) / zr),
                 // tile grout lines (scale = tiles per metre), projected on the dominant axis
-                MaskGen.Tiles => Grout(Map.Pos[t], Map.Nrm[t], l.MaskNoiseScale),
+                MaskGen.Tiles => Grout(wp, Map.Nrm[t], l.MaskNoiseScale),
+                MaskGen.Voronoi => ProcTex.Voronoi(wp, l.MaskNoiseScale, 1, l.Seed).Cell,
+                MaskGen.Cracks => 1 - MathF.Min(1, ProcTex.Voronoi(wp, l.MaskNoiseScale, 1, l.Seed).Edge / 0.08f),
+                MaskGen.Brick => ProcTex.Brick(ProcTex.PlaneUv(wp, Map.Nrm[t]), l.MaskNoiseScale).Mortar,
+                MaskGen.Checker => ProcTex.Checker(wp, l.MaskNoiseScale),
+                MaskGen.Wave => ProcTex.Wave(wp, l.MaskNoiseScale * 0.05f, false, 2, 1, 3),
+                MaskGen.Magic => ProcTex.Magic(wp, l.MaskNoiseScale * 0.2f),
+                MaskGen.Perlin => ProcTex.Perlin(wp, l.MaskNoiseScale, 6, 0.5f, 0.3f, l.Seed),
                 _ => 1f,
             };
             if (l.Mask is not (MaskGen.None or MaskGen.Painted))
@@ -323,8 +341,26 @@ public sealed class TextureSet
             case FilterKind.Sharpen: { var b = BlurTexels(m, Math.Max(1, (int)MathF.Round(f.Radius))); for (int t = 0; t < m.Length; t++) m[t] = Math.Clamp(m[t] + (m[t] - b[t]) * f.Amount, 0, 1); break; }
             case FilterKind.Levels: for (int t = 0; t < m.Length; t++) m[t] = Levels(m[t], f); break;
             case FilterKind.Invert: for (int t = 0; t < m.Length; t++) m[t] = 1 - m[t]; break;
+            case FilterKind.BrightnessContrast: for (int t = 0; t < m.Length; t++) m[t] = Math.Clamp(BrightContrast(m[t], f), 0, 1); break;
+            case FilterKind.Gamma: for (int t = 0; t < m.Length; t++) m[t] = MathF.Pow(Math.Clamp(m[t], 0, 1), MathF.Max(f.Gamma, 0.01f)); break;
+            case FilterKind.Posterize: for (int t = 0; t < m.Length; t++) m[t] = Posterize(m[t], f.Steps); break;
+            case FilterKind.ColorRamp:
+                {
+                    float a = Luma(f.RampA), b = Luma(f.RampB);
+                    for (int t = 0; t < m.Length; t++) m[t] = a + (b - a) * m[t];
+                    break;
+                }
         }
     }
+
+    /// <summary>ArmorPaint brightness / contrast: a = 1 + contrast, b = brightness - contrast / 2.</summary>
+    static float BrightContrast(float v, PaintFilter f)
+    {
+        float a = 1 + f.Contrast, b = f.Brightness - f.Contrast * 0.5f;
+        return MathF.Max(a * v + b, 0);
+    }
+    static float Posterize(float v, int steps) { steps = Math.Max(steps, 2); return MathF.Round(Math.Clamp(v, 0, 1) * (steps - 1)) / (steps - 1); }
+    static float Luma(Vector3 c) => c.X * 0.2126f + c.Y * 0.7152f + c.Z * 0.0722f;
 
     static float Levels(float v, PaintFilter f)
     {
@@ -341,6 +377,10 @@ public sealed class TextureSet
             {
                 case FilterKind.Levels: c = new Vector3(Levels(c.X, f), Levels(c.Y, f), Levels(c.Z, f)); break;
                 case FilterKind.Invert: c = Vector3.One - c; break;
+                case FilterKind.BrightnessContrast: c = Vector3.Clamp(new Vector3(BrightContrast(c.X, f), BrightContrast(c.Y, f), BrightContrast(c.Z, f)), Vector3.Zero, Vector3.One); break;
+                case FilterKind.Gamma: { float g = MathF.Max(f.Gamma, 0.01f); c = new Vector3(MathF.Pow(MathF.Max(c.X, 0), g), MathF.Pow(MathF.Max(c.Y, 0), g), MathF.Pow(MathF.Max(c.Z, 0), g)); break; }
+                case FilterKind.Posterize: c = new Vector3(Posterize(c.X, f.Steps), Posterize(c.Y, f.Steps), Posterize(c.Z, f.Steps)); break;
+                case FilterKind.ColorRamp: c = Vector3.Lerp(f.RampA, f.RampB, Math.Clamp(Luma(c), 0, 1)); break;
                 case FilterKind.HueSaturation:
                     {
                         var (h, s, v) = ToHsv(c);
@@ -468,6 +508,21 @@ public sealed class TextureSet
             {
                 lc = l.Color; lh = l.Height; lr = l.Rough; lm = l.Metal; le = l.Emissive; la = l.Alpha;
                 if (l.texColor != null) { lc = l.texColor[t] * l.Color; lr = l.texRough[t]; lh = l.texHeight[t]; }
+                if (l.Pattern != FillPattern.None)
+                {
+                    var wp = l.Warp > 0 ? ProcTex.Warp(Map.Pos[t], l.Warp, l.WarpScale, l.Seed) : Map.Pos[t];
+                    float pv;
+                    if (l.Pattern == FillPattern.Brick)
+                    {
+                        var (mortar, tint) = ProcTex.Brick(ProcTex.PlaneUv(wp, Map.Nrm[t]), l.PatternScale);
+                        lc *= 0.8f + 0.4f * tint; // each brick a bit lighter or darker
+                        pv = mortar;
+                    }
+                    else pv = ProcTex.Pattern(l.Pattern, wp, Map.Nrm[t], l.PatternScale, l.Seed);
+                    lc = Vector3.Lerp(lc, l.PatternColor, pv);
+                    if (l.PatternRelief != 0) lh = Math.Clamp(lh - (pv - 0.5f) * l.PatternRelief, 0, 1);
+                    if (l.PatternRough >= 0) lr = lr + (l.PatternRough - lr) * pv;
+                }
                 if (l.ColorNoise > 0 || l.HeightNoise > 0)
                 {
                     float nz = Noise.Fbm(Map.Pos[t] * l.NoiseScale, l.Seed + 3) - 0.5f;
@@ -497,14 +552,40 @@ public sealed class TextureSet
         PaintBlend.Screen => Vector3.Lerp(b, Vector3.One - (Vector3.One - b) * (Vector3.One - v), a),
         PaintBlend.Add => Vector3.Min(Vector3.One, b + v * a),
         PaintBlend.Overlay => Vector3.Lerp(b, new Vector3(Ov(b.X, v.X), Ov(b.Y, v.Y), Ov(b.Z, v.Z)), a),
-        _ => Vector3.Lerp(b, v, a),
+        PaintBlend.Normal => Vector3.Lerp(b, v, a),
+        PaintBlend.Hue or PaintBlend.Saturation or PaintBlend.Color or PaintBlend.Value => Vector3.Lerp(b, HsvMix(b, v, mode), a),
+        _ => new Vector3(Blend1(b.X, v.X, a, mode), Blend1(b.Y, v.Y, a, mode), Blend1(b.Z, v.Z, a, mode)),
     };
+    /// <summary>Hue / Saturation / Color / Value blends (ArmorPaint): part of the layer's HSV over the colour below.</summary>
+    static Vector3 HsvMix(Vector3 b, Vector3 v, PaintBlend mode)
+    {
+        var (bh, bs, bv) = ToHsv(b); var (vh, vs, vv) = ToHsv(v);
+        return mode switch
+        {
+            PaintBlend.Hue => FromHsv(vh, bs, bv),
+            PaintBlend.Saturation => FromHsv(bh, vs, bv),
+            PaintBlend.Color => FromHsv(vh, vs, bv),
+            _ => FromHsv(bh, bs, vv),
+        };
+    }
     static float Blend1(float b, float v, float a, PaintBlend mode) => mode switch
     {
         PaintBlend.Multiply => b + (b * v - b) * a,
         PaintBlend.Screen => b + ((1 - (1 - b) * (1 - v)) - b) * a,
         PaintBlend.Add => MathF.Min(1, b + v * a),
         PaintBlend.Overlay => b + (Ov(b, v) - b) * a,
+        // the ArmorPaint blend modes (paint/sources/render/make_material.c), results kept in 0..1
+        PaintBlend.Darken => b + (MathF.Min(b, v) - b) * a,
+        PaintBlend.Lighten => MathF.Max(b, v * a),
+        PaintBlend.ColorBurn => b + (Math.Clamp(1 - (1 - b) / MathF.Max(v, 1e-3f), 0, 1) - b) * a,
+        PaintBlend.ColorDodge => b + (Math.Clamp(b / MathF.Max(1 - v, 1e-3f), 0, 1) - b) * a,
+        PaintBlend.SoftLight => (1 - a) * b + a * ((1 - b) * v * b + b * (1 - (1 - v) * (1 - b))),
+        PaintBlend.HardLight => b + (Ov(v, b) - b) * a,
+        PaintBlend.LinearLight => Math.Clamp(b + a * (2 * (v - 0.5f)), 0, 1),
+        PaintBlend.Difference => b + (MathF.Abs(b - v) - b) * a,
+        PaintBlend.Subtract => b + (MathF.Max(0, b - v) - b) * a,
+        PaintBlend.Divide => b + (Math.Clamp(b / MathF.Max(v, 1e-3f), 0, 1) - b) * a,
+        PaintBlend.Hue or PaintBlend.Saturation or PaintBlend.Color => b, // colour-only modes leave the grey channels alone
         _ => b + (v - b) * a,
     };
     static float Ov(float b, float v) => b < 0.5f ? 2 * b * v : 1 - 2 * (1 - b) * (1 - v);

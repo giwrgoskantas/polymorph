@@ -18,7 +18,8 @@ public sealed partial class EditorApp
     string smartSaveName = "";
     string layerRename; string layerRenameBuf = "";
 
-    static readonly string[] BlendNames = { "Normal", "Multiply", "Overlay", "Screen", "Add" };
+    static readonly string[] BlendNames = { "Normal", "Multiply", "Overlay", "Screen", "Add", "Darken", "Lighten", "Colour burn", "Colour dodge", "Soft light", "Hard light", "Linear light", "Difference", "Subtract", "Divide", "Hue", "Saturation", "Colour", "Value" };
+    static readonly string[] PatternNames = { "None (plain)", "Cells (voronoi)", "Cracks", "Bricks", "Checker", "Waves", "Rings (wood)", "Magic", "Noise (Perlin)" };
     static readonly string[] ViewNames = { "Final", "Roughness", "Metal", "Height", "Ambient occlusion", "Curvature", "Selected layer mask", "Emissive", "Opacity" };
     static readonly string[] ScopeNames = { "Face", "Element", "UV island", "Whole set" };
     static readonly string[] FormatNames = { "GTA DDS only", "+ PNG copies", "+ TGA copies", "+ Sollumz folder (PNG)" };
@@ -36,6 +37,13 @@ public sealed partial class EditorApp
         ("Patches (noise)", MaskGen.Noise, false),
         ("Leaks (streaks)", MaskGen.Streaks, false),
         ("Tile grout", MaskGen.Tiles, false),
+        ("Cells (voronoi)", MaskGen.Voronoi, false),
+        ("Cracks", MaskGen.Cracks, false),
+        ("Brick mortar", MaskGen.Brick, false),
+        ("Checker", MaskGen.Checker, false),
+        ("Waves", MaskGen.Wave, false),
+        ("Magic", MaskGen.Magic, false),
+        ("Cloudy noise (Perlin)", MaskGen.Perlin, false),
     };
     static readonly (string Label, Vector3 Colour)[] Swatches =
     {
@@ -557,6 +565,22 @@ public sealed partial class EditorApp
             if (l.UseAlpha) { ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Opacity value", ref l.Alpha, 0, 1); }
             ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Variation", ref l.ColorNoise, 0, 1);
             ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Relief noise", ref l.HeightNoise, 0, 1);
+            int pat = (int)l.Pattern; ImGui.SetNextItemWidth(-90);
+            if (ImGui.Combo("Pattern", ref pat, PatternNames, PatternNames.Length)) { l.Pattern = (FillPattern)pat; c = true; }
+            Theme.Tip("A procedural texture in the fill: the colour above where the pattern is dark, the second colour where it is bright (bricks: the mortar).");
+            if (l.Pattern != FillPattern.None)
+            {
+                c |= ImGui.ColorEdit3(l.Pattern == FillPattern.Brick ? "Mortar##pc" : "Colour 2##pc", ref l.PatternColor, ImGuiColorEditFlags.NoInputs);
+                ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat(l.Pattern == FillPattern.Brick ? "Rows / m" : "Pattern scale", ref l.PatternScale, 0.2f, 60, "%.1f", ImGuiSliderFlags.Logarithmic);
+                ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Pattern relief", ref l.PatternRelief, -1, 1);
+                bool pr = l.PatternRough >= 0; if (ImGui.Checkbox("Own roughness##pr", ref pr)) { l.PatternRough = pr ? 0.9f : -1f; c = true; }
+                if (pr) { ImGui.SameLine(); ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("##prv", ref l.PatternRough, 0, 1); }
+                ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Warp##pw", ref l.Warp, 0, 0.5f, "%.2f m");
+                Theme.Tip("Bends the pattern (and the mask) with noise.");
+                if (l.Warp > 0) { ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Warp size##pws", ref l.WarpScale, 0.2f, 20); }
+                if (ImGui.SmallButton("New seed##pat")) { l.Seed = Environment.TickCount & 0xFFFF; c = true; }
+                if (c) l.MaskChanged();
+            }
         }
         else if (ImGui.SmallButton("Clear this layer")) { l.Cover = null; l.PColor = null; l.PHeight = null; l.PRough = null; l.PMetal = null; l.PEmis = null; l.PAlpha = null; c = true; }
         if (c) ts.Refresh();
@@ -576,7 +600,10 @@ public sealed partial class EditorApp
             ImGui.SetNextItemWidth(-90); if (ImGui.SliderFloat("Amount", ref amount, 0, 1)) { l.MaskThreshold = 1 - amount; mc = true; }
             ImGui.SetNextItemWidth(-90); mc |= ImGui.SliderFloat("Sharpness", ref l.MaskContrast, 0.5f, 20);
             ImGui.SetNextItemWidth(-90); mc |= ImGui.SliderFloat("Breakup", ref l.MaskBreakup, 0, 1);
-            if (l.Mask is MaskGen.Noise or MaskGen.Streaks or MaskGen.Tiles || l.MaskBreakup > 0) { ImGui.SetNextItemWidth(-90); mc |= ImGui.SliderFloat(l.Mask == MaskGen.Tiles ? "Tiles / m" : "Scale", ref l.MaskNoiseScale, 0.5f, 60); }
+            if (l.Mask is MaskGen.Noise or MaskGen.Streaks or MaskGen.Tiles or MaskGen.Voronoi or MaskGen.Cracks or MaskGen.Brick or MaskGen.Checker or MaskGen.Wave or MaskGen.Magic or MaskGen.Perlin || l.MaskBreakup > 0)
+            { ImGui.SetNextItemWidth(-90); mc |= ImGui.SliderFloat(l.Mask == MaskGen.Tiles ? "Tiles / m" : l.Mask == MaskGen.Brick ? "Rows / m" : "Scale", ref l.MaskNoiseScale, 0.5f, 60); }
+            ImGui.SetNextItemWidth(-90); mc |= ImGui.SliderFloat("Warp##mw", ref l.Warp, 0, 0.5f, "%.2f m");
+            Theme.Tip("Bends the mask with noise (straight lines become wobbly).");
             mc |= ImGui.Checkbox("Invert", ref l.MaskInvert);
             ImGui.SameLine(); if (ImGui.SmallButton("New seed")) { l.Seed = Environment.TickCount & 0xFFFF; mc = true; }
         }
@@ -625,6 +652,16 @@ public sealed partial class EditorApp
                     ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Saturation", ref f.Saturation, 0, 2);
                     ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Brightness", ref f.Brightness, -1, 1);
                     break;
+                case FilterKind.BrightnessContrast:
+                    ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Brightness##bc", ref f.Brightness, -1, 1);
+                    ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Contrast##bc", ref f.Contrast, -1, 3);
+                    break;
+                case FilterKind.Gamma: ImGui.SetNextItemWidth(-90); c |= ImGui.SliderFloat("Gamma##g", ref f.Gamma, 0.1f, 5); break;
+                case FilterKind.Posterize: ImGui.SetNextItemWidth(-90); c |= ImGui.SliderInt("Steps##ps", ref f.Steps, 2, 16); break;
+                case FilterKind.ColorRamp:
+                    c |= ImGui.ColorEdit3("Dark##ra", ref f.RampA, ImGuiColorEditFlags.NoInputs); ImGui.SameLine();
+                    c |= ImGui.ColorEdit3("Bright##rb", ref f.RampB, ImGuiColorEditFlags.NoInputs);
+                    break;
             }
             ImGui.PopID();
         }
@@ -632,8 +669,10 @@ public sealed partial class EditorApp
         float w3 = (ImGui.GetContentRegionAvail().X - 6) / 4;
         void Add(string label, FilterKind k, bool onMask) { if (ImGui.Button(label, new Vector2(w3, 0))) { l.Filters.Add(new PaintFilter { Kind = k, OnMask = onMask }); c = true; } }
         Add("Blur", FilterKind.Blur, true); ImGui.SameLine(0, 2); Add("Sharpen", FilterKind.Sharpen, true); ImGui.SameLine(0, 2); Add("Levels", FilterKind.Levels, true); ImGui.SameLine(0, 2); Add("Invert", FilterKind.Invert, true);
+        Add("Bright./cont.", FilterKind.BrightnessContrast, true); ImGui.SameLine(0, 2); Add("Gamma", FilterKind.Gamma, true); ImGui.SameLine(0, 2); Add("Posterize", FilterKind.Posterize, true);
         Ui.TextDisabled("on the colour:");
-        Add("Levels##c", FilterKind.Levels, false); ImGui.SameLine(0, 2); Add("Hue / sat.", FilterKind.HueSaturation, false); ImGui.SameLine(0, 2); Add("Invert##c", FilterKind.Invert, false);
+        Add("Levels##c", FilterKind.Levels, false); ImGui.SameLine(0, 2); Add("Hue / sat.", FilterKind.HueSaturation, false); ImGui.SameLine(0, 2); Add("Invert##c", FilterKind.Invert, false); ImGui.SameLine(0, 2); Add("Bright./cont.##c", FilterKind.BrightnessContrast, false);
+        Add("Gamma##c", FilterKind.Gamma, false); ImGui.SameLine(0, 2); Add("Posterize##c", FilterKind.Posterize, false); ImGui.SameLine(0, 2); Add("Colour ramp##c", FilterKind.ColorRamp, false);
         if (c) { l.MaskChanged(); ts.Refresh(); }
     }
 
