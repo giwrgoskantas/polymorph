@@ -578,7 +578,27 @@ public sealed partial class EditorApp
     {
         ImGui.PushID(label);
         if (!enabled) ImGui.BeginDisabled();
-        ImGui.AlignTextToFramePadding(); Ui.Text(label); ImGui.SameLine(110);
+        ImGui.AlignTextToFramePadding(); Ui.Text(label); ImGui.SameLine(86);
+        // thumbnail of the texture (hover: bigger)
+        {
+            float th = ImGui.GetFrameHeight();
+            var tp = ImGui.GetCursorScreenPos();
+            ImGui.Dummy(new Vector2(th, th));
+            var dl = ImGui.GetWindowDrawList();
+            var full = path != null ? renderer.Textures.Resolve(path) : null;
+            var srv = full != null ? renderer.Textures.Thumb(full) : null;
+            if (srv != null) dl.AddImage(imgui.IdOf(srv), tp, tp + new Vector2(th, th));
+            else dl.AddRectFilled(tp, tp + new Vector2(th, th), 0xFF2A2A2A, 2);
+            dl.AddRect(tp, tp + new Vector2(th, th), 0xFF505050, 2);
+            if (srv != null && ImGui.IsItemHovered())
+            {
+                ImGui.BeginTooltip();
+                ImGui.Image(imgui.IdOf(srv), new Vector2(192, 192));
+                Ui.TextDisabled(Path.GetFileName(full));
+                ImGui.EndTooltip();
+            }
+            ImGui.SameLine(0, 4);
+        }
         string v = path ?? "";
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - 62);
         if (ImGui.InputTextWithHint("##p", "none", ref v, 260)) path = v.Length > 0 ? v : null;

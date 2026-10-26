@@ -5,6 +5,7 @@
 - Mode marche (flèches) : dès qu'on bouge la vue autrement (orbite, pan, zoom à la molette), il s'enlève — la
   distance d'orbite d'avant revient, la caméra ne saute pas.
 - Ctrl ou Alt + flèche ne fait jamais marcher la caméra (raccourcis seulement).
+- Matériau : une miniature de chaque texture (Diffuse, Normal, Specular, Detail) à côté de son chemin ; au survol, en grand.
 - **Molo Paint, un cran plus puissant (repris d'ArmorPaint, licence zlib)** :
   - textures procédurales dans un calque de remplissage (« Pattern ») : cellules (voronoi), fissures, briques avec
     joints et teinte par brique, damier, vagues, cernes de bois, magic, bruit Perlin — avec 2e couleur, relief,
