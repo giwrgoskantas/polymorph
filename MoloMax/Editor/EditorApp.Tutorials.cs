@@ -212,6 +212,7 @@ public sealed partial class EditorApp
         T("MCP HOUSE: Claude's MCP server builds a classic house interior with Python (rooms, doors, windows, lights, GTA check)", McpHouseTest);
         T("TUTO 20 terrain painting: a game parking lot with 4 textures", TutTerrainPaint);
         T("TUTO 21 Molo Paint patterns, blend modes and filters (ArmorPaint)", TutPaintPatterns);
+        T("TUTO 22 Molo Paint picked-parts mask and drips brush", TutPaintPartsDrips);
         T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
         T("TERRAIN 4 LAYERS: terrain material, PAINT TERRAIN LAYERS, paint texture 3 with the real mouse", TerrainLayerTest);
         T("PYTHON: embedded Python like bpy (import poly, objects, mesh tools, materials, lights, errors, undo, API, add-ons, editor window)", PythonTest);
@@ -3013,6 +3014,90 @@ room.Mesh.Faces.Count");
         Up(true);
         for (int i = 0; i < 24; i++) { float t = Ease(i / 23f); cam.Distance = 2.4f + (3.4f - 2.4f) * t; yield return Frames(1); }
         for (int i = 0; i < 110; i++) { cam.Orbit(1.3f, 0); yield return Frames(1); }
+        ShowPanel = false;
+    }
+
+    /// <summary>Film: phase 2 of the ArmorPaint port - the picked-parts mask (clicked on a shelf) and the drips brush (on a wall).</summary>
+    IEnumerable<object> TutPaintPartsDrips()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true;
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; vp.Shading = ShadingMode.Realistic; cam.Ortho = false;
+        // a shelf: two sides and three boards, separate pieces
+        var m = new PolyMesh(); var boards = new List<(int From, int To)>();
+        void Piece(float w, float d, float h, Vector3 at, bool board)
+        {
+            int f0 = m.Faces.Count; var b = MoloMax.Core.Mesh.Primitives.Box(w, d, h);
+            for (int i = 0; i < b.Verts.Count; i++) b.Verts[i] += at;
+            m.Append(b); if (board) boards.Add((f0, m.Faces.Count));
+        }
+        Piece(0.06f, 0.4f, 1.6f, new Vector3(-0.77f, 0, 0), false); Piece(0.06f, 0.4f, 1.6f, new Vector3(0.77f, 0, 0), false);
+        foreach (var z in new[] { 0.15f, 0.75f, 1.35f }) Piece(1.48f, 0.38f, 0.05f, new Vector3(0, 0, z), true);
+        var shelf = Scene.Add("shelf", m, Vector3.Zero); shelf.Name = "shelf";
+        SelectOnly(shelf);
+        propTab = PropTab.Paint; paintTab = 1; paintRes = 1024;
+        DoMesh("Smart UV Project", (oo, mm, s2) => UvUnwrap.SmartProject(mm));
+        shelf = Scene.Find(shelf.Id);
+        StartPaint(shelf);
+        cam.Target = new Vector3(0, 0, 0.8f); cam.Distance = 3.2f; cam.Pitch = 0.25f; cam.Yaw = -1.85f;
+        yield return Frames(10);
+        var ts = shelf.Paint?.Cur;
+        if (ts == null) { Expect(false, "paint did not start"); yield break; }
+        void Up(SceneObject o, TextureSet t) { t.Refresh(true); UploadPaint(o, t, true); }
+        foreach (var x in StartFilm("22_paint_parts_drips", 4)) yield return x;
+        foreach (var x in Say("Molo Paint: picked parts and drips", "Phase 2 of what comes from ArmorPaint", 70)) yield return x;
+        ts.Layers.Clear();
+        AddLayer(ts, new PaintLayer { Name = "Wood", Kind = LayerKind.Fill, Color = new Vector3(0.55f, 0.35f, 0.18f), Rough = 0.55f, Pattern = FillPattern.Rings, PatternColor = new Vector3(0.33f, 0.19f, 0.08f), PatternScale = 6, Warp = 0.02f });
+        Up(shelf, ts);
+        // 1. picked parts
+        foreach (var x in Say("1. Mask \"Picked parts\"", "A blue paint layer, shown only on the parts you click", 25)) yield return x;
+        var blue = new PaintLayer { Name = "Blue paint", Kind = LayerKind.Fill, Color = new Vector3(0.12f, 0.3f, 0.62f), Rough = 0.4f, Mask = MaskGen.Parts, MaskPartScope = FillScope.Element };
+        AddLayer(ts, blue); Up(shelf, ts);
+        partPick = true; yield return Frames(20);
+        foreach (var x in Say("2. Click the parts on the model", "Each click adds the piece under the mouse (again: takes it out)", 10)) yield return x;
+        int FrontFace((int From, int To) r) => Enumerable.Range(r.From, r.To - r.From).OrderByDescending(f => Vector3.Dot(shelf.Mesh.FaceNormal(f), -cam.Forward)).First();
+        foreach (var bi in new[] { 0, 2 })
+        {
+            int f = FrontFace(boards[bi]);
+            foreach (var x in ClickAt(FaceScreen(vp, shelf, f), false, 26)) yield return x;
+            Up(shelf, ts); yield return Frames(30);
+        }
+        foreach (var x in Say("Face, connected piece or UV island", "Like a colour-ID mask, without making an ID map", 10)) yield return x;
+        for (int i = 0; i < 70; i++) { cam.Orbit(0.5f, 0); yield return Frames(1); }
+        partPick = false;
+        // 2. drips
+        foreach (var x in Say("3. Drips: a particle brush", "Brush options > Drips: drops run down from the strokes", 30)) yield return x;
+        Fresh(); Maximized = true; ShowPanel = true; vp = Viewports[ActiveViewport]; cam = vp.Camera; vp.Shading = ShadingMode.Realistic;
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "wall";
+        Do("wall", () => { wall.Mesh = MoloMax.Core.Mesh.Primitives.Box(3.2f, 0.3f, 2.4f); wall.Touch(); });
+        SelectOnly(wall);
+        propTab = PropTab.Paint; paintTab = 0;
+        DoMesh("Smart UV Project", (oo, mm, s2) => UvUnwrap.SmartProject(mm));
+        wall = Scene.Find(wall.Id);
+        StartPaint(wall);
+        var tw = wall.Paint?.Cur;
+        if (tw == null) { Expect(false, "paint did not start on the wall"); yield break; }
+        tw.Layers.Clear(); foreach (var l in SmartMaterials.Make("Dirty concrete", 2)) AddLayer(tw, l);
+        Up(wall, tw);
+        cam.Target = new Vector3(0, 0, 1.2f); cam.Distance = 4.4f; cam.Pitch = 0.08f; cam.Yaw = -MathF.PI / 2;
+        yield return Frames(10);
+        SetPaintTool(PaintTool.Brush);
+        brush.Stamp = null; brush.Tip = null; brush.Erase = false; brush.MaskMode = false;
+        brush.ColorValue = new Vector3(0.42f, 0.18f, 0.06f); brush.Radius = 0.09f; brush.Strength = 0.9f; brush.Hardness = 0.4f;
+        brush.Drips = 0.6f; brush.DripLength = 1.1f;
+        float front = wall.Mesh.Verts.Min(v => v.Y);
+        var a = ScreenOf(vp, new Vector3(-1.3f, front, 2.15f)); var b = ScreenOf(vp, new Vector3(1.3f, front, 2.15f));
+        foreach (var x in Stroke(a, b, 70)) yield return x;
+        Up(wall, tw); yield return Frames(30);
+        foreach (var x in Say("Rust, paint, water", "Thinner as they run, they stop on flat tops and at the edges", 10)) yield return x;
+        brush.ColorValue = new Vector3(0.9f, 0.88f, 0.82f); brush.Drips = 0.35f; brush.DripLength = 0.6f; brush.Radius = 0.07f;
+        var c = ScreenOf(vp, new Vector3(-1.0f, front, 1.2f)); var d = ScreenOf(vp, new Vector3(0.8f, front, 1.35f));
+        foreach (var x in Stroke(c, d, 60)) yield return x;
+        Up(wall, tw);
+        for (int i = 0; i < 60; i++) { cam.Orbit(0.25f, 0); yield return Frames(1); }
+        brush.Drips = 0;
+        foreach (var x in Say("Molo Paint 1.4.8", "Then straight to GTA textures (DDS)", 60)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
         ShowPanel = false;
     }
 
