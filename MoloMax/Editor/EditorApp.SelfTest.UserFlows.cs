@@ -21,6 +21,7 @@ public sealed partial class EditorApp
         T("USER: select 90 heavy objects at once: the views stay fast; Hide on a Drawable hides its meshes", UserBigSelection);
         T("USER: walk with the arrows, then orbit with the mouse: the walk mode leaves (orbit distance back); Ctrl+arrow never walks", UserWalkLeaves);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
+        T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
     }
 
     const int MkShift = 4, MkCtrl = 8;
@@ -292,6 +293,55 @@ public sealed partial class EditorApp
             SetLevel(SubObject.Object);
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; }
+    }
+
+    IEnumerable<object> UserDetachEye()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        try
+        {
+            Fresh();
+            var m = Prim(CreateKind.Box, Vector3.Zero); m.Name = "ext_58_high_0";
+            Do("grid", () => { m.Mesh = Primitives.Plane(10, 10, 30, 30); m.Touch(); });
+            SelectOnly(m); CreateDrawable(); yield return Frames(4);
+            m = Scene.Find(m.Id);
+            var vp = Viewports[ActiveViewport];
+            vp.Camera.SetView(ViewKind.Perspective); vp.Camera.Pitch = 1.2f; vp.Camera.Frame(new Vector3(-5, -5, 0), new Vector3(5, 5, 0.1f));
+            SelectOnly(m); SetLevel(SubObject.Polygon); yield return Frames(4);
+            SubSel(m).Clear();
+            for (int i = 0; i < m.Mesh.Faces.Count; i++) { var c = Vector3.Zero; foreach (var v in m.Mesh.Faces[i].V) c += m.Mesh.Verts[v]; c /= m.Mesh.Faces[i].V.Length; if (c.X > 2 && c.Y > 2) SubSel(m).Faces.Add(i); }
+            DetachFaces(false); yield return Frames(4);
+            var part = Scene.Objects.LastOrDefault(o => o.Name.StartsWith("ext_58_high_0_detached"));
+            Expect(part != null, $"detached part made ({part?.Name}, {part?.Mesh.Faces.Count} faces)");
+            if (part == null) yield break;
+            SetLevel(SubObject.Object); SelectOnly(part); CreateDrawable(); yield return Frames(6);
+            part = Scene.Find(part.Id); var node = Scene.Parent(part);
+            Note($"part {part.Name} under {node?.Name}");
+            string St() => $"mesh hidden {Scene.Find(part.Id).Hidden}, node hidden {Scene.Find(node.Id).Hidden}, drawn {drawList.Any(o => o.Id == part.Id)}, level {Level}, selected [{string.Join(",", Selected.Select(i => Scene.Find(i)?.Name))}]";
+            IEnumerable<object> Eye(string what)
+            {
+                yield return Frames(6);
+                var at = TutCentre("eye:" + part.Id);
+                Note($"{what}: eye of the mesh row at {at.X:0},{at.Y:0}; before: {St()}");
+                foreach (var x in ClickAt(at, moveFrames: 6)) yield return x;
+                yield return Frames(6);
+                Note($"{what}: after: {St()}");
+                Expect(Scene.Find(part.Id).Hidden && !drawList.Any(o => o.Id == part.Id), $"{what}: the eye of the mesh row hides it ({St()})");
+                foreach (var t in Scene.Objects) t.Hidden = false;
+            }
+            SelectNone(); foreach (var x in Eye("nothing selected")) yield return x;
+            SelectOnly(part); foreach (var x in Eye("the mesh selected")) yield return x;
+            SelectOnly(node); foreach (var x in Eye("the Drawable selected")) yield return x;
+            SelectOnly(m); SetLevel(SubObject.Polygon); foreach (var x in Eye("face mode on the original")) yield return x;
+            SetLevel(SubObject.Object);
+            // the row clicked first (selects it), then its eye, like a user does
+            SelectNone(); yield return Frames(4);
+            foreach (var x in ClickAt(TutCentre("row:" + part.Id), moveFrames: 6)) yield return x;
+            yield return Frames(30);
+            foreach (var x in Eye("row clicked, then its eye")) yield return x;
+            yield return Shot("user_detach_eye");
+        }
+        finally { UI.ImGuiBackend.SyntheticInput = false; SetLevel(SubObject.Object); }
     }
 
     IEnumerable<object> UserBigSelection()
