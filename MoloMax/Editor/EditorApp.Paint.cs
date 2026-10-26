@@ -384,7 +384,9 @@ public sealed partial class EditorApp
             {
                 var d = down - n * Vector3.Dot(down, n);
                 if (d.LengthSquared() < 0.04f) break; // a flat top: the drop stops
-                var q = p + Vector3.Normalize(d) * step;
+                d = Vector3.Normalize(d);
+                var side = Vector3.Cross(n, d); // a drop wanders a little, it never runs perfectly straight
+                var q = p + Vector3.Normalize(d + side * (((float)paintRnd.NextDouble() - 0.5f) * 0.35f)) * step;
                 // back onto the surface: a short ray from above the new point, along the normal
                 var wo = Vector3.Transform(q + n * step * 2, o.World); var wd = Vector3.Normalize(Vector3.TransformNormal(-n, o.World));
                 var h = Picking.PickFace(o, new Ray(wo, wd));

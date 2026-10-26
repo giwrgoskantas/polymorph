@@ -8,7 +8,7 @@ Unicode true
 !include "FileFunc.nsh"
 
 !ifndef VERSION
-  !define VERSION "1.4.7"
+  !define VERSION "1.4.8"
 !endif
 !define APPNAME "Polymorph"
 !define PUBLISHER "Molo Modding"
