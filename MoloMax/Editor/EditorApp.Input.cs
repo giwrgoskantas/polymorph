@@ -599,6 +599,7 @@ public sealed partial class EditorApp
             if (d < bestPx) { bestPx = d; empty = e; }
         }
         if (empty != null) pick = new PickHit(empty, -1, 0, empty.Position);
+        else if (PickShape(vp, local) is { } line) pick = new PickHit(line, -1, 0, line.Position);
         if (pick.HasValue)
         {
             int id = pick.Value.Object.Id;

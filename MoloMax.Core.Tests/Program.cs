@@ -921,6 +921,37 @@ Console.WriteLine("Tripo client (mock server)");
 
 Console.WriteLine("Molo Tools");
 {
+    Check("line shape: a bare line keeps its points only; door frame casing along a U door is closed and grows outward", () =>
+    {
+        var s = new MoloMax.Core.Mesh.ShapeData();
+        s.Points.AddRange(new[] { new Vector3(0, 0, 0), new Vector3(0, 0, 2.1f), new Vector3(1, 0, 2.1f), new Vector3(1, 0, 0) });
+        var bare = MoloMax.Core.Mesh.ShapeBuilder.Build(s);
+        if (bare.Faces.Count != 0 || bare.Verts.Count != 4) return false;
+        s.Render = MoloMax.Core.Mesh.ShapeRender.DoorFrame; s.FrameWidth = 0.12f; s.FrameDepth = 0.04f;
+        var m = MoloMax.Core.Mesh.ShapeBuilder.Build(s);
+        var (mn, mx) = m.Bounds();
+        Console.WriteLine($"       casing {mn} .. {mx}");
+        bool okB = mn.X < -0.11f && mx.X > 1.11f && mx.Z > 2.21f && MathF.Abs(mn.Z) < 1e-3f && mx.Y - mn.Y > 0.03f;
+        s.Flip = true; var (fmn, fmx) = MoloMax.Core.Mesh.ShapeBuilder.Build(s).Bounds();
+        bool okF = fmn.X > -0.01f && fmx.X < 1.01f; // flipped: inside the opening
+        s.Flip = false; s.Facing = new Vector3(0, -1, 0);
+        var (smn, smx) = MoloMax.Core.Mesh.ShapeBuilder.Build(s).Bounds();
+        bool okS = smn.Y < -0.03f && smx.Y < 1e-4f; // facing -Y: the casing stands out on that side
+        var opt = new System.Text.Json.JsonSerializerOptions { IncludeFields = true };
+        var back = System.Text.Json.JsonSerializer.Deserialize<MoloMax.Core.Mesh.ShapeData>(System.Text.Json.JsonSerializer.Serialize(s, opt), opt);
+        bool okJ = back.Points.Count == 4 && back.Points[2] == s.Points[2] && back.Render == s.Render && back.Facing == s.Facing;
+        return Closed(m) && okB && okF && okS && okJ;
+    });
+    Check("line shape: closed square as a beam (closed ring) and extruded (solid, faces outward)", () =>
+    {
+        var s = new MoloMax.Core.Mesh.ShapeData { Closed = true, Render = MoloMax.Core.Mesh.ShapeRender.Rectangular };
+        s.Points.AddRange(new[] { new Vector3(0, 0, 0), new Vector3(2, 0, 0), new Vector3(2, 2, 0), new Vector3(0, 2, 0) });
+        var beam = MoloMax.Core.Mesh.ShapeBuilder.Build(s);
+        s.Render = MoloMax.Core.Mesh.ShapeRender.Extrude; s.Amount = 0.5f;
+        var ex = MoloMax.Core.Mesh.ShapeBuilder.Build(s);
+        var (mn, mx) = ex.Bounds();
+        return Closed(beam) && Closed(ex) && Outward(ex) && MathF.Abs(mx.Z - 0.5f) < 1e-4f && beam.Faces.Count == 16;
+    });
     bool V2(System.Numerics.Vector2 a, float x, float y) => MathF.Abs(a.X - x) < 1e-3f && MathF.Abs(a.Y - y) < 1e-3f;
     Check("trim profile: default baseboard matches the reference points", () =>
     {

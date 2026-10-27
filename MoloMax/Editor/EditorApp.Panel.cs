@@ -57,6 +57,18 @@ public sealed partial class EditorApp
             KindButton(CreateKind.Tufted, w);
             Theme.Tip("Capitonné cushion block: benches, padded headboards, sofa seats");
         }
+        if (Ui.Header("Shapes", Open))
+        {
+            bool on = modal.Kind == ModalKind.Line;
+            if (Theme.Toggle("Line", on, new Vector2(w, 24))) { if (on) ConfirmModal(); else BeginLine(); }
+            TutRect("create_line");
+            Theme.Tip("Draw a line point by point, snapped on vertices / edges / faces. Shift = straight. Then make it a door frame, a beam or an extrusion.");
+            ImGui.SameLine();
+            int nr = (int)NextShapeRender;
+            ImGui.SetNextItemWidth(w);
+            if (ImGui.Combo("##next_shape_render", ref nr, ShapeRenderNames, ShapeRenderNames.Length)) NextShapeRender = (MoloMax.Core.Mesh.ShapeRender)nr;
+            Theme.Tip("What the next line becomes (changeable afterwards in its panel)");
+        }
         if (Ui.Header("GTA / MLO", Open))
         {
             KindButton(CreateKind.Room, w); ImGui.SameLine(); KindButton(CreateKind.Wall, w);

@@ -467,6 +467,7 @@ public sealed partial class EditorApp : IDisposable
             lines.Flush(viewProj, 0f);
             ctx.OutputMerger.SetDepthStencilState(renderer.DepthRead);
         }
+        ShapeLines();
         ModalPreviewLines();
         PaintCursorLines();
         SculptCursorLines(); SnapMarkerLines(); ShelfDropPreviewLines();

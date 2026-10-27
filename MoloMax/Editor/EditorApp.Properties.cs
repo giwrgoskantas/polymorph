@@ -210,6 +210,7 @@ public sealed partial class EditorApp
             if (ImGui.Button("Intersect", new Vector2(w3, 0))) Boolean(MoloMax.Core.Mesh.Csg.Op.Intersect); TutRect("bool_int");
             Ui.TextDisabled($"Applies to {o.Name} (active). The other selected objects are the cutters, hidden afterwards.");
         }
+        if (o.Shape != null) ShapePanel(o);
         if (Ui.Header("Transform", Open))
         {
             var pos = o.Position;

@@ -125,6 +125,8 @@ public sealed partial class EditorApp
             foreach (CreateKind k in Enum.GetValues<CreateKind>())
                 if (k != CreateKind.None && ImGui.MenuItem(KindLabel(k))) { AddPrimitive(k); lastCreateKind = k; }
             ImGui.Separator();
+            if (ImGui.MenuItem("Line (shape)")) BeginLine();
+            ImGui.Separator();
             if (ImGui.MenuItem("Light (point)")) AddLight(GtaLightKind.Point);
             if (ImGui.MenuItem("Light (spot)")) AddLight(GtaLightKind.Spot);
             ImGui.Separator();

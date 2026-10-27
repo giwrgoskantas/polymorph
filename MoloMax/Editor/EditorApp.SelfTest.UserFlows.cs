@@ -30,6 +30,7 @@ public sealed partial class EditorApp
         T("USER: Molo Paint drips: a print near the top of a wall lets drops run down it", UserPaintDrips);
         T("USER: MODEL scene to MAP with its .ymap: the dialog finds the .ymap and the models go where it places them", UserPlaceFromYmap);
         T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
+        T("USER: Line: click the corners of a door (snapped on the vertices, the wall selected), RMB ends; door frame casing; Shift straight; click selects it", UserLineDoorFrame);
         T("USER: Shift+click two rows (range of Drawables and meshes), then the eye of one: every selected row hides (Shift held or not, each keymap)", UserShiftEye);
     }
 
@@ -539,6 +540,81 @@ public sealed partial class EditorApp
         yield return Shot("user_place_ymap");
         placeCancel = true; yield return Frames(3);
         Expect(pendingPlace == null && !ImGuiNET.ImGui.IsPopupOpen("Put on the map###mapplace", ImGuiNET.ImGuiPopupFlags.AnyPopupId), "Cancel closes it");
+    }
+
+    IEnumerable<object> URightClick(Vector2 p)
+    {
+        PostMouse(0x200, p, 0); yield return Frames(2);
+        PostMouse(0x204, p, 2); yield return Frames(2);
+        PostMouse(0x205, p, 0); yield return Frames(3);
+    }
+
+    IEnumerable<object> UserLineDoorFrame()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        bool snap0 = Snap; var render0 = NextShapeRender;
+        try
+        {
+            Fresh(); Snap = false; NextShapeRender = ShapeRender.Line; Tool = Tool.Select;
+            var o = Prim(CreateKind.Box, Vector3.Zero); o.Name = "door_wall";
+            SelectOnly(o);
+            var vp = Viewports[ActiveViewport];
+            vp.Camera.SetView(ViewKind.Front);
+            var (mn, mx) = o.Mesh.Bounds();
+            vp.Camera.Frame(Vector3.Transform(mn, o.World) - new Vector3(0.6f), Vector3.Transform(mx, o.World) + new Vector3(0.6f));
+            yield return Frames(4);
+            var w = o.World;
+            float sx = mx.X - mn.X, sz = mx.Z - mn.Z;
+            Vector3 W(float fx, float fz) => Vector3.Transform(new Vector3(mn.X + sx * fx, mn.Y, mn.Z + sz * fz), w);
+            // a door: up the left side, across the top, down the right side, each click a few pixels off the corner
+            var corners = new[] { W(0, 0), W(0, 1), W(1, 1), W(1, 0) };
+            BeginLine(); yield return Frames(3);
+            Expect(modal.Kind == ModalKind.Line, "the Line tool starts");
+            var off = new[] { new Vector2(5, -4), new Vector2(4, 5), new Vector2(-5, 4), new Vector2(-4, -5) };
+            for (int i = 0; i < 4; i++) foreach (var x in UClick(ScreenOf(vp, corners[i]) + off[i])) yield return x;
+            Note("clicked: " + string.Join(" ", linePts.Select(q => $"({q.X:0.###},{q.Y:0.###},{q.Z:0.###})")));
+            Expect(linePts.Count == 4, $"4 points placed ({linePts.Count})");
+            for (int i = 0; i < Math.Min(4, linePts.Count); i++)
+                Expect(Vector3.Distance(linePts[i], corners[i]) < 1e-3f, $"point {i + 1} snapped on the corner of the selected wall ({Vector3.Distance(linePts[i], corners[i]):0.0000} m off)");
+            foreach (var x in URightClick(ScreenOf(vp, (W(0.5f, 0.5f))))) yield return x;
+            yield return Frames(3);
+            Expect(modal.Kind == ModalKind.None, "the right click ends the line");
+            var line = Scene.Objects.LastOrDefault(q => q.Shape != null);
+            Expect(line != null && line.Shape.Points.Count == 4 && !line.Shape.Closed, $"an open line object of 4 points ({line?.Shape?.Points.Count})");
+            if (line == null) yield break;
+            Expect(line.Mesh.Faces.Count == 0 && line.Mesh.Verts.Count == 4, "a bare line: its 4 points, no faces");
+
+            // a click on its top segment selects it (it has no faces)
+            SelectNone(); yield return Frames(3);
+            foreach (var x in UClick(ScreenOf(vp, W(0.5f, 1)) + new Vector2(0, 3))) yield return x;
+            Expect(Selected.Contains(line.Id), "clicking the line selects it");
+
+            // door frame casing: faces all along it, growing away from the opening (outside the box sides)
+            SelectOnly(line); yield return Frames(2);
+            var c = line.Shape.Copy(); c.Render = ShapeRender.DoorFrame; c.FrameWidth = 0.12f;
+            line.Shape = c; line.Mesh = ShapeBuilder.Build(c); line.Touch(); yield return Frames(3);
+            var (lmn, lmx) = line.Mesh.Bounds();
+            var wl = line.World; var bmn = Vector3.Transform(lmn, wl); var bmx = Vector3.Transform(lmx, wl);
+            var omn = Vector3.Transform(mn, w); var omx = Vector3.Transform(mx, w);
+            Note($"casing {bmn} .. {bmx}, opening {omn} .. {omx}, {line.Mesh.Faces.Count} faces");
+            Expect(line.Mesh.Faces.Count > 10, $"the casing has faces ({line.Mesh.Faces.Count})");
+            Expect(bmn.X < omn.X - 0.1f && bmx.X > omx.X + 0.1f && bmx.Z > omx.Z + 0.1f, "the casing grows away from the opening (outside its sides and top)");
+            Expect(MathF.Abs(bmn.Z - omn.Z) < 1e-3f, "it stands on the floor line (open at the bottom)");
+            Expect(bmn.Y < omn.Y - 0.02f && bmx.Y < omn.Y + 1e-3f, "it stands out of the wall, toward the view (not into the wall)");
+
+            // Shift: a crooked second click comes out straight
+            SelectOnly(o); yield return Frames(2);
+            BeginLine(); yield return Frames(3);
+            foreach (var x in UClick(ScreenOf(vp, W(0.3f, 0.4f)))) yield return x;
+            foreach (var x in UClick(ScreenOf(vp, W(0.7f, 0.47f)), MkShift)) yield return x;
+            Expect(linePts.Count == 2 && MathF.Abs(linePts[1].Z - linePts[0].Z) < 1e-4f && MathF.Abs(linePts[1].Y - linePts[0].Y) < 1e-4f,
+                $"Shift keeps the segment straight along X ({(linePts.Count == 2 ? linePts[1] - linePts[0] : Vector3.Zero)})");
+            foreach (var x in UKey(Keys.Back)) yield return x;
+            Expect(linePts.Count == 1, $"Backspace removes the last point ({linePts.Count})");
+            CancelModal(); yield return Frames(2);
+            Expect(modal.Kind == ModalKind.None && linePts.Count == 0, "Esc / cancel leaves the tool");
+        }
+        finally { Snap = snap0; NextShapeRender = render0; if (modal.Kind == ModalKind.Line) CancelModal(); UI.ImGuiBackend.SyntheticInput = false; }
     }
 
     IEnumerable<object> UserCtrlNoSnap()

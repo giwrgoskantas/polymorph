@@ -2,6 +2,15 @@
 
 ## 1.5.2 — octobre 2026
 
+- **Nouvel outil Ligne** (Create > Shapes > Line, ou le menu Create) : on clique les points un par un, chacun
+  s'accroche aux vertex, aux arêtes et aux faces sous la souris (aussi de l'objet sélectionné). Shift = segment droit
+  (X / Y / Z), Alt = point libre, clic sur le premier point (ou C) = fermer, clic droit / Entrée = finir, Retour
+  arrière = enlever le dernier point, Échap = annuler.
+- La ligne reste une forme : son panneau la transforme en **chambranle de porte** (carré, à gradins, chanfreiné,
+  arrondi, largeur / épaisseur), en poutre rectangulaire, en tuyau rond ou en **extrusion** ; tout se recalcule en
+  direct. « Convert to Editable Poly » la fige en mesh. Le chambranle sort du mur côté vue et pousse vers l'extérieur
+  de l'ouverture (Flip side pour l'inverse).
+- Les points d'une ligne se déplacent en mode Vertex ; un clic sur la ligne la sélectionne.
 - Mode Vertex sur un très gros mesh (un bâtiment joint de 800 000 points) : les points s'affichent partout sur le
   mesh (un par case de 3 px), plus seulement autour de la souris.
 - Plus d'avertissement rouge « > 60k, split it » dans les stats ni dans le rapport d'import.

@@ -8,7 +8,7 @@ using MoloMax.UI;
 
 namespace MoloMax.Editor;
 
-public enum ModalKind { None, Translate, Rotate, Scale, Extrude, Inset, LoopCut, Wall, Chamfer, Knife, Opening, Connect }
+public enum ModalKind { None, Translate, Rotate, Scale, Extrude, Inset, LoopCut, Wall, Chamfer, Knife, Opening, Connect, Line }
 
 /// <summary>
 /// Blender-style modal tools: G / R / S with X Y Z constraints (twice = local, Shift = plane),
@@ -148,6 +148,7 @@ public sealed partial class EditorApp
         if (P(ImGuiKey.Enter) || P(ImGuiKey.KeypadEnter)) { ConfirmModal(); return; }
         if (modal.Kind == ModalKind.Opening) { OpeningKeys(); return; }
 
+        if (modal.Kind == ModalKind.Line) { LineKeys(); return; }
         if (modal.Kind == ModalKind.Wall)
         {
             if (P(ImGuiKey.Backspace) && wallPts.Count > 0) wallPts.RemoveAt(wallPts.Count - 1);
@@ -230,6 +231,7 @@ public sealed partial class EditorApp
     void ModalMouse(Viewport hv)
     {
         if (modal.Kind == ModalKind.Wall) { WallMouse(hv); return; }
+        if (modal.Kind == ModalKind.Line) { LineMouse(hv); return; }
         if (modal.Kind == ModalKind.Opening) { OpeningMouse(hv); return; }
         if (modal.Kind == ModalKind.LoopCut) { LoopCutMouse(hv); return; }
         if (modal.Kind == ModalKind.Knife) { KnifeMouse(hv); return; }
@@ -592,6 +594,7 @@ public sealed partial class EditorApp
     {
         var k = modal.Kind;
         if (k == ModalKind.Wall) { FinishWall(false); return; }
+        if (k == ModalKind.Line) { FinishLine(false); return; }
         if (k == ModalKind.Opening) { ConfirmOpening(); return; }
         if (k == ModalKind.LoopCut) { if (modal.Hover.HasValue) { } CancelModal(); return; }
         if (k == ModalKind.Knife) { modal.Kind = ModalKind.None; return; }
@@ -627,6 +630,9 @@ public sealed partial class EditorApp
             case ModalKind.Wall:
                 wallPts.Clear();
                 break;
+            case ModalKind.Line:
+                linePts.Clear(); snapMarker = null;
+                break;
             case ModalKind.Opening:
                 CancelOpening();
                 break;
@@ -658,6 +664,7 @@ public sealed partial class EditorApp
         if (modal.Kind == ModalKind.Extrude)
             lines.Line(modal.Pivot - modal.Normal * 2000, modal.Pivot + modal.Normal * 2000, new Vector4(0.3f, 0.75f, 1f, 1));
         WallPreviewLines();
+        LinePreviewLines();
         OpeningLines();
     }
 
@@ -679,5 +686,6 @@ public sealed partial class EditorApp
             dl.AddLine(modal.PivotScreen, Input.Mouse, 0x80FFFFFF, 1f);
         if (modal.Kind == ModalKind.Knife && knifeA.HasValue) dl.AddLine(knifeA.Value, KnifeEnd(), 0xFF40E0FF, 2f);
         WallOverlay(dl, vp);
+        LineOverlay(dl, vp);
     }
 }
