@@ -50,14 +50,6 @@ public sealed partial class EditorApp
         dl.AddRectFilled(cmin, cmin + csize, 0xFF1C1C1F);
         for (float x = (g.Pan.X % 32 + 32) % 32; x < csize.X; x += 32) dl.AddLine(new Vector2(cmin.X + x, cmin.Y), new Vector2(cmin.X + x, cmin.Y + csize.Y), 0xFF26262A);
         for (float y = (g.Pan.Y % 32 + 32) % 32; y < csize.Y; y += 32) dl.AddLine(new Vector2(cmin.X, cmin.Y + y), new Vector2(cmin.X + csize.X, cmin.Y + y), 0xFF26262A);
-        // background button: pan, right click menu, click clears the selection
-        ImGui.SetCursorScreenPos(cmin);
-        ImGui.InvisibleButton("##nodebg", Vector2.Max(csize, new Vector2(1)), ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
-        bool bgHovered = ImGui.IsItemHovered();
-        if (ImGui.IsItemActive() && (ImGui.IsMouseDragging(ImGuiMouseButton.Middle, 0) || ImGui.IsMouseDragging(ImGuiMouseButton.Right, 3))) g.Pan += ImGui.GetIO().MouseDelta;
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Left)) nodeSel = -1;
-        if (bgHovered && ImGui.IsMouseReleased(ImGuiMouseButton.Right) && ImGui.GetMouseDragDelta(ImGuiMouseButton.Right).Length() < 4) { nodeAddAt = ImGui.GetMousePos() - origin; ImGui.OpenPopup("##nodeadd"); }
-
         Vector2 InPos(GNode n, int i) => origin + n.Pos + new Vector2(0, NodeHead + i * NodeRow + NodeRow / 2);
         Vector2 OutPos(GNode n, int o) => origin + n.Pos + new Vector2(NodeW, NodeHead + o * NodeRow + NodeRow / 2);
         static void Wire(ImDrawListPtr d, Vector2 a, Vector2 b, uint col)
@@ -124,6 +116,15 @@ public sealed partial class EditorApp
             ImGui.PopItemWidth();
             ImGui.PopID();
         }
+        // background button, submitted after the nodes: ImGui gives the mouse to the first item under it, so the sockets and
+        // titles win and the empty canvas gets the rest (pan, right click menu, click clears the selection)
+        ImGui.SetCursorScreenPos(cmin);
+        ImGui.InvisibleButton("##nodebg", Vector2.Max(csize, new Vector2(1)), ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
+        bool bgHovered = ImGui.IsItemHovered();
+        if (ImGui.IsItemActive() && (ImGui.IsMouseDragging(ImGuiMouseButton.Middle, 0) || ImGui.IsMouseDragging(ImGuiMouseButton.Right, 3))) g.Pan += ImGui.GetIO().MouseDelta;
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Left)) nodeSel = -1;
+        if (bgHovered && ImGui.IsMouseReleased(ImGuiMouseButton.Right) && ImGui.GetMouseDragDelta(ImGuiMouseButton.Right).Length() < 4) { nodeAddAt = ImGui.GetMousePos() - origin; ImGui.OpenPopup("##nodeadd"); }
+
         // a link being dragged
         if (nodeDragFrom is { } from)
         {
