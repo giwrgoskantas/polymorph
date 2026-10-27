@@ -117,8 +117,19 @@ public sealed partial class EditorApp
     void RecentMenu()
     {
         if (!ImGui.BeginMenu("Open Recent", Settings.RecentFiles.Count > 0)) return;
-        foreach (var f in Settings.RecentFiles.ToList())
-            if (ImGui.MenuItem(Path.GetFileName(f), null, false, File.Exists(f))) { if (ConfirmDiscard()) OpenFile(f); }
+        var files = Settings.RecentFiles.ToList();
+        for (int i = 0; i < files.Count; i++)
+        {
+            var f = files[i]; var name = Path.GetFileName(f);
+            // two scenes with the same name in different folders: the folder shows (and each row has its own ID: the same
+            // label twice made ImGui stop with a "conflicting ID" error over the menu)
+            if (files.Count(x => string.Equals(Path.GetFileName(x), name, StringComparison.OrdinalIgnoreCase)) > 1)
+                name += "  -  " + Path.GetFileName(Path.GetDirectoryName(f) ?? "");
+            ImGui.PushID(i);
+            if (ImGui.MenuItem(name, null, false, File.Exists(f))) { if (ConfirmDiscard()) OpenFile(f); }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(f);
+            ImGui.PopID();
+        }
         ImGui.Separator();
         if (ImGui.MenuItem("Open autosave folder")) try { System.Diagnostics.Process.Start("explorer.exe", AutosaveDir); } catch { }
         ImGui.EndMenu();
