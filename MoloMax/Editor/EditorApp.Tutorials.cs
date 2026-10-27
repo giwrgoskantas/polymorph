@@ -213,6 +213,7 @@ public sealed partial class EditorApp
         T("TUTO 20 terrain painting: a game parking lot with 4 textures", TutTerrainPaint);
         T("TUTO 21 Molo Paint patterns, blend modes and filters (ArmorPaint)", TutPaintPatterns);
         T("TUTO 22 Molo Paint picked-parts mask and drips brush", TutPaintPartsDrips);
+        T("TUTO 23 Molo Paint node material", TutPaintNodes);
         T("TERRAIN SCOUT: game parking lots that use the 4-layer terrain shader", TerrainScout);
         T("TERRAIN 4 LAYERS: terrain material, PAINT TERRAIN LAYERS, paint texture 3 with the real mouse", TerrainLayerTest);
         T("PYTHON: embedded Python like bpy (import poly, objects, mesh tools, materials, lights, errors, undo, API, add-ons, editor window)", PythonTest);
@@ -3014,6 +3015,73 @@ room.Mesh.Faces.Count");
         Up(true);
         for (int i = 0; i < 24; i++) { float t = Ease(i / 23f); cam.Distance = 2.4f + (3.4f - 2.4f) * t; yield return Frames(1); }
         for (int i = 0; i < 110; i++) { cam.Orbit(1.3f, 0); yield return Frames(1); }
+        ShowPanel = false;
+    }
+
+    /// <summary>Film: the node material editor - a brick wall built from nodes, the links dragged with the mouse.</summary>
+    IEnumerable<object> TutPaintNodes()
+    {
+        Fresh(); if (MapMode) SetMapMode(false);
+        Maximized = true; ShowPanel = true;
+        var vp = Viewports[ActiveViewport]; var cam = vp.Camera; vp.Shading = ShadingMode.Realistic; cam.Ortho = false;
+        var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "wall";
+        Do("wall", () => { wall.Mesh = MoloMax.Core.Mesh.Primitives.Box(3.2f, 0.3f, 2.2f); wall.Touch(); });
+        SelectOnly(wall);
+        propTab = PropTab.Paint; paintTab = 1; paintRes = 1024;
+        DoMesh("Smart UV Project", (oo, mm, s2) => UvUnwrap.SmartProject(mm));
+        wall = Scene.Find(wall.Id);
+        StartPaint(wall);
+        cam.Target = new Vector3(-0.9f, 0, 1.1f); cam.Distance = 5.2f; cam.Pitch = 0.1f; cam.Yaw = -1.75f;
+        yield return Frames(10);
+        var ts = wall.Paint?.Cur;
+        if (ts == null) { Expect(false, "paint did not start"); yield break; }
+        ts.Layers.Clear();
+        var l = new PaintLayer { Name = "Brick wall (nodes)", Kind = LayerKind.Fill, UseHeight = true }; AddLayer(ts, l);
+        ts.Refresh(true); UploadPaint(wall, ts, true);
+        foreach (var x in StartFilm("23_paint_nodes", 5)) yield return x;
+        paintMode = true;
+        foreach (var x in Say("Molo Paint: node material", "Like ArmorPaint: build a material from nodes", 60)) yield return x;
+        foreach (var x in Say("1. Layer > Node material...", "A starter graph: noise into a colour ramp", 20)) yield return x;
+        OpenNodeEditor(l); var g = l.Graph;
+        yield return Frames(30);
+        var ramp = g.Nodes.First(n => n.Type == "Color ramp"); ramp.C1 = new Vector3(0.32f, 0.11f, 0.07f); ramp.C2 = new Vector3(0.62f, 0.25f, 0.14f);
+        var noise = g.Nodes.First(n => n.Type == "Noise"); noise.S = 9;
+        var outp = g.Nodes.First(n => n.Type == "Output");
+        outp.Pos = new Vector2(720, 40);
+        g.Changed(); ts.Refresh(); UploadPaint(wall, ts, true);
+        yield return Frames(30);
+        foreach (var x in Say("2. Add nodes: Bricks, a mortar colour, Mix", "Right click in the canvas", 20)) yield return x;
+        var bricks = g.Add("Bricks", new Vector2(20, 250)); bricks.S = 13;
+        var mortar = g.Add("Color", new Vector2(250, 250)); mortar.C1 = new Vector3(0.66f, 0.64f, 0.6f);
+        var mix = g.Add("Mix", new Vector2(480, 60));
+        g.Changed(); yield return Frames(40);
+        foreach (var x in Say("3. Drag outputs onto inputs", "Ramp -> Mix A, mortar -> Mix B, bricks -> Mix Fac, Mix -> Output", 10)) yield return x;
+        IEnumerable<object> Wire(GNode a, int o, GNode b, int i)
+        {
+            var from = TutCentre($"nout:{a.Id}:{o}"); var to = TutCentre($"nin:{b.Id}:{i}");
+            foreach (var x in DragTo(from, to, 26)) yield return x;
+            yield return Frames(14);
+            UploadPaint(wall, ts, true);
+        }
+        foreach (var x in Wire(ramp, 0, mix, 0)) yield return x;
+        foreach (var x in Wire(mortar, 0, mix, 1)) yield return x;
+        foreach (var x in Wire(bricks, 0, mix, 2)) yield return x;
+        foreach (var x in Wire(mix, 0, outp, 0)) yield return x;
+        foreach (var x in Say("4. Relief from the same mortar", "Bricks -> Math (invert) -> Output Relief", 10)) yield return x;
+        var inv = g.Add("Math", new Vector2(480, 300)); inv.Mode = 6; g.Changed(); yield return Frames(20);
+        foreach (var x in Wire(bricks, 0, inv, 0)) yield return x;
+        foreach (var x in Wire(inv, 0, outp, 2)) yield return x;
+        foreach (var x in Say("5. Dirt in the corners from the Mesh node", "Mesh (dirt) as the mix of a dark colour", 10)) yield return x;
+        var mesh = g.Add("Mesh", new Vector2(250, 420)); var dirt = g.Add("Mix", new Vector2(720, 300)); dirt.C2 = new Vector3(0.08f, 0.07f, 0.06f); dirt.Mode = (int)PaintBlend.Multiply;
+        g.Changed(); yield return Frames(20);
+        foreach (var x in Wire(mix, 0, dirt, 0)) yield return x;
+        foreach (var x in Wire(mesh, 0, dirt, 2)) yield return x;
+        foreach (var x in Wire(dirt, 0, outp, 0)) yield return x;
+        nodeOpen = false; yield return Frames(10);
+        Expect(g.Links.Count >= 8, $"links made with the mouse ({g.Links.Count})");
+        for (int i = 0; i < 90; i++) { cam.Target = Vector3.Lerp(cam.Target, new Vector3(0, 0, 1.1f), 0.06f); cam.Orbit(0.3f, 0); yield return Frames(1); }
+        foreach (var x in Say("Saved with the layer and in smart materials", "Then export to GTA textures (DDS)", 60)) yield return x;
+        foreach (var x in EndFilm()) yield return x;
         ShowPanel = false;
     }
 

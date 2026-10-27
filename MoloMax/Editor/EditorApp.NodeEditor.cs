@@ -31,6 +31,8 @@ public sealed partial class EditorApp
         if (layer?.Graph == null) { nodeOpen = false; return; }
         var g = layer.Graph;
         ImGui.SetNextWindowSize(new Vector2(980, 560), ImGuiCond.FirstUseEver);
+        var ds = ImGui.GetIO().DisplaySize;
+        ImGui.SetNextWindowPos(new Vector2(MathF.Max(10, ds.X * 0.5f - 560), MathF.Max(60, ds.Y - 600)), ImGuiCond.FirstUseEver); // low on the screen: the model stays visible above
         if (!ImGui.Begin($"Node material - {layer.Name}###nodeeditor", ref nodeOpen, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)) { ImGui.End(); return; }
         bool changed = false;
         // toolbar
