@@ -4,5 +4,5 @@ contact_links:
     url: https://discord.com/invite/molomodding
     about: Ask the community, show what you build.
   - name: Download Polymorph
-    url: https://github.com/molossen/polymorph/releases/latest
+    url: https://molossen.github.io/polymorph/#download
     about: The latest installer and zip.

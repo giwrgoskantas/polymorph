@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/molossen/polymorph/releases/latest"><b>⬇ Download for Windows (free)</b></a>
+  <a href="https://molossen.github.io/polymorph/#download"><b>⬇ Download for Windows (free)</b></a>
   &nbsp;·&nbsp;
   <a href="https://molossen.github.io/polymorph/">Website</a>
   &nbsp;·&nbsp;
@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/molossen/polymorph/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/molossen/polymorph?label=version&color=2ea043"></a>
+  <a href="https://molossen.github.io/polymorph/#download"><img alt="Latest release" src="https://img.shields.io/github/v/tag/molossen/polymorph?label=version&sort=semver&color=2ea043"></a>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4">
   <img alt="Free" src="https://img.shields.io/badge/price-free%20forever-ffb000">
 </p>
@@ -94,12 +94,12 @@ GTA and `.glb` export round trips, and thousands of random clicks and keys in th
 
 ## Install
 
-1. [Download the installer](https://github.com/molossen/polymorph/releases/latest) (`Polymorph-Setup-x.y.z.exe`) and run it (no admin rights needed).
+1. [Download the installer](https://molossen.github.io/polymorph/#download) and run it (no admin rights needed).
 2. Start Polymorph from the Start menu or the desktop shortcut.
 3. Updates: when a new version is out, a green **Update** button shows in the menu bar. One click downloads it,
    installs it over your copy and restarts Polymorph — your settings, keys and library are kept (Help > Check for updates).
 
-Prefer no installer? The same app as a zip on the [release page](https://github.com/molossen/polymorph/releases/latest): unzip anywhere and run `Polymorph.exe`.
+Prefer no installer? The same app as a zip on the [download page](https://molossen.github.io/polymorph/#download): unzip anywhere and run `Polymorph.exe`.
 
 Needs Windows 10 / 11 64-bit and a DirectX 11 graphics card. For the game files, your own copy of GTA V:
 Polymorph reads your install and ships no game file.
