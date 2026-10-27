@@ -33,6 +33,7 @@ then export a FiveM resource that is ready to `ensure` — in one free program, 
 
 ## What's new
 
+- **1.5.3 — Line tool, round corners and profile sweep**: fillet / chamfer the corners, sweep a moulding section you drew.
 - **1.5.2 — Line tool**: click points snapped on vertices, edges and faces, then turn the line into a door frame casing, a beam, a pipe or an extrusion.
 - **1.5.0 — Node materials** in Molo Paint: noise, voronoi, bricks, warp, ramps and mixes wired in a node graph.
 - **1.4.x — Molo Paint** procedural textures, 14 blend modes, filters, picked-parts mask, drips brush; GIMS-style model export.
