@@ -1642,6 +1642,38 @@ Console.WriteLine("Molo Paint: ArmorPaint procedural textures, blend modes, filt
         var m = ts.MaskOf(l);
         return Enumerable.Range(0, ts.Map.Count).All(t => (ts.Map.IslandOf[t] == isl) == (m[t] > 0.5f));
     });
+    Check("node material: noise -> colour ramp -> output paints the layer between the two ramp colours, not flat", () =>
+    {
+        ts.Layers.Clear();
+        var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, Graph = NodeGraph.Starter() };
+        var ramp = l.Graph.Nodes.First(n => n.Type == "Color ramp"); ramp.C1 = V(1, 0, 0); ramp.C2 = V(0, 0, 1);
+        l.Graph.Nodes.First(n => n.Type == "Noise").S = 6;
+        ts.Layers.Add(l); ts.Refresh(true);
+        var cs = Enumerable.Range(0, ts.Map.Count).Select(t => ts.CColor[t]).ToList();
+        bool noGreen = cs.All(c => c.Y < 0.02f);
+        float spread = cs.Max(c => c.X) - cs.Min(c => c.X);
+        Console.WriteLine($"       red spread {spread:0.00}");
+        return noGreen && spread > 0.3f;
+    });
+    Check("node material: a link that would make a loop is refused; Mix multiply of two colours", () =>
+    {
+        var g = new NodeGraph();
+        var a = g.Add("Math", default); var b = g.Add("Math", default);
+        bool ok1 = g.Link(a.Id, 0, b.Id, 0), loop = g.Link(b.Id, 0, a.Id, 0);
+        var c1 = g.Add("Color", default); c1.C1 = V(0.5f, 1, 1); var c2 = g.Add("Color", default); c2.C1 = V(0.5f, 0.5f, 0);
+        var mix = g.Add("Mix", default); mix.Mode = (int)PaintBlend.Multiply; mix.A = 1;
+        var o = g.Add("Output", default);
+        g.Link(c1.Id, 0, mix.Id, 0); g.Link(c2.Id, 0, mix.Id, 1); g.Link(mix.Id, 0, o.Id, 0);
+        var r = g.Evaluate(ts, 0);
+        return ok1 && !loop && r is { } v && (v.Color - V(0.25f, 0.5f, 0)).Length() < 0.01f;
+    });
+    Check("node material is saved with the layer settings (smart material JSON) and read back", () =>
+    {
+        var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, Graph = NodeGraph.Starter() };
+        var json = l.SettingsJson();
+        var back = System.Text.Json.JsonSerializer.Deserialize<PaintLayer>(json, PaintJson.Options);
+        return back.Graph != null && back.Graph.Nodes.Count == 3 && back.Graph.Links.Count == 2;
+    });
     Check("smart materials with patterns build their layers", () => new[] { "Red brick wall", "Cracked mud", "Wood grain", "Stone paving" }.All(n => SmartMaterials.Make(n, 1).Count >= 2));
 }
 

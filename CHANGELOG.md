@@ -1,5 +1,13 @@
 # Polymorph — journal des versions
 
+## 1.5.0 — octobre 2026
+
+- **Molo Paint, phase 3 : matériau en nœuds** (comme ArmorPaint) sur un calque de remplissage : bouton « Node
+  material... ». Nœuds : Couleur, Valeur, Mesh (saleté AO, arêtes, cavités, dessus, hauteur), Noise, Voronoi (cellules,
+  fissures), Briques, Motifs, Warp, Rampe de couleurs, Mix (tous les modes de fusion), Math, Levels, et la sortie
+  (couleur, rugosité, relief, métal). Glisser une sortie sur une entrée pour relier, clic droit pour ajouter, Suppr pour
+  enlever. Le graphe est enregistré avec le calque et dans les smart materials.
+
 ## 1.4.9 — octobre 2026
 
 - Molo Paint : le bouton « Pick the parts on the model » active la peinture (les clics n'arrivaient pas au modèle

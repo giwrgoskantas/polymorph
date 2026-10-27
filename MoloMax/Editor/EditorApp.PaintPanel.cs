@@ -555,6 +555,9 @@ public sealed partial class EditorApp
         c |= ImGui.Checkbox("Emissive##le", ref l.UseEmissive); ImGui.SameLine(); c |= ImGui.Checkbox("Opacity##la", ref l.UseAlpha);
         if (l.Kind == LayerKind.Fill)
         {
+            if (ImGui.Button(l.Graph != null ? $"Edit the node material ({l.Graph.Nodes.Count} nodes)##ng" : "Node material...##ng", new Vector2(-1, 0))) OpenNodeEditor(l);
+            Theme.Tip("Build the layer from nodes (noise, cells, bricks, mesh masks, colour ramp, mix, math...), like ArmorPaint. The layer's colour, roughness, relief and metal then come from the graph.");
+            if (l.Graph != null) Ui.TextDisabled("Colour / roughness / relief / metal come from the node material.");
             if (!l.HasTextures) c |= ImGui.ColorEdit3("Colour##2", ref l.Color, ImGuiColorEditFlags.NoInputs);
             else
             {

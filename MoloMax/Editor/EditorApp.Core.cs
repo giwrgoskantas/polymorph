@@ -136,6 +136,7 @@ public sealed partial class EditorApp : IDisposable
             DrawDialogs();
             DrawModelExport();
             DrawMapPlacementDialog();
+            DrawNodeEditor();
             DrawPopups();
             if (cubeProj != null) DrawCubeProjectionPanel(); else if (lastMeshOp != null) DrawMeshOpPanel(); else DrawAdjustPanel();
             DrawImportPanel();

@@ -100,6 +100,8 @@ public sealed class PaintLayer
     public float PatternScale = 4f, PatternRelief, PatternRough = -1f;
     /// <summary>Warp (ArmorPaint warp node): bends the pattern and the mask with noise; amount in metres.</summary>
     public float Warp, WarpScale = 2f;
+    /// <summary>Node material (ArmorPaint style): when set, the fill's colour / roughness / relief / metal come from it.</summary>
+    public NodeGraph Graph;
 
     // texture fill (Molo library material or any image), projected triplanar in object space
     public string TexDiffuse, TexSpec, TexHeight;
@@ -140,6 +142,7 @@ public sealed class PaintLayer
         c.texColor = null; c.texRough = null; c.texHeight = null; c.texDirty = true;
         c.Filters = Filters.Select(f => f.Copy()).ToList();
         c.MaskParts = new List<int>(MaskParts ?? new());
+        c.Graph = Graph?.Copy();
         return c;
     }
 
@@ -539,6 +542,7 @@ public sealed class TextureSet
             {
                 lc = l.Color; lh = l.Height; lr = l.Rough; lm = l.Metal; le = l.Emissive; la = l.Alpha;
                 if (l.texColor != null) { lc = l.texColor[t] * l.Color; lr = l.texRough[t]; lh = l.texHeight[t]; }
+                if (l.Graph != null && l.Graph.Evaluate(this, t) is { } gv) { lc = gv.Color; lr = gv.Rough; lh = gv.Height; lm = gv.Metal; }
                 if (l.Pattern != FillPattern.None)
                 {
                     var wp = l.Warp > 0 ? ProcTex.Warp(Map.Pos[t], l.Warp, l.WarpScale, l.Seed) : Map.Pos[t];
@@ -576,6 +580,9 @@ public sealed class TextureSet
         }
         CColor[t] = col; CHeight[t] = h; CRough[t] = r; CMetal[t] = me; CEmis[t] = em; CAlpha[t] = al;
     }
+
+    /// <summary>A layer blend (for the node material's Mix node).</summary>
+    public static Vector3 BlendPublic(Vector3 b, Vector3 v, float a, PaintBlend mode) => Vector3.Clamp(Blend(b, v, a, mode), Vector3.Zero, Vector3.One);
 
     static Vector3 Blend(Vector3 b, Vector3 v, float a, PaintBlend mode) => mode switch
     {

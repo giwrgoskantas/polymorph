@@ -25,6 +25,7 @@ public sealed partial class EditorApp
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
         T("USER: Join (Ctrl+J) with Drawable nodes selected: the meshes join into a mesh, never into the node; hidden ones stay out", UserJoinNodes);
         T("USER: after an undo / redo (the objects are new copies), the eye of a row still hides the real object", UserEyeAfterUndo);
+        T("USER: node material: open it on a fill layer, drag a link with the mouse from Voronoi to the ramp, the layer changes", UserNodeMaterial);
         T("USER: Molo Paint drips: a print near the top of a wall lets drops run down it", UserPaintDrips);
         T("USER: MODEL scene to MAP with its .ymap: the dialog finds the .ymap and the models go where it places them", UserPlaceFromYmap);
         T("USER: holding Ctrl (to add to the selection) never turns the snap on; inside a G move it still flips it", UserCtrlNoSnap);
@@ -417,6 +418,43 @@ public sealed partial class EditorApp
                 yield return Frames(4);
                 Expect(!Scene.Find(live.Id).Hidden, $"after {what}: the eye again shows it");
             }
+        }
+        finally { UI.ImGuiBackend.SyntheticInput = false; }
+    }
+
+    IEnumerable<object> UserNodeMaterial()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        try
+        {
+            Fresh();
+            var wall = Prim(CreateKind.Box, Vector3.Zero); wall.Name = "node_wall";
+            Do("wall", () => { wall.Mesh = Primitives.Box(3f, 0.3f, 2.4f); wall.Touch(); });
+            SelectOnly(wall);
+            DoMesh("Smart UV Project", (oo, mm, s2) => UvUnwrap.SmartProject(mm));
+            wall = Scene.Find(wall.Id);
+            propTab = PropTab.Paint; paintTab = 1; paintRes = 512; StartPaint(wall); yield return Frames(4);
+            var ts = wall.Paint?.Cur;
+            Expect(ts != null, "paint started");
+            if (ts == null) yield break;
+            ts.Layers.Clear();
+            var l = new PaintLayer { Name = "Nodes", Kind = LayerKind.Fill }; AddLayer(ts, l);
+            OpenNodeEditor(l); yield return Frames(6);
+            Expect(nodeOpen && l.Graph?.Nodes.Count == 3, $"the node editor opens with a starter graph ({l.Graph?.Nodes.Count} nodes)");
+            var g = l.Graph;
+            var ramp = g.Nodes.First(n => n.Type == "Color ramp"); ramp.C1 = new Vector3(0.1f, 0.1f, 0.1f); ramp.C2 = new Vector3(0.9f, 0.9f, 0.9f);
+            var vor = g.Add("Voronoi", new Vector2(20, 260)); vor.S = 3; g.Changed(); ts.Refresh(); yield return Frames(6);
+            var before = ts.CColor.ToArray();
+            var from = TutCentre($"nout:{vor.Id}:0"); var to = TutCentre($"nin:{ramp.Id}:0");
+            Note($"drag from {from.X:0},{from.Y:0} to {to.X:0},{to.Y:0}");
+            foreach (var x in DragTo(from, to, 20)) yield return x;
+            yield return Frames(12);
+            var link = g.Links.FirstOrDefault(k => k.ToNode == ramp.Id && k.ToIn == 0);
+            Expect(link?.FromNode == vor.Id, $"the mouse drag linked Voronoi to the ramp (from node {link?.FromNode})");
+            int diff = Enumerable.Range(0, ts.Map.Count).Count(t => (ts.CColor[t] - before[t]).Length() > 0.05f);
+            Expect(diff > ts.Map.Count / 10, $"the layer changed with the new link ({diff} of {ts.Map.Count} texels)");
+            yield return Shot("user_node_material");
+            nodeOpen = false;
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; }
     }
