@@ -601,6 +601,10 @@ public sealed partial class EditorApp
             Expect(bmn.X < omn.X - 0.1f && bmx.X > omx.X + 0.1f && bmx.Z > omx.Z + 0.1f, "the casing grows away from the opening (outside its sides and top)");
             Expect(MathF.Abs(bmn.Z - omn.Z) < 1e-3f, "it stands on the floor line (open at the bottom)");
             Expect(bmn.Y < omn.Y - 0.02f && bmx.Y < omn.Y + 1e-3f, "it stands out of the wall, toward the view (not into the wall)");
+            int f0 = line.Mesh.Faces.Count;
+            var cf = line.Shape.Copy(); cf.Fillet = 0.25f; cf.FilletSegs = 4;
+            line.Shape = cf; line.Mesh = ShapeBuilder.Build(cf); line.Touch(); yield return Frames(3);
+            Expect(line.Mesh.Faces.Count > f0 && line.Mesh.IsClosedManifold(out _), $"rounded top corners: more faces, still closed ({f0} -> {line.Mesh.Faces.Count})");
 
             // Shift: a crooked second click comes out straight
             SelectOnly(o); yield return Frames(2);

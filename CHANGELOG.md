@@ -6,6 +6,7 @@ Download the latest version from the [website](https://molossen.github.io/polymo
 
 | Version | Highlights |
 |---|---|
+| [1.5.3](#153) | Line: rounded / chamfered corners, sweep your own profile |
 | [1.5.2](#152) | Line tool: draw door frames, beams, pipes and extrusions |
 | [1.5.0](#150) | Molo Paint node materials |
 | [1.4.8](#148) | Molo Paint: picked-parts mask, drips brush |
@@ -19,6 +20,14 @@ Download the latest version from the [website](https://molossen.github.io/polymo
 | [1.0.0](#100) | First public release |
 
 ---
+
+## 1.5.3
+
+**New on the Line tool**
+- **Round the corners**: a radius and a number of segments in the line's panel (1 segment = a chamfer). Arched door
+  frames, rounded counters, chamfered beams; the line itself shows the rounded path.
+- **Sweep (your profile)**: draw the section of a moulding as another line, pick it in the panel, and it follows the
+  path (its first point rides on the line), with a scale. Skirting, cornices, handrails, picture frames.
 
 ## 1.5.2
 

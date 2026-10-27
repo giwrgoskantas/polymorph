@@ -5,7 +5,7 @@ namespace MoloMax.Core.Mesh;
 
 /// <summary>How a line (3ds Max spline) shows: the bare line, a renderable section swept along it (rectangle, round),
 /// a door / window casing profile swept along it, or an extrusion of the shape.</summary>
-public enum ShapeRender { Line, Rectangular, Round, DoorFrame, Extrude }
+public enum ShapeRender { Line, Rectangular, Round, DoorFrame, Extrude, Sweep }
 
 /// <summary>
 /// A line drawn point by point (3ds Max Create > Shapes > Line): its points in object space, open or closed, and how it
@@ -29,11 +29,17 @@ public sealed class ShapeData
     /// <summary>The side the section stands out to (door frame / beam / extrude), set from the view when it is drawn:
     /// the plane normal is turned toward it, so a casing drawn on a wall sticks out of the wall, toward the viewer.</summary>
     public Vector3 Facing;
+    /// <summary>Rounds every corner of the line with this radius (metres, 0 = sharp); FilletSegs = 1 cuts a chamfer.</summary>
+    public float Fillet; public int FilletSegs = 4;
+    /// <summary>Sweep: the section drawn as another line (x across this line, y out of its plane, metres; its first
+    /// point rides on the line), and its scale.</summary>
+    public List<Vector2> Profile = new(); public float ProfileScale = 1f; public string ProfileName;
 
     public ShapeData Copy()
     {
         var c = (ShapeData)MemberwiseClone();
         c.Points = new List<Vector3>(Points);
+        c.Profile = new List<Vector2>(Profile ?? new());
         return c;
     }
 }
@@ -60,10 +66,11 @@ public static class ShapeBuilder
     /// <summary>The mesh of a shape (object space). The bare line keeps only its points (they still snap).</summary>
     public static PolyMesh Build(ShapeData s)
     {
-        var pts = Clean(s.Points, s.Closed);
+        var raw = Clean(s.Points, s.Closed);
         var m = new PolyMesh();
-        if (pts.Count < 2 || s.Render == ShapeRender.Line) { foreach (var p in pts) m.AddVertex(p); return m; }
-        bool closed = s.Closed && pts.Count >= 3;
+        if (raw.Count < 2 || s.Render == ShapeRender.Line) { foreach (var p in raw) m.AddVertex(p); return m; }
+        bool closed = s.Closed && raw.Count >= 3;
+        var pts = Path(s);
         var n = PlaneNormal(pts, closed);
         if (s.Facing.LengthSquared() > 1e-8f && Vector3.Dot(n, s.Facing) < 0) n = -n;
         if (s.Flip && s.Render is ShapeRender.Extrude) n = -n;
@@ -91,11 +98,72 @@ public static class ShapeBuilder
                     break;
                 }
             case ShapeRender.Extrude: Extrude(m, pts, closed, n * s.Amount); break;
+            case ShapeRender.Sweep:
+                {
+                    var prof = (s.Profile ?? new()).Select(q => q * s.ProfileScale).ToList();
+                    if (prof.Count < 3) { float w = 0.05f; prof = new List<Vector2> { new(-w, -w), new(w, -w), new(w, w), new(-w, w) }; }
+                    Sweep(m, pts, closed, n, prof, outward: true, s.Flip);
+                    break;
+                }
         }
         MeshOps.RecalcNormals(m, null, false);
         foreach (var f in m.Faces) for (int i = 0; i < f.Col.Length; i++) f.Col[i] = new Vector4(0, 1, 0, 1); // GTA green
         MeshOps.BoxMap(m, null, 1f);
         return m;
+    }
+
+    /// <summary>The line as it is built: cleaned, with its corners rounded (or chamfered) by Fillet.</summary>
+    public static List<Vector3> Path(ShapeData s)
+    {
+        var pts = Clean(s.Points, s.Closed);
+        bool closed = s.Closed && pts.Count >= 3;
+        if (s.Fillet <= 1e-5f || pts.Count < 3) return pts;
+        int np = pts.Count, segs = Math.Clamp(s.FilletSegs, 1, 32);
+        var r = new List<Vector3>();
+        for (int i = 0; i < np; i++)
+        {
+            bool end = !closed && (i == 0 || i == np - 1);
+            var p = pts[i];
+            if (end) { r.Add(p); continue; }
+            var a = pts[(i - 1 + np) % np]; var b = pts[(i + 1) % np];
+            float la = Vector3.Distance(a, p), lb = Vector3.Distance(b, p);
+            var d1 = (a - p) / la; var d2 = (b - p) / lb;
+            float cos = Math.Clamp(Vector3.Dot(d1, d2), -1, 1);
+            float th = MathF.Acos(cos);
+            if (th < 1e-3f || th > MathF.PI - 1e-3f) { r.Add(p); continue; } // folded back or straight: no corner to round
+            float half = th / 2;
+            // distance from the corner to the tangent points, at most half of each side (two fillets meet in the middle)
+            float t = MathF.Min(s.Fillet / MathF.Tan(half), MathF.Min(la, lb) * 0.5f);
+            float rr = t * MathF.Tan(half);
+            var t1 = p + d1 * t; var t2 = p + d2 * t;
+            var c = p + Vector3.Normalize(d1 + d2) * (rr / MathF.Sin(half));
+            var u1 = t1 - c; var u2 = t2 - c;
+            float phi = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.Normalize(u1), Vector3.Normalize(u2)), -1, 1));
+            for (int k = 0; k <= segs; k++)
+            {
+                float f = (float)k / segs;
+                if (segs == 1 || phi < 1e-4f) { r.Add(Vector3.Lerp(t1, t2, f)); continue; }
+                float sa = MathF.Sin((1 - f) * phi) / MathF.Sin(phi), sb = MathF.Sin(f * phi) / MathF.Sin(phi);
+                r.Add(c + u1 * sa + u2 * sb);
+            }
+        }
+        return Clean(r, closed);
+    }
+
+    /// <summary>A line drawn as a profile: its points in 2D in its own plane, relative to its first point
+    /// (x along the horizontal of that plane, y up it).</summary>
+    public static List<Vector2> ProfileFrom(IReadOnlyList<Vector3> world)
+    {
+        var r = new List<Vector2>();
+        if (world.Count < 2) return r;
+        var n = PlaneNormal(world, true);
+        var u = Vector3.Cross(Vector3.UnitZ, n);
+        u = u.LengthSquared() > 1e-6f ? Vector3.Normalize(u) : Vector3.UnitX;
+        var v = Vector3.Normalize(Vector3.Cross(n, u));
+        if (v.Z < -1e-4f || MathF.Abs(v.Z) <= 1e-4f && v.Y < 0) { v = -v; u = -u; }
+        var o = world[0];
+        foreach (var p in world) r.Add(new Vector2(Vector3.Dot(p - o, u), Vector3.Dot(p - o, v)));
+        return r;
     }
 
     public static TrimSettings CasingSettings(ShapeData s)

@@ -942,6 +942,28 @@ Console.WriteLine("Molo Tools");
         bool okJ = back.Points.Count == 4 && back.Points[2] == s.Points[2] && back.Render == s.Render && back.Facing == s.Facing;
         return Closed(m) && okB && okF && okS && okJ;
     });
+    Check("line shape: fillet rounds the corners of a door line (radius kept, ends untouched), 1 segment = chamfer", () =>
+    {
+        var s = new MoloMax.Core.Mesh.ShapeData { Fillet = 0.3f, FilletSegs = 4 };
+        s.Points.AddRange(new[] { new Vector3(0, 0, 0), new Vector3(0, 0, 2.1f), new Vector3(1, 0, 2.1f), new Vector3(1, 0, 0) });
+        var p = MoloMax.Core.Mesh.ShapeBuilder.Path(s);
+        var corner = new Vector3(0, 0, 2.1f); var c = new Vector3(0.3f, 0, 1.8f);
+        float near = p.Min(q => Vector3.Distance(q, corner));
+        bool onArc = p.Where(q => q.Z > 1.8f + 1e-3f && q.X < 0.3f - 1e-3f).All(q => MathF.Abs(Vector3.Distance(q, c) - 0.3f) < 1e-3f);
+        s.FilletSegs = 1; var ch = MoloMax.Core.Mesh.ShapeBuilder.Path(s);
+        Console.WriteLine($"       fillet: {p.Count} points, nearest to the corner {near:0.000} m; chamfer {ch.Count} points");
+        return p.Count == 12 && p[0] == Vector3.Zero && p[^1] == new Vector3(1, 0, 0) && MathF.Abs(near - 0.3f * (MathF.Sqrt(2) - 1)) < 2e-3f && onArc && ch.Count == 6;
+    });
+    Check("line shape: sweep a drawn L profile along a closed square: a closed moulding", () =>
+    {
+        var prof = MoloMax.Core.Mesh.ShapeBuilder.ProfileFrom(new[] { new Vector3(5, 5, 0), new Vector3(5.1f, 5, 0), new Vector3(5.1f, 5, 0.03f), new Vector3(5.03f, 5, 0.03f), new Vector3(5.03f, 5, 0.12f), new Vector3(5, 5, 0.12f) });
+        var s = new MoloMax.Core.Mesh.ShapeData { Closed = true, Render = MoloMax.Core.Mesh.ShapeRender.Sweep, Profile = prof };
+        s.Points.AddRange(new[] { new Vector3(0, 0, 0), new Vector3(4, 0, 0), new Vector3(4, 3, 0), new Vector3(0, 3, 0) });
+        var m = MoloMax.Core.Mesh.ShapeBuilder.Build(s);
+        var (mn, mx) = m.Bounds();
+        Console.WriteLine($"       profile {string.Join(" ", prof.Select(q => $"({q.X:0.##},{q.Y:0.##})"))}; moulding {mn} .. {mx}");
+        return prof.Count == 6 && MathF.Abs(prof[1].X - 0.1f) < 1e-4f && MathF.Abs(prof[2].Y - 0.03f) < 1e-4f && Closed(m) && m.Faces.Count == 24 && mx.X > 4.09f && MathF.Abs(mx.Z - mn.Z - 0.12f) < 1e-3f;
+    });
     Check("line shape: closed square as a beam (closed ring) and extruded (solid, faces outward)", () =>
     {
         var s = new MoloMax.Core.Mesh.ShapeData { Closed = true, Render = MoloMax.Core.Mesh.ShapeRender.Rectangular };

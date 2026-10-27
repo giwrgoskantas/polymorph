@@ -199,7 +199,9 @@ public partial class EditorApp
             if (o.Hidden || o.Shape == null) continue;
             bool sel = Selected.Contains(o.Id);
             if (o.Shape.Render != ShapeRender.Line && !sel) continue;
-            var pts = ShapeWorldPoints(o);
+            ShapeWorldPoints(o); // reads moved points back
+            var w = o.World;
+            var pts = ShapeBuilder.Path(o.Shape).Select(q => Vector3.Transform(q, w)).ToList();
             var col = sel ? new Vector4(1, 1, 1, 1) : new Vector4(0.35f, 0.75f, 1f, 1);
             if (o.Shape.Render != ShapeRender.Line) col = new Vector4(1f, 0.85f, 0.3f, 1);
             for (int i = 1; i < pts.Count; i++) lines.Line(pts[i - 1], pts[i], col);
@@ -230,7 +232,7 @@ public partial class EditorApp
         return hit;
     }
 
-    static readonly string[] ShapeRenderNames = { "Line only", "Rectangular (beam)", "Round (pipe)", "Door frame (casing)", "Extrude" };
+    static readonly string[] ShapeRenderNames = { "Line only", "Rectangular (beam)", "Round (pipe)", "Door frame (casing)", "Extrude", "Sweep (your profile)" };
     static readonly string[] LineFrameStyles = { "Square", "Stepped", "Chamfer", "Round" };
 
     /// <summary>Properties of a line: closed, how it renders and its sizes; the mesh is rebuilt on every change.</summary>
@@ -280,6 +282,42 @@ public partial class EditorApp
                 Ui.TextDisabled("Amount (along the plane of the line)");
                 ch |= F("##shape_amt", ref s.Amount, 0.005f);
                 break;
+            case ShapeRender.Sweep:
+                {
+                    Ui.TextDisabled("Profile: another line, drawn as the section (its first point rides on this line)");
+                    var others = Scene.Objects.Where(q => q.Shape != null && q != o && q.Shape.Points.Count >= 3).ToList();
+                    string cur = s.Profile is { Count: >= 3 } ? (s.ProfileName ?? "picked") : "none (a 10 cm square)";
+                    ImGui.SetNextItemWidth(-1);
+                    if (ImGui.BeginCombo("##shape_prof", cur))
+                    {
+                        if (others.Count == 0) Ui.TextDisabled("Draw the profile first: another Line, closed or open");
+                        foreach (var q in others)
+                            if (ImGui.Selectable(q.Name + "##shape_prof_" + q.Id))
+                            {
+                                ShapeWorldPoints(q);
+                                var qw = q.World;
+                                s.Profile = ShapeBuilder.ProfileFrom(ShapeBuilder.Path(q.Shape).Select(v => Vector3.Transform(v, qw)).ToList());
+                                s.ProfileName = q.Name; ch = true;
+                            }
+                        ImGui.EndCombo();
+                    }
+                    TutRect("shape_profile");
+                    Ui.TextDisabled("Profile scale");
+                    ImGui.SetNextItemWidth(-1);
+                    ch |= ImGui.DragFloat("##shape_pscale", ref s.ProfileScale, 0.01f, 0.01f, 100f, "x %.2f");
+                    break;
+                }
+        }
+        if (s.Points.Count >= 3)
+        {
+            Ui.TextDisabled("Round the corners (radius / segments, 1 = chamfer)");
+            float half = (ImGui.GetContentRegionAvail().X - 4) / 2;
+            ImGui.SetNextItemWidth(half);
+            ch |= ImGui.DragFloat("##shape_fillet", ref s.Fillet, 0.002f, 0f, 20f, s.Fillet <= 0 ? "sharp" : "%.3f m");
+            TutRect("shape_fillet");
+            ImGui.SameLine();
+            int fsg = s.FilletSegs; ImGui.SetNextItemWidth(half);
+            if (ImGui.SliderInt("##shape_fsegs", ref fsg, 1, 16)) { s.FilletSegs = fsg; ch = true; }
         }
         float len = 0; for (int i = 1; i < s.Points.Count; i++) len += Vector3.Distance(s.Points[i - 1], s.Points[i]);
         if (s.Closed && s.Points.Count > 2) len += Vector3.Distance(s.Points[^1], s.Points[0]);
