@@ -126,7 +126,7 @@ public sealed partial class EditorApp
         var local = vp.Local(Input.Mouse);
         var cur = Current;
         float bestV = pxRadius, bestE = pxRadius * 0.67f; Vector3 vPos = default, ePos = default; bool vFound = false, eFound = false;
-        float bestF = float.MaxValue; Vector3 fPos = default; bool fFound = false;
+        float bestF = float.MaxValue; Vector3 fPos = default; bool fFound = false; float bestVDepth = float.MaxValue;
         bool wantV = SnapVertexT || SnapNearest, wantE = SnapEdge || SnapNearest;
         // nearest visible surface along the mouse ray: vertices / edges behind it are hidden and not offered
         // (else the back corner of a box wins over its top face)
@@ -167,7 +167,13 @@ public sealed partial class EditorApp
                 {
                     if (!ok[i]) continue;
                     float d = Vector2.Distance(sp[i], local);
-                    if (d < bestV) { var wp = Vector3.Transform(m.Verts[i], w); if (!Visible(wp)) continue; bestV = d; vPos = wp; vFound = true; vObj = o.Id; }
+                    if (d < bestV + 1.5f)
+                    {
+                        var wp = Vector3.Transform(m.Verts[i], w); if (!Visible(wp)) continue;
+                        // points on top of each other on screen (the front and back corners in a side view): the nearer one wins
+                        float dep = Vector3.Dot(wp - ray.Origin, ray.Direction);
+                        if (d < bestV - 1.5f || dep < bestVDepth - 1e-4f) { bestV = MathF.Min(d, bestV); vPos = wp; vFound = true; vObj = o.Id; bestVDepth = dep; }
+                    }
                 }
             if (wantE)
                 foreach (var f in m.Faces)
