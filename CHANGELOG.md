@@ -2,6 +2,8 @@
 
 ## 1.5.1 — octobre 2026
 
+- **Matériau en nœuds : plantage corrigé** — le graphe était lu par plusieurs cœurs en même temps juste après une
+  modification, ce qui pouvait faire planter le calque (« collection modifiée »).
 - File > Open Recent : deux scènes du même nom dans des dossiers différents faisaient apparaître une erreur ImGui
   rouge (« conflicting ID ») par-dessus le menu ; le dossier s'affiche à côté du nom, le chemin complet au survol.
 - Éditeur de nœuds : s'ouvre en bas de l'écran (le modèle reste visible).

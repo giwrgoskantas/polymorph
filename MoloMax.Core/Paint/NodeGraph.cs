@@ -19,7 +19,7 @@ public sealed class NodeGraph
     {
         var d = NodeTypes.Get(type);
         var n = new GNode { Id = NextId++, Type = type, Pos = pos, C1 = d.C1, C2 = d.C2, A = d.A, B = d.B, S = d.S, Mode = d.Mode };
-        Nodes.Add(n);
+        Nodes.Add(n); Changed();
         return n;
     }
 
@@ -30,7 +30,7 @@ public sealed class NodeGraph
     {
         if (fromNode == toNode || DependsOn(fromNode, toNode)) return false;
         Links.RemoveAll(l => l.ToNode == toNode && l.ToIn == toIn);
-        Links.Add(new GLink { FromNode = fromNode, FromOut = fromOut, ToNode = toNode, ToIn = toIn });
+        Links.Add(new GLink { FromNode = fromNode, FromOut = fromOut, ToNode = toNode, ToIn = toIn }); Changed();
         return true;
     }
 
@@ -50,7 +50,7 @@ public sealed class NodeGraph
     public void Remove(GNode n)
     {
         if (n.Type == "Output") return;
-        Nodes.Remove(n); Links.RemoveAll(l => l.FromNode == n.Id || l.ToNode == n.Id);
+        Nodes.Remove(n); Links.RemoveAll(l => l.FromNode == n.Id || l.ToNode == n.Id); Changed();
     }
 
     public NodeGraph Copy()
@@ -75,26 +75,38 @@ public sealed class NodeGraph
 
     // ------------------------------------------------------------------ evaluation
 
-    [JsonIgnore] Dictionary<int, GNode> byId;
-    [JsonIgnore] Dictionary<(int Node, int In), GLink> linkTo;
+    /// <summary>Lookups for the evaluation, built once and then only read (texels are evaluated on many threads at once).</summary>
+    sealed class Lookup { public Dictionary<int, GNode> ById; public Dictionary<(int Node, int In), GLink> LinkTo; public GNode Output; }
+    [JsonIgnore] volatile Lookup lookup;
+    [JsonIgnore] readonly object lookupLock = new();
     [JsonIgnore] public int Version;
 
     /// <summary>Call after any change (the lookups are rebuilt on the next evaluation).</summary>
-    public void Changed() { byId = null; Version++; }
+    public void Changed() { lookup = null; Version++; }
 
-    void Index()
+    Lookup Index()
     {
-        byId = Nodes.ToDictionary(n => n.Id);
-        linkTo = new();
-        foreach (var l in Links) if (byId.ContainsKey(l.FromNode) && byId.ContainsKey(l.ToNode)) linkTo[(l.ToNode, l.ToIn)] = l;
+        var lk = lookup;
+        if (lk != null) return lk;
+        lock (lookupLock)
+        {
+            if (lookup != null) return lookup;
+            var byId = new Dictionary<int, GNode>();
+            foreach (var n in Nodes) byId[n.Id] = n;
+            var linkTo = new Dictionary<(int Node, int In), GLink>();
+            foreach (var l in Links) if (byId.ContainsKey(l.FromNode) && byId.ContainsKey(l.ToNode)) linkTo[(l.ToNode, l.ToIn)] = l;
+            lookup = lk = new Lookup { ById = byId, LinkTo = linkTo, Output = Nodes.FirstOrDefault(n => n.Type == "Output") };
+            return lk;
+        }
     }
 
     /// <summary>What the Output node gets at a texel: colour, roughness, relief (0.5 = flat), metal. Null without an Output.</summary>
     public (Vector3 Color, float Rough, float Height, float Metal)? Evaluate(TextureSet ts, int t)
     {
-        if (byId == null) Index();
-        var outp = Nodes.FirstOrDefault(n => n.Type == "Output");
+        var lk = Index();
+        var outp = lk.Output;
         if (outp == null) return null;
+        var byId = lk.ById; var linkTo = lk.LinkTo;
         var memo = new Dictionary<(int, int), Vector3>();
         Vector3 In(GNode n, int i, Vector3 dflt) => linkTo.TryGetValue((n.Id, i), out var l) ? Out(byId[l.FromNode], l.FromOut) : dflt;
         Vector3 Out(GNode n, int o)

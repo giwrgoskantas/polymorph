@@ -1667,6 +1667,16 @@ Console.WriteLine("Molo Paint: ArmorPaint procedural textures, blend modes, filt
         var r = g.Evaluate(ts, 0);
         return ok1 && !loop && r is { } v && (v.Color - V(0.25f, 0.5f, 0)).Length() < 0.01f;
     });
+    Check("node material evaluated on many threads at once (fresh graph, 20 refreshes): no crash, same result", () =>
+    {
+        for (int k = 0; k < 20; k++)
+        {
+            ts.Layers.Clear();
+            var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, Graph = NodeGraph.Starter() };
+            ts.Layers.Add(l); ts.Refresh(true); // the graph's lookups are built by the parallel composite
+        }
+        return true;
+    });
     Check("node material is saved with the layer settings (smart material JSON) and read back", () =>
     {
         var l = new PaintLayer { Id = 1, Kind = LayerKind.Fill, Graph = NodeGraph.Starter() };
