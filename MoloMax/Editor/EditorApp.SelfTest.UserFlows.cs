@@ -22,6 +22,7 @@ public sealed partial class EditorApp
         T("USER: select 90 heavy objects at once: the views stay fast; Hide on a Drawable hides its meshes", UserBigSelection);
         T("USER: walk with the arrows, then orbit with the mouse: the walk mode leaves (orbit distance back); Ctrl+arrow never walks", UserWalkLeaves);
         T("USER: dense room mesh in vertex mode: every point shown, Drawable row + eye hides it, Separate from points", UserDenseDrawable);
+        T("USER: a joined building of 180 000+ points in vertex mode: points shown all over it, not only around the mouse", UserHugeTicks);
         T("USER: detach faces, make a Drawable of them, click the eye of its mesh row (selected or not, from face mode): it hides", UserDetachEye);
         T("USER: Join (Ctrl+J) with Drawable nodes selected: the meshes join into a mesh, never into the node; hidden ones stay out", UserJoinNodes);
         T("USER: after an undo / redo (the objects are new copies), the eye of a row still hides the real object", UserEyeAfterUndo);
@@ -298,6 +299,27 @@ public sealed partial class EditorApp
             PostMouse(0x202, eye, 0); yield return Frames(4);
             Expect(Scene.Find(node.Id).Hidden && SubSel(m).Verts.Count == 0, $"a click with no move before it hits the eye (hidden {Scene.Find(node.Id).Hidden}), not the view ({SubSel(m).Verts.Count} points picked)");
             foreach (var t in Scene.Objects) t.Hidden = false;
+            SetLevel(SubObject.Object);
+        }
+        finally { UI.ImGuiBackend.SyntheticInput = false; }
+    }
+
+    IEnumerable<object> UserHugeTicks()
+    {
+        UI.ImGuiBackend.SyntheticInput = true;
+        try
+        {
+            Fresh();
+            var m = Prim(CreateKind.Box, Vector3.Zero); m.Name = "joined_building";
+            Do("huge", () => { m.Mesh = Primitives.Plane(20, 20, 430, 430); m.Touch(); });
+            m = Scene.Find(m.Id);
+            var vp = Viewports[ActiveViewport];
+            vp.Camera.SetView(ViewKind.Perspective); vp.Camera.Pitch = 1.2f; vp.Camera.Frame(new Vector3(-10, -10, 0), new Vector3(10, 10, 0.1f));
+            SelectOnly(m); SetLevel(SubObject.Vertex); yield return Frames(4);
+            PostMouse(0x200, new Vector2(vp.X + 20, vp.Y + vp.H - 20), 0); yield return Frames(4);
+            Note($"{m.Mesh.Verts.Count} points, {vertexTicksDrawn} ticks drawn");
+            Expect(m.Mesh.Verts.Count > 150000 && vertexTicksDrawn > 20000, $"points shown over the whole mesh, mouse far away ({vertexTicksDrawn} ticks)");
+            yield return Shot("user_huge_ticks");
             SetLevel(SubObject.Object);
         }
         finally { UI.ImGuiBackend.SyntheticInput = false; }

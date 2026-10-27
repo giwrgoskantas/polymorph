@@ -311,7 +311,6 @@ public sealed partial class EditorApp
         importReportTitle = "Imported " + Path.GetFileName(path);
         importReport.Clear();
         importReport.Add($"{created.Count} object(s), {verts:N0} vertices, {faces:N0} polygons, {r.Materials.Count} material(s), {sw.ElapsedMilliseconds} ms");
-        foreach (var o in created.Where(o => o.Mesh.Verts.Count > 60000)) importReport.Add($"{o.Name}: {o.Mesh.Verts.Count:N0} vertices, over the 60k per model you keep for GTA.");
         if (r.TexturesWritten.Count > 0) importReport.Add($"{r.TexturesWritten.Count} texture(s) extracted to {Path.GetDirectoryName(r.TexturesWritten[0])}");
         importReport.AddRange(r.Warnings.Distinct());
         importReportOpen = r.Warnings.Count > 0 || created.Any(o => o.Mesh.Verts.Count > 60000);

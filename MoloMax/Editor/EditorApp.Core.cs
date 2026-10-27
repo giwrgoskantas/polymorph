@@ -674,7 +674,7 @@ public sealed partial class EditorApp : IDisposable
         }
     }
 
-    readonly List<int> nearTick = new();
+
     /// <summary>How many vertex ticks the last frame drew (self tests).</summary>
     int vertexTicksDrawn;
 
@@ -690,13 +690,12 @@ public sealed partial class EditorApp : IDisposable
         var org = new Vector2(vp.X, vp.Y);
         int n = P.Length;
         // every point on screen gets its tick (a GTA room is often 50 000+ points: showing only the ones near the mouse hid
-        // most of the mesh while editing); only past ~150 000 the far ones are left out to keep the frame fast
-        bool big = n > 150000;
-        var mouse = Input.Mouse - org;
+        // most of the mesh while editing). Very dense meshes (a joined building, 800 000 points): one tick per 3 px cell of
+        // the screen, so the whole mesh still shows its points without a million squares per frame
         var r2 = new Vector2(2f); var r3 = new Vector2(3f);
-        if (!big)
+        int drawn = 0;
+        if (n <= 150000)
         {
-            int drawn = 0;
             for (int i = 0; i < n; i++)
             {
                 if (!Ok[i]) continue;
@@ -707,26 +706,29 @@ public sealed partial class EditorApp : IDisposable
             vertexTicksDrawn = drawn;
             return;
         }
-        // around the mouse; on a very dense mesh only the nearest few thousand (more would be a solid blue patch anyway)
-        float R = 160f * 160f; const int Cap = 3000;
-        int count = 0;
-        for (int i = 0; i < n; i++) if (Ok[i] && Vector2.DistanceSquared(P[i], mouse) <= R) count++;
-        if (count > Cap) R *= (float)Cap / count; // dense: a smaller circle holding about Cap points
-        nearTick.Clear();
-        for (int i = 0; i < n; i++) if (Ok[i] && Vector2.DistanceSquared(P[i], mouse) <= R) nearTick.Add(i);
-        Prof("ov ticks near");
-        foreach (var i in nearTick)
+        const int Cell = 3;
+        int gw = (int)vp.W / Cell + 1, gh = (int)vp.H / Cell + 1;
+        if (tickCells == null || tickCells.Length < gw * gh) tickCells = new int[gw * gh];
+        int stamp = ++tickStamp;
+        for (int i = 0; i < n; i++)
         {
-            if (s.Verts.Contains(i)) continue;
-            var p = org + P[i]; dl.AddRectFilled(p - r2, p + r2, blue);
+            if (!Ok[i]) continue;
+            int cx = (int)(P[i].X / Cell), cy = (int)(P[i].Y / Cell);
+            if (cx < 0 || cy < 0 || cx >= gw || cy >= gh) continue;
+            int k = cx + cy * gw;
+            if (tickCells[k] == stamp) continue;
+            tickCells[k] = stamp;
+            var p = org + P[i]; dl.AddRectFilled(p - r2, p + r2, blue); drawn++;
         }
+        Prof("ov ticks cells");
         foreach (var i in s.Verts)
         {
             if (i >= n || !Ok[i]) continue;
             var p = org + P[i]; dl.AddRectFilled(p - r3, p + r3, red);
         }
-        vertexTicksDrawn = nearTick.Count;
+        vertexTicksDrawn = drawn;
     }
+    int[] tickCells; int tickStamp;
 
     (int, int, int, int) statsCache; double statsTime = -1; int statsCount = -1;
     void Statistics(ImDrawListPtr dl, Viewport vp)
@@ -742,8 +744,7 @@ public sealed partial class EditorApp : IDisposable
         dl.AddText(p, white, $"            Total      {(cur != null ? cur.Name : "")}");
         dl.AddText(p + new Vector2(0, 16), white, $"Polys:   {polys,8:N0}   {(cur != null ? cur.Mesh.Faces.Count.ToString("N0") : "")}");
         dl.AddText(p + new Vector2(0, 32), white, $"Tris:     {tris,8:N0}   {(cur != null ? cur.TriangleCount.ToString("N0") : "")}");
-        bool over = cur != null && cur.Mesh.Verts.Count > 60000;
-        dl.AddText(p + new Vector2(0, 48), over ? 0xFF4040FF : white, $"Verts:   {verts,8:N0}   {(cur != null ? cur.Mesh.Verts.Count.ToString("N0") + (over ? "  > 60k, split it" : "") : "")}");
+        dl.AddText(p + new Vector2(0, 48), white, $"Verts:   {verts,8:N0}   {(cur != null ? cur.Mesh.Verts.Count.ToString("N0") : "")}");
     }
 
     public void Dispose()

@@ -1,5 +1,11 @@
 # Polymorph — journal des versions
 
+## 1.5.2 — octobre 2026
+
+- Mode Vertex sur un très gros mesh (un bâtiment joint de 800 000 points) : les points s'affichent partout sur le
+  mesh (un par case de 3 px), plus seulement autour de la souris.
+- Plus d'avertissement rouge « > 60k, split it » dans les stats ni dans le rapport d'import.
+
 ## 1.5.1 — octobre 2026
 
 - **Matériau en nœuds : plantage corrigé** — le graphe était lu par plusieurs cœurs en même temps juste après une
