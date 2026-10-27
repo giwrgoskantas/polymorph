@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://molossen.github.io/polymorph/#download"><img alt="Latest release" src="https://img.shields.io/github/v/tag/molossen/polymorph?label=version&sort=semver&color=2ea043"></a>
+  <a href="https://molossen.github.io/polymorph/#download"><img alt="Latest release" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fmolossen.github.io%2Fpolymorph%2Fversion.json&query=%24.version&label=version&color=2ea043"></a>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4">
   <img alt="Free" src="https://img.shields.io/badge/price-free%20forever-ffb000">
 </p>
