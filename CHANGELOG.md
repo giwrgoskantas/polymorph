@@ -2,6 +2,8 @@
 
 ## 1.4.9 — octobre 2026
 
+- Molo Paint : le bouton « Pick the parts on the model » active la peinture (les clics n'arrivaient pas au modèle
+  quand la peinture était coupée).
 - MCP : un script C# qui ne fait que lire ne marque plus la scène « modifiée » (et ne remplace plus les objets) ;
   app_quit enregistre la scène dans son fichier avant de fermer : plus de fenêtre « Enregistrer ? » qui bloquait les
   mises à jour.
