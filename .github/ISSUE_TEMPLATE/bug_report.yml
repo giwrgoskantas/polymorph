@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Polymorph version
+      description: Help > About, or the title of the update button
+      placeholder: "1.5.2"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, step by step, and what you expected instead.
+      placeholder: |
+        1. Select a wall
+        2. Create > Shapes > Line, click the corners
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or video
+      description: Drag images or a short video here. A crash also writes molomax_crash.txt next to Polymorph.exe; paste it here.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Modelling / edit mode
+        - UV / materials
+        - Molo Paint / sculpt
+        - MLO Room Builder
+        - MAP mode
+        - GTA export / FiveM resource
+        - Weapon / Vehicle Forge
+        - Python / MCP
+        - Install / update
+        - Other

@@ -1,183 +1,242 @@
-# Polymorph — journal des versions
+# Changelog
 
-## 1.5.2 — octobre 2026
+All notable changes to Polymorph. Newest first.
+Download the latest version from the [website](https://molossen.github.io/polymorph/); installed copies update themselves
+(green **Update** button in the menu bar).
 
-- **Nouvel outil Ligne** (Create > Shapes > Line, ou le menu Create) : on clique les points un par un, chacun
-  s'accroche aux vertex, aux arêtes et aux faces sous la souris (aussi de l'objet sélectionné). Shift = segment droit
-  (X / Y / Z), Alt = point libre, clic sur le premier point (ou C) = fermer, clic droit / Entrée = finir, Retour
-  arrière = enlever le dernier point, Échap = annuler.
-- La ligne reste une forme : son panneau la transforme en **chambranle de porte** (carré, à gradins, chanfreiné,
-  arrondi, largeur / épaisseur), en poutre rectangulaire, en tuyau rond ou en **extrusion** ; tout se recalcule en
-  direct. « Convert to Editable Poly » la fige en mesh. Le chambranle sort du mur côté vue et pousse vers l'extérieur
-  de l'ouverture (Flip side pour l'inverse).
-- Les points d'une ligne se déplacent en mode Vertex ; un clic sur la ligne la sélectionne.
-- Mode Vertex sur un très gros mesh (un bâtiment joint de 800 000 points) : les points s'affichent partout sur le
-  mesh (un par case de 3 px), plus seulement autour de la souris.
-- Plus d'avertissement rouge « > 60k, split it » dans les stats ni dans le rapport d'import.
+| Version | Highlights |
+|---|---|
+| [1.5.2](#152) | Line tool: draw door frames, beams, pipes and extrusions |
+| [1.5.0](#150) | Molo Paint node materials |
+| [1.4.8](#148) | Molo Paint: picked-parts mask, drips brush |
+| [1.4.6](#146) | Molo Paint: procedural textures, 14 blend modes, filters |
+| [1.4.5](#145) | GIMS-style model export |
+| [1.4.3](#143) | Multi loop cut, knife options, grow / shrink selection |
+| [1.4.0](#140) | Gaussian splat scans, path-traced photo render |
+| [1.3.0](#130) | Python inside Polymorph |
+| [1.2.0](#120) | C# scripting inside Polymorph |
+| [1.1.0](#110) | One-click updates, animation, Wall Opening, texture library |
+| [1.0.0](#100) | First public release |
 
-## 1.5.1 — octobre 2026
+---
 
-- **Matériau en nœuds : plantage corrigé** — le graphe était lu par plusieurs cœurs en même temps juste après une
-  modification, ce qui pouvait faire planter le calque (« collection modifiée »).
-- File > Open Recent : deux scènes du même nom dans des dossiers différents faisaient apparaître une erreur ImGui
-  rouge (« conflicting ID ») par-dessus le menu ; le dossier s'affiche à côté du nom, le chemin complet au survol.
-- Éditeur de nœuds : s'ouvre en bas de l'écran (le modèle reste visible).
+## 1.5.2
 
-## 1.5.0 — octobre 2026
+**New: Line tool** (Create > Shapes > Line), like the classic modeller's spline line.
+- Click points one by one. Each one snaps to the vertices, edges and faces under the mouse, the selected object's too.
+- Shift keeps the segment straight on X / Y / Z, Alt places a free point.
+- Click the first point (or press C) to close; right click or Enter to finish; Backspace removes the last point; Esc cancels.
+- The line stays a shape. Its panel turns it into a **door frame casing** (square, stepped, chamfer or round, with width
+  and depth), a rectangular beam, a round pipe or an **extrusion**, rebuilt live. *Convert to Editable Poly* freezes it.
+- A casing stands out of the wall toward you and grows away from the opening (*Flip side* for the other way).
+- Move the line's points in Vertex mode; click the line to select it.
 
-- **Molo Paint, phase 3 : matériau en nœuds** (comme ArmorPaint) sur un calque de remplissage : bouton « Node
-  material... ». Nœuds : Couleur, Valeur, Mesh (saleté AO, arêtes, cavités, dessus, hauteur), Noise, Voronoi (cellules,
-  fissures), Briques, Motifs, Warp, Rampe de couleurs, Mix (tous les modes de fusion), Math, Levels, et la sortie
-  (couleur, rugosité, relief, métal). Glisser une sortie sur une entrée pour relier, clic droit pour ajouter, Suppr pour
-  enlever. Le graphe est enregistré avec le calque et dans les smart materials.
+**Improved**
+- Vertex snap: when two points sit on top of each other on screen (front and back corners in a side view), the nearer one wins.
+- Vertex mode on huge meshes (a joined building of 800 000 points): points are shown all over the mesh, not only around the mouse.
+- No more "> 60k, split it" warning in the stats and the import report.
 
-## 1.4.9 — octobre 2026
+## 1.5.1
 
-- Molo Paint : le bouton « Pick the parts on the model » active la peinture (les clics n'arrivaient pas au modèle
-  quand la peinture était coupée).
-- MCP : un script C# qui ne fait que lire ne marque plus la scène « modifiée » (et ne remplace plus les objets) ;
-  app_quit enregistre la scène dans son fichier avant de fermer : plus de fenêtre « Enregistrer ? » qui bloquait les
-  mises à jour.
+**Fixed**
+- Node material: a crash right after editing the graph (it was read by several cores at once).
+- File > Open Recent: two scenes with the same name showed a red ImGui "conflicting ID" error; the folder now shows next to the name, the full path on hover.
+- The node editor opens low on the screen, so the model stays visible.
 
-## 1.4.8 — octobre 2026
+## 1.5.0
 
-- **Molo Paint, phase 2 (ArmorPaint)** :
-  - masque « Picked parts » : on clique les parties du modèle (face, morceau connecté ou îlot UV) où le calque se
-    montre — comme un masque ID couleur, sans carte ID à faire ;
-  - pinceau à particules « Drips » : des gouttes coulent le long de la surface depuis les coups de pinceau (rouille,
-    peinture, eau), plus fines en descendant, avec leur longueur réglable.
-- Motif « bois » : des cernes de quelques centimètres (ils faisaient plus d'un mètre).
+**New: node materials in Molo Paint** — *Node material...* on a fill layer.
+- Nodes: Colour, Value, Mesh (AO dirt, edges, cavities, top, height), Noise, Voronoi (cells, cracks), Bricks, Pattern,
+  Warp, Colour ramp, Mix (every blend mode), Math, Levels, and the output (colour, roughness, height, metal).
+- Drag an output onto an input to link, right click to add, Delete to remove.
+- The graph is saved with the layer and in smart materials.
 
-## 1.4.7 — octobre 2026
+## 1.4.9
 
-- **L'œil (et le gel, le renommage) de la liste n'agissait plus après un Undo / Redo** : la liste gardait les anciennes
-  copies des objets, l'œil cachait une copie invisible. La liste suit maintenant les vrais objets.
-- MAP : « My MODEL scene here » et « Import a 3D scene here » (.mmx) demandent où la mettre. S'il y a déjà un .ymap
-  (et son .ytyp) à côté de la scène — ressource exportée, map Sollumz / CodeWalker, .ymap ou .ymap.xml — il est trouvé
-  et proposé : les modèles vont là où ce .ymap les place (par nom de modèle ; un MLO par son entité d'intérieur).
-  Sinon : la position GTA de la scène, ou le sol au milieu de la vue. La vue va à l'endroit.
+**Fixed**
+- Molo Paint: *Pick the parts on the model* turns painting on (clicks did not reach the model when painting was off).
+- Scripting / MCP: a C# script that only reads no longer marks the scene as modified; `app_quit` saves the scene to its file first, so no "Save changes?" dialog is left waiting.
 
-## 1.4.6 — octobre 2026
+## 1.4.8
 
-- Mode marche (flèches) : dès qu'on bouge la vue autrement (orbite, pan, zoom à la molette), il s'enlève — la
-  distance d'orbite d'avant revient, la caméra ne saute pas.
-- Ctrl ou Alt + flèche ne fait jamais marcher la caméra (raccourcis seulement).
-- **Join (Ctrl+J)** avec des Drawables sélectionnés : les meshes vont dans un mesh du Drawable actif (plus jamais dans
-  le nœud Drawable lui-même, où le bâtiment devenait impossible à sélectionner) ; les objets cachés, collisions et
-  lumières restent à part ; les Drawables vidés sont supprimés ; le résultat est sélectionné.
-- Ctrl n'allume plus le snap (points jaunes, accroche) quand on le tient pour sélectionner ou déplacer au gizmo ; il ne
-  l'inverse que pendant un déplacement G / R / S au clavier.
-- Matériau : une miniature de chaque texture (Diffuse, Normal, Specular, Detail) à côté de son chemin ; au survol, en grand.
-- **Molo Paint, un cran plus puissant (repris d'ArmorPaint, licence zlib)** :
-  - textures procédurales dans un calque de remplissage (« Pattern ») : cellules (voronoi), fissures, briques avec
-    joints et teinte par brique, damier, vagues, cernes de bois, magic, bruit Perlin — avec 2e couleur, relief,
-    rugosité propre et Warp (déformation par bruit) ;
-  - les mêmes en masque (« Where ») + Warp sur tous les masques ;
-  - 14 modes de fusion de plus : Darken, Lighten, Colour burn / dodge, Soft / Hard / Linear light, Difference,
-    Subtract, Divide, Hue, Saturation, Colour, Value ;
-  - filtres : Luminosité / contraste, Gamma, Postérisation (masque et couleur), Rampe de couleurs ;
-  - matériaux intelligents : Mur de briques rouges, Boue craquelée, Veinage bois, Pavés ; masques : Fissures,
-    Joints de briques, Nuages, Taches.
+**New in Molo Paint**
+- **Picked parts** mask: click the parts of the model (face, connected piece or UV island) where the layer shows — a colour-ID mask without an ID map.
+- **Drips** particle brush: drops run down the surface from your strokes (rust, paint, water), thinner as they go, with an adjustable length.
 
-## 1.4.5 — octobre 2026
+**Fixed**
+- Wood pattern: rings a few centimetres apart (they were more than a metre).
 
-- **File > Export models** (et menu GTA) : export à la façon GIMS — liste des modèles avec une case chacun (la
-  sélection est cochée), options (format .ydr / .yft, collisions oui / non, dossier), un fichier par modèle à son nom,
-  textures intégrées, chaque modèle garde son pivot. Les meshes « _high_0 » prennent le nom de leur modèle.
-- Grosse sélection : plus de chute à quelques images par seconde (les contours étaient reconstruits à chaque image
-  au-delà de 48 objets) ; au-delà de 1,5 million de points sélectionnés, seulement les coins de sélection.
-- Hide sur un Drawable cache aussi ses meshes ; Hide Unselected garde les meshes et le Drawable de la sélection.
-- Clic droit : plus de saut de caméra dans les vues Top / Front / Left (un petit glissement en faisait une vue
-  perspective reculée) ; il faut glisser de 10 px pour tourner la vue.
-- Menus clic droit : Hide Selection / Hide Unselected retirés (en doublon avec l'œil) ; restent Isolate Selection et
-  Unhide All.
+## 1.4.7
 
-## 1.4.4 — octobre 2026
+**Fixed**
+- The outliner's eye (and freeze, rename) stopped working after Undo / Redo: the list kept old copies of the objects.
 
-- Un clic tombe toujours là où il est fait, même sans mouvement de souris juste avant (l'œil d'un Drawable cliqué
-  juste après une autre fenêtre allait dans la vue 3D).
-- Mode Vertex : tous les points visibles sont affichés jusqu'à 150 000 points (avant : seulement autour de la souris
-  au-delà de 40 000, gênant sur les pièces GTA).
-- Separate (Detach) en mode Vertex et Edge : prend les faces dont tous les points sont sélectionnés ; dans le clic droit.
+**Improved**
+- MAP: *My MODEL scene here* and *Import a 3D scene here* ask where to put it. If a .ymap (and its .ytyp) already sits next
+  to the scene — exported resource, Sollumz / CodeWalker map, .ymap or .ymap.xml — it is offered, and the models go where
+  that .ymap places them (an MLO by its interior entity). Otherwise: the scene's GTA position, or the ground in the middle of the view.
 
-## 1.4.3 — octobre 2026
+## 1.4.6
 
-- **Loop Cut** : plusieurs coupes d'un coup (molette, + / -, curseur du panneau), Tab tourne la coupe dans l'autre sens.
-- **Knife** : panneau d'options — pas d'angle (libre, 15°, 45°, 90° ; Shift = 45°), coupe droite sur les axes du monde,
-  faces visibles seulement. Une coupe peut commencer au milieu d'une face.
-- **Sélection de faces** : un 2e clic rapide ajoute une face, il ne prend plus toute la boucle (sur un escalier, tout l'objet).
-- **Ctrl + ↑ / Ctrl + ↓** agrandit / réduit la sélection ; Ctrl + ↓ juste après Ctrl + ↑ revient à la sélection d'avant.
-  Les flèches seules déplacent toujours la caméra.
-- Réduire la sélection marche sur les objets ouverts (escaliers, bandes) et en mode arêtes.
-- Boutons UV Editor : erreur « conflicting ID » corrigée, et 20 autres libellés en double.
-- Tests : chaque bug remonté devient un test qui rejoue les gestes de l'utilisateur.
+**New in Molo Paint** (ported from ArmorPaint, zlib licence)
+- Procedural textures in a fill layer (*Pattern*): voronoi cells, cracks, bricks with mortar and per-brick tint, checker,
+  waves, wood rings, magic, Perlin noise — with a 2nd colour, relief, own roughness and Warp.
+- The same patterns as masks, plus Warp on every mask.
+- 14 more blend modes: Darken, Lighten, Colour burn / dodge, Soft / Hard / Linear light, Difference, Subtract, Divide, Hue, Saturation, Colour, Value.
+- Filters: Brightness / contrast, Gamma, Posterize, Colour ramp.
+- Smart materials: Red brick wall, Cracked mud, Wood grain, Cobblestones; masks: Cracks, Brick joints, Clouds, Stains.
 
-## 1.4.0 — octobre 2026
+**Improved**
+- Material panel: a thumbnail of each texture (Diffuse, Normal, Specular, Detail), big on hover.
+- **Join (Ctrl+J)** with Drawables selected: meshes go into a mesh of the active Drawable, never into the Drawable node itself; hidden objects, collisions and lights stay apart.
+- Walk mode (arrows) ends as soon as you orbit, pan or zoom; Ctrl / Alt + arrow never walks.
+- Holding Ctrl to add to the selection no longer turns the snap on (it still flips it during a G / R / S move).
 
-- **Scans en Gaussian splats** : import .ply (3DGS ou nuage de points), .spz (v1 à v4) et .splat. Le scan s'affiche
-  dans toutes les vues, trié et mélangé avec vos modèles, comme référence pour modéliser par-dessus.
-  Réglages simples : taille des blobs, opacité, luminosité, nettoyage du brouillard, redresser, poser au sol,
-  garder une boîte. Jamais exporté vers GTA. Enregistré dans la scène.
-- **Rendu photo** (F12, menu Rendering ou menu de la vue Realistic) : photo path tracée de la vue active,
-  calculée en arrière-plan par un moteur gratuit. Réglages en mots simples : qualité, taille, lumière (comme la vue,
-  jour, soir, nuit, studio), luminosité, lumière du ciel, puissance des lampes, grain, ombres douces, fond transparent.
-- Constructeur de pièces : plusieurs portes et fenêtres sur un même mur.
+## 1.4.5
 
-## 1.0.0 — octobre 2026
+**New**
+- **File > Export models**, GIMS style: a list of models with a checkbox each, .ydr / .yft, collisions on / off, one file
+  per model with its own pivot and embedded textures. "_high_0" meshes take their model's name.
 
-Première version publique. Polymorph est gratuit, par Molo Modding.
+**Improved**
+- Big selections stay fast (outlines were rebuilt every frame above 48 objects).
+- Hide on a Drawable hides its meshes too.
+- Right click no longer jumps the camera in the Top / Front / Left views.
 
-### Modélisation
-- Edit Poly et Unwrap UVW en modificateurs, insérables n'importe où dans la pile (non destructif).
-- Chamfer, bridge, knife / slice, booléens, extrude avec flèche et panneau « Adjust Last Operation ».
-- Cube Projection (UV + matériau), Smart UV, éditeur UV, densité de texel.
-- Sculpt (Smooth, Relax, Flatten, Draw, Inflate, Grab, Pinch, symétrie) pour nettoyer les meshes générés.
-- Instances (Alt+D, Shift-drag), snaps, isolate, caméra de marche aux flèches, raccourcis compatibles avec les grands logiciels 3D.
-- Scene Explorer qui tient des milliers d'objets, sélection au cadre, filtres par type GTA.
+## 1.4.4
 
-### GTA V / FiveM
-- Import et export .ydr, .yft, .ydd, .ybn, .ytyp, .ymap (ressource FiveM prête : fxmanifest, stream, textures intégrées).
-- LOD automatiques, collision automatique, vertex colors selon les règles du jeu, DDS 1024 avec mipmaps.
-- Vérificateur GTA avant export avec corrections en un clic (shell en limbo, pièces fermées, normales, 60k vertex…).
-- Constructeur de pièces MLO : plan dessiné ou lu depuis une image, portails automatiques, matériaux par surface,
-  plinthes, salissures et usure des coins, références de taille.
-- Explorateur des fichiers du jeu (modèles, textures, collisions par matériau).
-- Envoi direct vers ton serveur FiveM de test.
+**Improved**
+- A click always lands where it is made, even with no mouse move just before.
+- Vertex mode shows every visible point up to 150 000 points.
+- Separate (Detach) works in Vertex and Edge mode, also from the right-click menu.
 
-### Mode MAP
-- Toute la carte de GTA V affichée avec ses modèles lointains (LOD / SLOD), comme dans CodeWalker.
-- Un clic charge les .ymap de la zone pour l'édition : déplacer, supprimer, poser des props collés aux surfaces.
-- Édition des intérieurs du jeu (MLO) : ouvrir un intérieur, déplacer / supprimer / ajouter des objets, le .ytyp est réécrit.
-- Sauvegarde en ressource FiveM (les fichiers du jeu gardent leur nom : FiveM utilise ta version).
-- Modèles lus une fois puis gardés en cache : réouverture de la carte en quelques secondes.
+## 1.4.3
 
-### Ajouts de la dernière ligne droite
-- Snaps sur vertex / arêtes / faces avec points visibles ; on attrape un point de l'objet et on le pose sur la cible, contact sur les faces (plus d'objet qui rentre dans l'autre).
-- Caméra « jeu vidéo » : clic droit maintenu + ZQSD/WASD, E/Espace monter, C descendre, Shift rapide, molette = vitesse.
-- Edit mode : Shift + déplacement copie les faces / arêtes / vertex ; sur des arêtes ça extrude dans le sens du glisser.
-- Bridge refait (faces, groupes de faces, chaînes d'arêtes) et Flip Normals dans le clic droit.
-- Menu UV au clic droit : Unwrap, Smart UV, Lightmap, Cube, Cylindre, Sphère, Projection depuis la vue, Pack, Reset…
-- Clic droit objet simplifié : « Clone… » (copie / instance), plus d'entrées en double.
-- Matériaux : créer ne les applique plus, on les glisse-dépose sur l'objet ; les matériaux du jeu ouverts par le mode MAP sont masqués.
-- Sélection au travers comme dans les grands logiciels, option « Visible only » (Alt+Z) ; les faces arrière cachées ne volent plus le clic.
-- ViewCube : maintenir et glisser fait tourner la vue.
-- Lumières Point / Spot / Capsule, éclairage proche du jeu, toutes les propriétés Sollumz (flags, fades, volume, culling plane…) exportées.
-- Constructeur MLO entièrement en direct, encadrements de portes et fenêtres variés (5 styles, identiques des deux côtés).
-- Pièces connectées : à une porte entre deux pièces, un chambranle traverse l'espace et relie les deux encadrements (option « Connect the rooms »).
-- Mode MAP : HD chargée automatiquement autour de la caméra, beaucoup plus fluide sur les grandes zones ; les LOD restent affichés tant que la HD n'est pas arrivée.
-- Modéliser directement dans la carte : tous les outils de modélisation dans le mode MAP, le Room Builder posé au sol (MLO construit sur place), et un modèle du jeu ouvert en copie personnelle à sa place ; tout part avec la ressource map (stream/build : modèles, ytyp, MLO, entités).
-- Weapon Forge : un modèle 3D devient une arme GTA (squelette d'une arme du jeu, ajustement auto, remplacement ou arme add-on avec metas clonés).
-- Vehicle Forge : un modèle de voiture devient un véhicule FiveM (roues détectées, calage sur les roues d'une voiture du jeu, yft + metas clonés + textures).
-- Vidéos tutos par catégorie et trailer.
+**New**
+- **Loop Cut**: several loops at once (wheel, + / -), Tab turns the cut the other way.
+- **Knife** options: angle steps (free, 15°, 45°, 90°; Shift = 45°), straight cuts on world axes, visible faces only. A cut can start in the middle of a face.
+- **Ctrl + Up / Down** grows / shrinks the selection (arrows alone still move the camera).
+- Add-on: GTA-style stairs generator (0.20 m risers, 0.30 m treads, ramp collision).
 
-### Rendu
-- Shader du jeu, onglet Lumière (32 lumières, ombres du soleil, courbe filmique), mode orientation des faces.
-- Molo Paint : peinture de textures par calques, masques intelligents, bake high-poly, export DDS.
+**Fixed**
+- A quick 2nd click on a face adds that face instead of the whole loop.
+- Shrink works on open meshes and in edge mode; UV Editor "conflicting ID" errors.
+- Every reported bug is now a test that replays the user's gestures.
 
-### Pilotage
-- API Python et serveur MCP : Claude peut piloter Polymorph (créer, modifier, UV, vérifier, exporter, captures).
+## 1.4.2
 
-### Limites connues
-- Les intérieurs du jeu s'éditent objet par objet ; les pièces et portails eux-mêmes ne se redessinent pas dans le mode MAP
-  (pour ça : importer le .ytyp dans le mode MODEL).
-- Les nouveaux archétypes d'une ressource lancée pendant que tu es connecté ne s'affichent qu'après une reconnexion (comportement de FiveM).
+- GTA .dds textures (and normal maps) in .glb export and the photo render.
+
+## 1.4.1
+
+- Photo render progress bar follows the engine's live status.
+
+## 1.4.0
+
+**New**
+- **Gaussian splat scans**: import .ply (3DGS or point cloud), .spz (v1–v4) and .splat. The scan shows in every view,
+  mixed with your models, as a reference to model on. Simple settings; never exported to GTA; saved with the scene.
+- **Photo render** (F12): a path-traced photo of the active view, computed in the background. Plain settings: quality,
+  size, light (view, day, evening, night, studio), brightness, sky, lamp power, grain, soft shadows, transparent background.
+  Also from Python / MCP (`render.photo`).
+
+**Fixed**
+- MLO archetype: no physics dictionary name (it crashed the game).
+
+## 1.3.1
+
+- Several doors and windows on the same wall (Room Builder, Wall Opening, Cut Doorway).
+
+## 1.3.0
+
+- **Python inside Polymorph**, like `bpy`: `import poly`, add-ons, a script editor.
+
+## 1.2.0
+
+- **C# scripting inside Polymorph** (`script.run`, MCP `script_run_cs`) for heavy loops.
+- Terrain 4-layer painting fixed (brush sized to the mesh, no paint material over the terrain shader).
+
+## 1.1.4
+
+- Middle drag grabs the selected edges / points near the mouse.
+
+## 1.1.3
+
+- The update feed is read at every start and again right before downloading.
+
+## 1.1.2
+
+- Hide / Unhide All / End Isolate in the right-click menus.
+
+## 1.1.1
+
+- Move tool: middle button on the selection moves it (empty space still navigates).
+
+## 1.1.0
+
+**New**
+- **One-click updates**: a green *Update* button when a new version is out; download, SHA-256 check, silent install,
+  restart. Settings are kept. Help > Check for updates.
+- **Animation**: timeline, keyframes (I / K), auto key, dope sheet, UV and camera keys, GTA .ycd import / export.
+  UV animations play in game.
+- **Wall Opening**: drag a rectangle on a wall, pull the sides, Enter cuts. Doors, windows, arches, gothic and round
+  openings; stays editable as a modifier; works on thick walls and MLO rooms.
+- **Clean booleans**: straight quads around doors and windows, no crash far from the origin, only the crossed faces change on dense meshes.
+- **Texture library** built from your own GTA V (every interior, materials sorted, .dds written).
+- **Asset browser**, Make Planar, crossing box select.
+- MAP: DLC maps replace their base map, interiors shown near the camera, open a stream folder like a CodeWalker project,
+  save one .ymap in place, send selected models to MODEL.
+- Terrain 4-layer shaders: live blend in the view, paint the layers with the vertex colour brush.
+- Open window with bookmarks and recent scenes; Search always fits the toolbar.
+- Selection undo, UV editor gizmo, material copy / paste, camera lens, typed transforms, material pipette.
+- Bevel segments, Connect segments; Subdivision is Simple by default.
+- Outliner eye hides / shows the whole selection; drag down the eye column like Blender.
+
+**Performance**
+- Heavy scenes (490k-polygon rooms, thousands of objects) and MAP mode streaming without hitches.
+
+**Quality**
+- Chaos tests: thousands of random modelling operations and random clicks in the real window, with undo / save / export checks.
+
+## 1.0.0
+
+First public release. Free, by Molo Modding.
+
+**Modelling**
+- Edit Poly and Unwrap UVW as modifiers, anywhere in the stack (non-destructive).
+- Chamfer, bridge, knife / slice, booleans, extrude with an arrow and an *Adjust Last Operation* panel.
+- Vertex / edge / face snaps with visible targets; grab a point and drop it on the target.
+- Shift + move copies faces / edges / points; on edges it extrudes along the drag.
+- Sculpt (Smooth, Relax, Flatten, Draw, Inflate, Grab, Pinch, symmetry) to clean generated meshes.
+- Instances (Alt+D), isolate, game-style fly camera (right button + ZQSD / WASD), draggable ViewCube.
+- Scene Explorer that holds thousands of objects; crossing selection, *Visible only* (Alt+Z).
+
+**Surface**
+- Cube Projection (UV + material), Smart UV, UV editor, texel density; UV right-click menu (Unwrap, Lightmap, Cube, Cylinder, Sphere, From View, Pack…).
+- Game shaders, Light tab (32 lights, sun shadows, filmic curve), face orientation view.
+- Molo Paint: layered texture painting, smart masks, high-poly bake, DDS export.
+
+**GTA V / FiveM**
+- Import and export .ydr, .yft, .ydd, .ybn, .ytyp, .ymap — a ready FiveM resource (fxmanifest, stream, embedded textures).
+- Automatic LODs and collision, vertex colours by the game's rules, DDS 1024 with mipmaps.
+- GTA checker with one-click fixes (shell in limbo, closed rooms, normals…).
+- **MLO Room Builder**: plan drawn or read from an image, automatic portals, materials per surface, skirting, dirt and worn corners, door and window frames (5 styles), connected rooms.
+- Point / Spot / Capsule lights with every Sollumz property.
+- Game files browser (models, textures, collisions by material); send to your FiveM test server.
+
+**MAP mode**
+- The whole GTA V map with its LOD / SLOD, like CodeWalker; HD loaded around the camera.
+- Move, delete and place props stuck to surfaces; edit game interiors (MLO), the .ytyp is rewritten.
+- Model right on the map: every modelling tool, the Room Builder on the ground, a game model opened as your own copy in place.
+- Save as one FiveM resource.
+
+**Forges**
+- **Weapon Forge**: any 3D model becomes a GTA weapon (a game weapon's skeleton, auto fit, replace or add-on with cloned metas).
+- **Vehicle Forge**: any car model becomes a FiveM vehicle (wheels detected, fitted on a game car's wheels, .yft + metas + textures).
+
+**Scripting**
+- Python API and MCP server: Claude can drive Polymorph (create, edit, UV, check, export, screenshots).
+
+**Known limits**
+- Game interiors are edited object by object in MAP mode; rooms and portals themselves are redrawn in MODEL mode (import the .ytyp).
+- New archetypes of a resource started while you are connected show after a reconnect (FiveM behaviour).

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help (Discord)
+    url: https://discord.com/invite/molomodding
+    about: Ask the community, show what you build.
+  - name: Download Polymorph
+    url: https://github.com/molossen/polymorph/releases/latest
+    about: The latest installer and zip.

@@ -3,13 +3,21 @@
 </p>
 
 <p align="center">
-  <a href="https://molossen.github.io/polymorph/Polymorph-Setup-1.5.1.exe"><b>⬇ Download for Windows (free)</b></a>
+  <a href="https://github.com/molossen/polymorph/releases/latest"><b>⬇ Download for Windows (free)</b></a>
   &nbsp;·&nbsp;
   <a href="https://molossen.github.io/polymorph/">Website</a>
   &nbsp;·&nbsp;
   <a href="https://molossen.github.io/polymorph/#tutorials">18 video tutorials</a>
   &nbsp;·&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
+  &nbsp;·&nbsp;
   <a href="https://discord.com/invite/molomodding">Discord</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/molossen/polymorph/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/molossen/polymorph?label=version&color=2ea043"></a>
+  <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4">
+  <img alt="Free" src="https://img.shields.io/badge/price-free%20forever-ffb000">
 </p>
 
 # Polymorph
@@ -22,6 +30,15 @@ then export a FiveM resource that is ready to `ensure` — in one free program, 
 - **GTA built in** — the game's shaders, `.ydr .yft .ybn .ytyp .ymap` in and out, a checker that fixes what would crash in game.
 - **The whole map in the viewport** — like CodeWalker, with real models streaming around the camera, and every modelling tool working on it.
 - **Free forever**, for personal and commercial work. What you make is yours.
+
+## What's new
+
+- **1.5.2 — Line tool**: click points snapped on vertices, edges and faces, then turn the line into a door frame casing, a beam, a pipe or an extrusion.
+- **1.5.0 — Node materials** in Molo Paint: noise, voronoi, bricks, warp, ramps and mixes wired in a node graph.
+- **1.4.x — Molo Paint** procedural textures, 14 blend modes, filters, picked-parts mask, drips brush; GIMS-style model export.
+- **1.4.0 — Gaussian splat scans** as modelling references, and a **path-traced photo render** (F12).
+
+Every version: [CHANGELOG.md](CHANGELOG.md).
 
 ## See it
 
@@ -53,11 +70,13 @@ All of them, with chapters, on the [website](https://molossen.github.io/polymorp
 - **Wall Opening**: drag a rectangle on a wall, pull the sides, Enter. Rect, arch or round, any number of segments; stays editable.
 - Shift + move copies faces or pulls new faces out of edges; drop a vertex exactly on another one; material pipette.
 - Vertex, edge and face snaps with visible targets: corner on corner, face against face.
+- **Line tool**: draw a path point by point on the snaps, then make it a door frame casing, a beam, a pipe or an extrusion.
 - Game-style fly camera (right button + ZQSD / WASD) and a view cube you can drag.
 
 **Surface**
 - GTA shaders, drag & drop materials, Smart UV, Lightmap Pack, Cube / Cylinder / Sphere / From View projections.
-- Sculpt brushes; painting with layers, masks and smart materials, high-to-low bake, export to DDS / PNG / TGA.
+- Sculpt brushes; **Molo Paint**: layers, masks, smart materials, procedural textures, node materials, drips, high-to-low bake, export to DDS / PNG / TGA.
+- Gaussian splat scans (.ply / .spz / .splat) as references, and a path-traced photo render (F12).
 - Animation timeline with auto key, texture scroll and camera keys, written as a GTA `.ycd`.
 
 **GTA V & FiveM**
@@ -70,22 +89,27 @@ All of them, with chapters, on the [website](https://molossen.github.io/polymorp
 - **Weapon Forge** and **Vehicle Forge**: a game weapon or car lends its skeleton, your model is fitted on it, the metas are written.
 - One key (F10) exports a FiveM resource with its `fxmanifest.lua`; it can be sent to your test server and restarted.
 
-**Built to hold up** — every release runs 276 automatic tests, plus random "chaos" runs: thousands of modelling operations,
+**Built to hold up** — every release runs hundreds of automatic tests (and every reported bug becomes one that replays the user's gestures), plus random "chaos" runs: thousands of modelling operations,
 GTA and `.glb` export round trips, and thousands of random clicks and keys in the real window.
 
 ## Install
 
-1. [Download the installer](https://molossen.github.io/polymorph/Polymorph-Setup-1.5.1.exe) and run it (no admin rights needed).
+1. [Download the installer](https://github.com/molossen/polymorph/releases/latest) (`Polymorph-Setup-x.y.z.exe`) and run it (no admin rights needed).
 2. Start Polymorph from the Start menu or the desktop shortcut.
 3. Updates: when a new version is out, a green **Update** button shows in the menu bar. One click downloads it,
    installs it over your copy and restarts Polymorph — your settings, keys and library are kept (Help > Check for updates).
 
-Prefer no installer? The same app as a [zip](https://molossen.github.io/polymorph/Polymorph-1.5.1-win-x64.zip): unzip anywhere and run `Polymorph.exe`.
+Prefer no installer? The same app as a zip on the [release page](https://github.com/molossen/polymorph/releases/latest): unzip anywhere and run `Polymorph.exe`.
 
 Needs Windows 10 / 11 64-bit and a DirectX 11 graphics card. For the game files, your own copy of GTA V:
 Polymorph reads your install and ships no game file.
 
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
+## Help & bugs
+
+- **Bugs and ideas**: [GitHub issues](https://github.com/molossen/polymorph/issues/new/choose) — a screenshot and the steps help a lot.
+- **Questions, show your work**: the [Molo Modding Discord](https://discord.com/invite/molomodding).
 
 ## Build from source
 
@@ -96,6 +120,19 @@ build.bat      :: core tests, build into out\ and start out\Polymorph.exe
 release.bat    :: self-contained zip in release\
 installer\    :: NSIS script for the setup .exe (makensis installer\polymorph.nsi)
 ```
+
+Project layout:
+
+| Folder | What |
+|---|---|
+| `MoloMax/` | the app: editor, viewport, GTA panels, self tests |
+| `MoloMax.Core/` | geometry, GTA formats, MAP, paint, export (no UI) |
+| `MoloMax.Core.Tests/` | core tests (`dotnet run --project MoloMax.Core.Tests`) |
+| `python/` | the `poly` Python API, add-ons, MCP server |
+| `Addons/` | example add-on |
+| `installer/` | NSIS setup script |
+| `third_party/`, `libs/` | bundled libraries and their licences |
+| `docs/img/` | README pictures |
 
 Scripting: Python runs inside Polymorph like `bpy` in Blender (`import poly`, add-ons, a script editor), plus an MCP server so Claude can drive it (see `python/README.md`).
 
